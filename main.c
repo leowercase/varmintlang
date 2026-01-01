@@ -1,13 +1,18 @@
+#include "compiler.h"
 #include "util.h"
+#include "vm.h"
 
 #include <sysexits.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <readline/readline.h>
 #include <readline/history.h>
 
 void repl()
 {
+  VM vm = vm_new();
+
   // https://en.wikipedia.org/wiki/GNU_Readline#Sample_code
 
   // History
@@ -20,10 +25,13 @@ void repl()
 
     add_history(input);
 
-    // TODO
+    PCode code = compile(input);
+    vm_run(&vm, &code);
 
     free(input);
   }
+
+  vm_free(&vm);
 }
 
 size_t file_size(FILE *file)
@@ -63,8 +71,12 @@ void run_file(const char *filename)
     exit(EX_NOINPUT);
   }
 
-  // TODO
+  VM vm = vm_new();
+  PCode code = compile(source);
 
+  vm_run(&vm, &code);
+
+  vm_free(&vm);
   fclose(file);
 }
 
@@ -75,7 +87,7 @@ int main(int argc, const char **argv)
   else if (argc == 2)
     run_file(argv[1]);
   else {
-    error_out("usage: %s [file]", argv[0]);
+    error_out("usage: %s [file]\n", argv[0]);
     exit(EX_USAGE);
   }
 }
