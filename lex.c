@@ -1,0 +1,170 @@
+#include "lex.h"
+
+#include <ctype.h>
+#include <string.h>
+
+// 1 character of lookahead.
+static inline char peek(Lex *lex)
+{
+  if (*lex->current == '\0') return '\0';
+  return lex->current[1];
+}
+
+static inline char next(Lex *lex)
+{
+  lex->current++;
+  return *lex->current;
+}
+
+static bool match(Lex *lex, char expected)
+{
+  char c = peek(lex);
+  if (c != '\0' && c == expected)
+  {
+    next(lex);
+    return true;
+  }
+  else return false;
+}
+
+static Token token(Lex *lex, TokenType type)
+{
+  Str string;
+  string.s = lex->start;
+  string.len = lex->current - lex->start;
+
+  Token tok = {type, string, lex->line};
+  return tok;
+}
+
+static Token error_token(Lex *lex, const char *msg)
+{
+  Token tok = {TK_ERR, str_from(msg), lex->line};
+  return tok;
+}
+
+static Token number(Lex *lex)
+{
+  while (isdigit(*lex->current))
+    next(lex);
+
+  if (*lex->current == '.' && isdigit(peek(lex))) {
+    next(lex);
+    while(isdigit(*lex->current))
+      next(lex);
+  }
+
+  return token(lex, TK_NUMERAL);
+}
+
+static TokenType is_keyword(Str string)
+{
+  const size_t keywords_len = sizeof(keywords);
+
+  for (TokenType i = 0; i < keywords_len; i++) {
+    const char *keyword = keywords[i];
+    const size_t keyword_len = strlen(keyword);
+
+    if (strncmp(string.s, keyword, keyword_len) == 0)
+      return i;
+  }
+
+  return false;
+}
+
+static Token word(Lex *lex)
+{
+  while (is_ident(*lex->current))
+    next(lex);
+
+  Token word = token(lex, TK_WORD);
+
+  TokenType keyword = is_keyword(word.string);
+  if (keyword)
+    word.type = keyword;
+
+  return word;
+}
+
+static void skip_rest_line(Lex *lex)
+{
+  while (next(lex) != '\n') {
+    if (*lex->current == '\0') return;
+  }
+  lex->line++;
+}
+
+static void skip_redundant_space(Lex *lex)
+{
+  for (;;) {
+    char c = *lex->current;
+
+    if (c == '\n')
+      lex->line++;
+
+    else if (c == '#') {
+      // Comment.
+      skip_rest_line(lex);
+      continue;
+    }
+
+    else if (!isspace(c))
+      return;
+
+    next(lex);
+  }
+}
+
+Token lex_token(Lex *lex)
+{
+  skip_redundant_space(lex);
+
+  lex->start = lex->current;
+
+  char c = *lex->current;
+
+  if (isdigit(c)) return number(lex);
+
+  if (is_ident_beginning(c)) return word(lex);
+
+  switch (c) {
+  case '\0': return token(lex, TK_EOF);
+
+  case '(': return token(lex, TK_LPAREN);
+  case ')': return token(lex, TK_RPAREN);
+
+  case '+': return token(lex, TK_PLUS);
+  case '*': return token(lex, TK_STAR);
+  case '/': return token(lex, TK_SLASH);
+  case '^': return token(lex, TK_CARET);
+  case '%': return token(lex, TK_PERCENT);
+  case '=': return token(lex, TK_EQ);
+
+  case '-':
+    return token(lex,
+      match(lex, '>') ? TK_ARROW : TK_MINUS);
+
+  case '!':
+    return token(lex,
+      match(lex, '=') ? TK_NEQ : TK_BANG);
+
+  case '<':
+    return token(lex,
+      match(lex, '=') ? TK_LEQ : TK_LT);
+
+  case '>':
+    return token(lex,
+      match(lex, '=') ? TK_GEQ : TK_GT);
+  }
+
+  return error_token(lex, "illegal token");
+}
+
+Lex lex_new(char *source)
+{
+  Lex lex;
+  lex.start = lex.current = source;
+  lex.line = 1;
+
+  return lex;
+}
