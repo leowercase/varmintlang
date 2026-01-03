@@ -11,12 +11,12 @@
 
 typedef enum {
   OP_NONE,
-  OP_CONSTANT,
-  OP_CONSTANT_16,
+  OP_CONST,
+  OP_CONST16,
   OP_NOT,
   OP_NEGATE,
-  OP_PERCENTAGE,
   OP_FACTORIAL,
+  OP_PERCENTAGE, // 100% a useful instruction
   OP_ADD,
   OP_SUB,
   OP_MUL,
@@ -32,24 +32,33 @@ typedef enum {
   OP_GT,
   OP_LEQ,
   OP_GEQ,
+  OP_CHAIN_BINOP,
+  OP_RETURN,
 } Opcode;
 
 #define T uint8_t
 #define TYPE_NAME Instructions
 #include "dyn_array.h"
 
-// The line some bytes come from.
+// The line of text a group of bytes come from.
 typedef struct { int nbytes; } LineBytes;
 
 #define T LineBytes
 #define TYPE_NAME LineInfo
 #include "dyn_array.h"
 
+/*
+ * Lines are run-length encoded to save memory.
+ * This makes line info a bit slow to emit, but it only happens on errors.
+ * https://en.wikipedia.org/wiki/Run-length_encoding
+ */
+size_t get_line(LineInfo *l, size_t instruction_idx);
+
 #define T Value
 #define TYPE_NAME Constants
 #include "dyn_array.h"
 
-// ...I'm not abusing "dyn_array.h" at all :)
+// ...I'm not abusing dyn_array.h superpowers at all :)
 
 typedef struct {
   Constants constants;
@@ -57,7 +66,7 @@ typedef struct {
   LineInfo lines;
 } PCode;
 
-inline PCode new_p_code()
+static inline PCode new_p_code()
 {
   PCode p_code;
   p_code.constants = Constants_new();

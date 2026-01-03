@@ -17,24 +17,26 @@ typedef enum {
   TK_BANG,
   TK_EQ, TK_NEQ, TK_LT, TK_GT, TK_LEQ, TK_GEQ,
   TK_NOT,
-  TK_AND, TK_OR,
-  TK_ARROW,
+  TK_AND, TK_OR, TK_ARROW,
   TK_LPAREN, TK_RPAREN,
   TK_NUMERAL,
   TK_WORD,
 } TokenType;
 
-inline bool is_cmp_token(TokenType type)
+static inline
+bool is_cmp_token(TokenType type)
 {
   return TK_EQ <= type && type <= TK_LEQ;
 }
 
-inline bool is_ident_beginning(char c)
+static inline
+bool is_ident_beginning(char c)
 {
   return isalpha(c) || c == '_';
 }
 
-inline bool is_ident(char c)
+static inline
+bool is_ident(char c)
 {
   return is_ident_beginning(c) || isdigit(c);
 }
@@ -59,5 +61,7 @@ typedef struct {
 
 Lex lex_new(char *source);
 Token lex_token(Lex *lex);
+
+void print_token(Token token);
 
 #endif

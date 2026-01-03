@@ -5,8 +5,6 @@
 #include "util.h"
 #include "val.h"
 
-const int STACK_CAP = 255;
-
 #define T Value
 #define TYPE_NAME Stack
 #include "dyn_array.h"
@@ -19,7 +17,7 @@ typedef struct {
 } VM;
 
 VM vm_new();
-void vm_run(VM *vm, PCode *code);
+Value vm_run(VM *vm, PCode *code);
 void vm_free(VM *vm);
 
 #endif

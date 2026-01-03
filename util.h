@@ -29,12 +29,14 @@ void error_out(const char *msg_template, ...);
 static_assert(sizeof(double) == 8 * sizeof(uint8_t), "Expect 64-bit double.");
 #define float64_t double
 
-inline uint16_t uint8_to_16(uint8_t uints[2])
+static inline
+uint16_t uint8_to_16(uint8_t uints[2])
 {
   return (uints[0] << 8) | uints[1];
 }
 
-inline void uint16_to_8(uint16_t uint, uint8_t uints[2])
+static inline
+void uint16_to_8(uint16_t uint, uint8_t uints[2])
 {
   uints[0] = (uint & 0xff00) >> 8;
   uints[1] = uint & 0x00ff;

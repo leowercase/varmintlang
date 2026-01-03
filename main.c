@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "disassemble.h"
 #include "util.h"
 #include "vm.h"
 
@@ -26,7 +27,8 @@ void repl()
     add_history(input);
 
     PCode code = compile(input);
-    vm_run(&vm, &code);
+    Value result = vm_run(&vm, &code);
+    printf("%g\n", result);
 
     free(input);
   }
@@ -59,22 +61,38 @@ void run_file(const char *filename)
   char *source = malloc(sizeof(char) * (source_size + 1));
 
   if (source == NULL) {
-    error_out("Out of memory\n");
+    error_out("Not enough memory to read %s\n", filename);
     exit(EX_OSERR);
   }
 
   size_t bytes_read =
-    fread(source, source_size, 1, file);
+    fread(source, sizeof(char), source_size, file);
+  source[bytes_read] = '\0';
 
   if (bytes_read < source_size) {
     error_out("Could not read file %s\n", filename);
     exit(EX_NOINPUT);
   }
 
+  {
+    Lex l = lex_new(source);
+
+    Token tok;
+    do {
+      tok = lex_token(&l);
+      printf("%.2i ", tok.line);
+      print_token(tok);
+      printf("\n");
+    } while (tok.type != TK_EOF);
+  }
+
   VM vm = vm_new();
   PCode code = compile(source);
 
-  vm_run(&vm, &code);
+  disassemble(&code);
+
+  Value result = vm_run(&vm, &code);
+  printf("%g\n", result);
 
   vm_free(&vm);
   fclose(file);

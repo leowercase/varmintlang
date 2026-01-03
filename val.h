@@ -6,27 +6,19 @@
 #include <assert.h>
 #include <string.h>
 
-typedef enum {
-  VAL_NUMBER,
-  VAL_BOOL,
-} ValueType;
+typedef float64_t Value;
 
-typedef struct {
-  ValueType type;
-  union {
-    float64_t number;
-    bool boolean;
-  } raw;
-} Value;
+void print_value(Value value);
 
 typedef struct {
   const char *s;
   size_t len;
 } Str;
 
-inline Str str_from(const char *s)
+static inline
+Str str_from(const char *s)
 {
-  Str str = {s, strlen(s)};
+  Str str = {s, sizeof(s)};
   return str;
 }
 

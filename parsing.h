@@ -3,6 +3,8 @@
 
 #include "compiler.h"
 
+#include <stdio.h>
+
 typedef enum {
   PREC_NONE,
   PREC_OR,        // or
@@ -39,6 +41,12 @@ typedef struct {
 }
 ParseRule;
 
+/*
+ * Binding power (BP) symbolizes how an operator grabs its operands.
+ *
+ * One Op to rule them all, One Op to find them;
+ * One Op to bring them all and in the darkness "bind" them.
+ */
 void expr(Compiler *c, int min_bp);
 
 void prefix_op(Compiler *c);
@@ -56,44 +64,13 @@ bool postfix_op(Compiler *c, int min_bp);
 bool led_op(Compiler *c, int min_bp);
 bool cmp_op(Compiler *c, int min_bp);
 
-static const ParseRule parse_rules[] =
-  {
-/*  token type       NUD        LED        */
-    [TK_EOF]     = { NULL,      no_op      },
-    [TK_ERR]     = { NULL,      NULL       },
-
-    [TK_PLUS]    = { prefix_op, infix_op   },
-    [TK_MINUS]   = { prefix_op, infix_op   },
-    [TK_STAR]    = { NULL,      infix_op   },
-    [TK_SLASH]   = { NULL,      infix_op   },
-    [TK_CARET]   = { NULL,      infix_op   },
-    [TK_PERCENT] = { NULL,      led_op     },
-    [TK_BANG]    = { NULL,      postfix_op },
-
-    [TK_EQ]      = { NULL,      cmp_op     },
-    [TK_NEQ]     = { NULL,      cmp_op     },
-    [TK_LT]      = { NULL,      cmp_op     },
-    [TK_GT]      = { NULL,      cmp_op     },
-    [TK_LEQ]     = { NULL,      cmp_op     },
-    [TK_GEQ]     = { NULL,      cmp_op     },
-
-    [TK_LPAREN]  = { grouping,  NULL       },
-    [TK_RPAREN]  = { NULL,      no_op      },
-    [TK_NUMERAL] = { number,    NULL       },
-  };
-
-static inline
-const ParseRule *parse_rule(TokenType type)
-{
-  return &parse_rules[type];
-}
-
 // Helper function
 static inline
 void invalid_token(Token t)
 {
-  error_out("L%i: invalid token `%.*s`\n",
-      t.line, t.string.len, t.string.s);
+  error_out("Line %i: invalid token ", t.line);
+  print_token(t);
+  printf("\n");
   exit(EX_DATAERR);
 }
 

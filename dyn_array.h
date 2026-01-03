@@ -45,9 +45,8 @@ TYPE_NAME METHOD(_new)()
 static inline
 void METHOD(_push)(TYPE_NAME *dyn_array, T elem)
 {
-  dyn_array->data =
-    (T *)adjust_array_cap(dyn_array->data, sizeof(T),
-                          dyn_array->cap, dyn_array->len + 1);
+  adjust_array_cap((void **)&dyn_array->data, sizeof(T),
+      &dyn_array->cap, dyn_array->len + 1);
 
   dyn_array->data[dyn_array->len++] = elem;
 }
@@ -56,7 +55,14 @@ void METHOD(_push)(TYPE_NAME *dyn_array, T elem)
 static inline
 T METHOD(_pop)(TYPE_NAME *dyn_array)
 {
-  return dyn_array->data[dyn_array->len--];
+  return dyn_array->data[--dyn_array->len];
+}
+
+// Get the top element
+static inline
+T METHOD(_top)(TYPE_NAME *dyn_array)
+{
+  return dyn_array->data[--dyn_array->len];
 }
 
 #undef METHOD

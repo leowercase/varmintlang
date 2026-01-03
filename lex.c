@@ -1,6 +1,7 @@
 #include "lex.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 // 1 character of lookahead.
@@ -88,9 +89,14 @@ static Token word(Lex *lex)
 
 static void skip_rest_line(Lex *lex)
 {
-  while (next(lex) != '\n') {
-    if (*lex->current == '\0') return;
-  }
+  char c;
+  do {
+    c = next(lex);
+    if (c == '\0')
+      return;
+  } while (c != '\n');
+
+  next(lex); // '\n'
   lex->line++;
 }
 
@@ -122,13 +128,18 @@ Token lex_token(Lex *lex)
   lex->start = lex->current;
 
   char c = *lex->current;
+  next(lex);
 
   if (isdigit(c)) return number(lex);
 
   if (is_ident_beginning(c)) return word(lex);
 
   switch (c) {
-  case '\0': return token(lex, TK_EOF);
+  case '\0': {
+    Token eof = token(lex, TK_EOF);
+    lex->current--; // Don't go past EOF
+    return eof;
+  }
 
   case '(': return token(lex, TK_LPAREN);
   case ')': return token(lex, TK_RPAREN);
@@ -168,3 +179,44 @@ Lex lex_new(char *source)
 
   return lex;
 }
+
+void print_token(Token token)
+{
+#define CASE(name) \
+  case TK_##name: \
+    printf("<" #name "> `%.*s`", (int)token.string.len, token.string.s); \
+    break;
+
+  switch (token.type) {
+  case TK_EOF:
+    printf("<EOF>");
+    break;
+  case TK_ERR:
+    error_out("<lex error: %.*s>", (int)token.string.len, token.string.s, token.line);
+    break;
+  CASE(PLUS)
+  CASE(MINUS)
+  CASE(STAR)
+  CASE(SLASH)
+  CASE(CARET)
+  CASE(PERCENT)
+  CASE(BANG)
+  CASE(EQ)
+  CASE(NEQ)
+  CASE(LT)
+  CASE(GT)
+  CASE(LEQ)
+  CASE(GEQ)
+  CASE(NOT)
+  CASE(AND)
+  CASE(OR)
+  CASE(ARROW)
+  CASE(LPAREN)
+  CASE(RPAREN)
+  CASE(NUMERAL)
+  CASE(WORD)
+  }
+
+#undef CASE
+}
+
