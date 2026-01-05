@@ -17,9 +17,9 @@ static inline char next(Lex *lex)
   return *lex->current;
 }
 
-static bool match(Lex *lex, char expected)
+static bool match(Lex *lex, const char expected)
 {
-  char c = peek(lex);
+  char c = *lex->current;
   if (c != '\0' && c == expected)
   {
     next(lex);
@@ -60,13 +60,14 @@ static Token number(Lex *lex)
 
 static TokenType is_keyword(Str string)
 {
-  const size_t keywords_len = sizeof(keywords);
+  const char *keywords[] = {
+    [TK_NOT] = "not",
+    [TK_AND] = "and",
+    [TK_OR]  = "or",
+  };
 
-  for (TokenType i = 0; i < keywords_len; i++) {
-    const char *keyword = keywords[i];
-    const size_t keyword_len = strlen(keyword);
-
-    if (strncmp(string.s, keyword, keyword_len) == 0)
+  for (TokenType i = TK_NOT; i < TK_OR + 1; i++) {
+    if (strncmp(keywords[i], string.s, string.len) == 0)
       return i;
   }
 

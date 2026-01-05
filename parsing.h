@@ -18,7 +18,6 @@ typedef enum {
   PREC_SIGN,      // + -
   PREC_FACTORIAL, // !
   PREC_PERCENT,   // %
-  PREC_PRIMARY,   // literal (...)
 } Precedence;
 
 typedef enum {

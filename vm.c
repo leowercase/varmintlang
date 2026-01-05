@@ -31,7 +31,7 @@ static inline Value peek(VM *vm)
   return Stack_top(&vm->stack);
 }
 
-static inline Value execute_instruction(VM *vm, PCode *code)
+static inline bool execute_instruction(VM *vm, PCode *code)
 {
   Opcode instruction = *(vm->ip++);
 
@@ -91,22 +91,24 @@ static inline Value execute_instruction(VM *vm, PCode *code)
   case OP_GT:  BINARY_OP(>)
   case OP_LEQ: BINARY_OP(<=)
   case OP_GEQ: BINARY_OP(>=)
+
   case OP_CHAIN_BINOP:
     {
       // The good ol' switcheroo.
       Value rhs = peek(vm);
-      Value result = execute_instruction(vm, code);
+      bool running = execute_instruction(vm, code);
       push(vm, rhs);
-      return result;
+      return running;
     }
+
   case OP_RETURN:
     {
-      Value result = pop(vm);
-      return result;
+      vm->result = pop(vm);
+      return false;
     }
   }
 
-  return false;
+  return true;
 
 #undef UNARY_FN
 #undef UNARY_OP
@@ -119,13 +121,11 @@ Value vm_run(VM *vm, PCode *code)
   vm->ip = code->instruc.data;
 
   bool running;
-  Value result;
-  do {
-    result = execute_instruction(vm, code);
-    running = !result;
-  } while (running);
+  do
+    running = execute_instruction(vm, code);
+  while (running);
 
-  return result;
+  return vm->result;
 }
 
 void vm_free(VM *vm)

@@ -41,7 +41,7 @@ typedef enum {
 #include "dyn_array.h"
 
 // The line of text a group of bytes come from.
-typedef struct { int nbytes; } LineBytes;
+typedef struct { size_t line, nbytes; } LineBytes;
 
 #define T LineBytes
 #define TYPE_NAME LineInfo
@@ -57,8 +57,6 @@ size_t get_line(LineInfo *l, size_t instruction_idx);
 #define T Value
 #define TYPE_NAME Constants
 #include "dyn_array.h"
-
-// ...I'm not abusing dyn_array.h superpowers at all :)
 
 typedef struct {
   Constants constants;

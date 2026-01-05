@@ -31,7 +31,7 @@ typedef struct {
   T *data;
 } TYPE_NAME;
 
-// Create a new dynamic array
+// Lazily initialize a new dynamic array
 static inline
 TYPE_NAME METHOD(_new)()
 {
@@ -62,7 +62,7 @@ T METHOD(_pop)(TYPE_NAME *dyn_array)
 static inline
 T METHOD(_top)(TYPE_NAME *dyn_array)
 {
-  return dyn_array->data[--dyn_array->len];
+  return dyn_array->data[dyn_array->len - 1];
 }
 
 #undef METHOD

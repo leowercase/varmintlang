@@ -1,16 +1,26 @@
 #include "ir.h"
 #include "util.h"
 
+// temp
+#include <stdio.h>
+
 void emit_byte(PCode *code, size_t line, uint8_t byte)
 {
   Instructions_push(&code->instruc, byte);
 
-  if (code->lines.len - 1 == line + 1)
-    // Increment line number.
-    code->lines.data[line].nbytes++;
-  else
-    // Start new line.
-    LineInfo_push(&code->lines, (LineBytes){1});
+  if (code->lines.data != NULL) {
+    size_t last_line = LineInfo_top(&code->lines).line;
+
+    if (last_line == line) {
+      // Increment the number of bytes in that line.
+      code->lines.data[code->lines.len - 1].nbytes++;
+      return;
+    }
+  }
+
+  // Else, record new line.
+  LineBytes l = {line, 1};
+  LineInfo_push(&code->lines, l);
 }
 
 // For brevity
@@ -30,12 +40,16 @@ void emit_constant(PCode *code, size_t line, Value value)
 {
   size_t constant_idx = make_constant(code, value);
 
+  printf("Psst! Constant [%li] is ", constant_idx);
+  print_value(code->constants.data[constant_idx]);
+  printf("\n");
+
   if (constant_idx <= UINT8_MAX)
     emit_bytes(code, line, 2, OP_CONST, constant_idx);
 
   else if (constant_idx <= UINT16_MAX) {
     uint8_t bytes[2];
-    uint16_to_8(constant_idx, bytes);
+    uint16_to_8((uint16_t)constant_idx, bytes);
     emit_bytes(code, line, 3, OP_CONST16, bytes[0], bytes[1]);
   }
 
@@ -47,10 +61,13 @@ void emit_constant(PCode *code, size_t line, Value value)
 
 size_t get_line(LineInfo *lines, size_t offset)
 {
-  for (size_t byte_count = 0, line = 0; line < lines->len; line++) {
-    byte_count += lines->data[line].nbytes;
-    if (offset <= byte_count)
-      return line + 1; // Found it! (Lines start at 1)
+  for (size_t i = 0; i < lines->len; i++) {
+    LineBytes l = lines->data[i];
+
+    if (offset <= l.nbytes)
+      return l.line;
+
+    offset -= l.nbytes;
   };
-  abort(); // Unreachable, assuming well formed line info
+  abort(); // Unreachable, assuming well-formed line info
 }

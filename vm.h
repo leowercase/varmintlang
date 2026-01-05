@@ -12,8 +12,7 @@
 typedef struct {
   uint8_t *ip;
   Stack stack;
-
-  Value cmp_rhs;
+  Value result;
 } VM;
 
 VM vm_new();

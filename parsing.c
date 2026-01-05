@@ -54,6 +54,11 @@ static const ParseRule parse_rules[] =
     [TK_LEQ]     = { NULL,      cmp_op     },
     [TK_GEQ]     = { NULL,      cmp_op     },
 
+    [TK_NOT]     = { prefix_op, NULL       },
+    [TK_AND]     = { NULL,      infix_op   },
+    [TK_OR]      = { NULL,      infix_op   },
+    [TK_ARROW]   = { NULL,      infix_op   },
+
     [TK_LPAREN]  = { grouping,  NULL       },
     [TK_RPAREN]  = { NULL,      no_op      },
     [TK_NUMERAL] = { number,    NULL       },
@@ -77,8 +82,9 @@ typedef struct {
 } BinaryOp;
 
 static const UnaryOp prefix_ops[] = {
-    [TK_PLUS] =  { /* special case */ OP_NONE, PREC_SIGN },
+    [TK_PLUS]  = { /* special case */ OP_NONE, PREC_SIGN },
     [TK_MINUS] = { OP_NEGATE,                  PREC_SIGN },
+    [TK_NOT] =   { OP_NOT,                     PREC_NOT  },
 };
 
 void prefix_op(Compiler *c)
@@ -95,13 +101,15 @@ void prefix_op(Compiler *c)
 }
 
 static const BinaryOp infix_ops[] = {
-  [TK_PLUS] =    { OP_ADD,    PREC_TERM,   ASSOC_LEFT  },
-  [TK_MINUS] =   { OP_SUB,    PREC_TERM,   ASSOC_LEFT  },
-  [TK_STAR] =    { OP_MUL,    PREC_FACTOR, ASSOC_LEFT  },
-  [TK_SLASH] =   { OP_MUL,    PREC_FACTOR, ASSOC_LEFT  },
-  [TK_CARET] =   { OP_POW,    PREC_POWER,  ASSOC_RIGHT },
+  [TK_PLUS]    = { OP_ADD,    PREC_TERM,   ASSOC_LEFT  },
+  [TK_MINUS]   = { OP_SUB,    PREC_TERM,   ASSOC_LEFT  },
+  [TK_STAR]    = { OP_MUL,    PREC_FACTOR, ASSOC_LEFT  },
+  [TK_SLASH]   = { OP_MUL,    PREC_FACTOR, ASSOC_LEFT  },
+  [TK_CARET]   = { OP_POW,    PREC_POWER,  ASSOC_RIGHT },
   [TK_PERCENT] = { OP_MODULO, PREC_FACTOR, ASSOC_LEFT  },
-  [TK_ARROW] =   { OP_I9N,    PREC_I9N,    ASSOC_LEFT  },
+  [TK_AND]     = { OP_AND,    PREC_AND,    ASSOC_LEFT  },
+  [TK_OR]      = { OP_OR,     PREC_OR,     ASSOC_LEFT  },
+  [TK_ARROW]   = { OP_I9N,    PREC_I9N,    ASSOC_LEFT  },
 };
 
 bool infix_op(Compiler *c, int min_bp)
@@ -130,7 +138,7 @@ static inline bool is_prefix_and_infix(TokenType op)
 
 static const UnaryOp postfix_ops[] = {
   [TK_PERCENT] = { OP_PERCENTAGE, PREC_PERCENT   },
-  [TK_BANG] =    { OP_FACTORIAL,  PREC_FACTORIAL },
+  [TK_BANG]    = { OP_FACTORIAL,  PREC_FACTORIAL },
 };
 
 bool postfix_op(Compiler *c, int min_bp)

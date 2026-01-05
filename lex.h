@@ -41,12 +41,6 @@ bool is_ident(char c)
   return is_ident_beginning(c) || isdigit(c);
 }
 
-static const char *keywords[] = {
-  [TK_NOT] = "not",
-  [TK_AND] = "and",
-  [TK_OR]  = "or",
-};
-
 typedef struct {
   TokenType type;
   Str string;
