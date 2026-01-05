@@ -53,6 +53,7 @@ static inline bool execute_instruction(VM *vm, PCode *code)
   switch (instruction) {
   case OP_NONE:
     abort(); // Unreachable
+
   case OP_CONST:
     {
       Value constant = code->constants.data[*vm->ip];
@@ -62,11 +63,13 @@ static inline bool execute_instruction(VM *vm, PCode *code)
     }
   case OP_CONST16:
     {
-      Value constant = code->constants.data[uint8_to_16(vm->ip)];
+      uint16_t constant_idx = uint8_to_16(vm->ip);
+      Value constant = code->constants.data[constant_idx];
       push(vm, constant);
       vm->ip += 2;
       break;
     }
+
   case OP_NOT:    UNARY_OP(!)
   case OP_NEGATE: UNARY_OP(-)
 
