@@ -20,6 +20,7 @@ typedef enum {
   TK_AND, TK_OR, TK_ARROW,
   TK_LPAREN, TK_RPAREN,
   TK_NUMERAL,
+  TK_STRCONT, TK_STREND,
   TK_WORD,
 } TokenType;
 
@@ -44,13 +45,14 @@ bool is_ident(char c)
 typedef struct {
   TokenType type;
   Str string;
-  int line;
+  size_t line;
 } Token;
 
 typedef struct {
   char *start;
   char *current;
-  int line;
+  size_t line;
+  bool escaping_string;
 } Lex;
 
 Lex lex_new(char *source);

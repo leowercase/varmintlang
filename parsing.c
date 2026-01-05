@@ -61,7 +61,11 @@ static const ParseRule parse_rules[] =
 
     [TK_LPAREN]  = { grouping,  NULL       },
     [TK_RPAREN]  = { NULL,      no_op      },
+
     [TK_NUMERAL] = { number,    NULL       },
+    [TK_STRCONT] = { NULL,      NULL       },
+    [TK_STREND]  = { NULL,      NULL       },
+    [TK_WORD]    = { NULL,      NULL       },
   };
 
 static inline

@@ -80,7 +80,7 @@ void run_file(const char *filename)
     Token tok;
     do {
       tok = lex_token(&l);
-      printf("%.2i ", tok.line);
+      printf("%.2li ", tok.line);
       print_token(tok);
       printf("\n");
     } while (tok.type != TK_EOF);

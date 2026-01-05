@@ -20,8 +20,7 @@ static inline char next(Lex *lex)
 static bool match(Lex *lex, const char expected)
 {
   char c = *lex->current;
-  if (c != '\0' && c == expected)
-  {
+  if (c != '\0' && c == expected) {
     next(lex);
     return true;
   }
@@ -40,7 +39,8 @@ static Token token(Lex *lex, TokenType type)
 
 static Token error_token(Lex *lex, const char *msg)
 {
-  Token tok = {TK_ERR, str_from(msg), lex->line};
+  Str err_str = str_from(msg);
+  Token tok = {TK_ERR, err_str, lex->line};
   return tok;
 }
 
@@ -56,6 +56,72 @@ static Token number(Lex *lex)
   }
 
   return token(lex, TK_NUMERAL);
+}
+
+static Token metastring(Lex *lex)
+{
+  lex->start = lex->current;
+
+  for (bool found_end = false; !found_end; next(lex)) {
+    switch (*lex->current) {
+    case '"':
+      found_end = true;
+      lex->current--;
+      break;
+    case '\\':
+      lex->escaping_string = true;
+      return token(lex, TK_STRCONT);
+    case '\0':
+      return error_token(lex, "unterminated string");
+    case '\n':
+      lex->line++;
+      break;
+    }
+  }
+
+  Token str_tok = token(lex, TK_STREND);
+  next(lex); // "
+
+  lex->escaping_string = false;
+
+  return str_tok;
+}
+
+static Token string(Lex *lex)
+{
+  next(lex); // "
+  return metastring(lex);
+}
+
+static Token escape_sequence(Lex *lex)
+{
+  char escape_character = next(lex);
+
+  // https://en.wikipedia.org/wiki/Escape_sequences_in_C#Escape_sequences
+  char *s;
+  switch (escape_character) {
+  case 'a': s = "\a"; break;
+  case 'b': s = "\b"; break;
+  case 'e': s = "\x1b"; break;
+  case 'f': s = "\f"; break;
+  case 'n': s = "\n"; break;
+  case 'r': s = "\r"; break;
+  case 't': s = "\t"; break;
+  case 'v': s = "\v"; break;
+  case '\\': s = "\\"; break;
+  case '"': s = "\""; break;
+  case '0': s = "\0"; break;
+
+  case '\0':
+    return error_token(lex, "unterminated string");
+  default:
+    return error_token(lex, "invalid escape sequence");
+  }
+  Str string = str_from(s);
+  next(lex);
+
+  Token tok = {TK_STRCONT, string, lex->line};
+  return tok;
 }
 
 static TokenType is_keyword(Str string)
@@ -124,23 +190,33 @@ static void skip_redundant_space(Lex *lex)
 
 Token lex_token(Lex *lex)
 {
+  if (lex->escaping_string) {
+    if (*lex->current == '\\')
+      return escape_sequence(lex);
+    else
+      return metastring(lex);
+  }
+
   skip_redundant_space(lex);
 
   lex->start = lex->current;
 
   char c = *lex->current;
-  next(lex);
 
   if (isdigit(c)) return number(lex);
 
   if (is_ident_beginning(c)) return word(lex);
 
+  if (c == '"') return string(lex);
+
+  next(lex);
   switch (c) {
-  case '\0': {
-    Token eof = token(lex, TK_EOF);
-    lex->current--; // Don't go past EOF
-    return eof;
-  }
+  case '\0':
+    {
+      Token eof = token(lex, TK_EOF);
+      lex->current--; // Don't go past EOF
+      return eof;
+    }
 
   case '(': return token(lex, TK_LPAREN);
   case ')': return token(lex, TK_RPAREN);
@@ -177,6 +253,7 @@ Lex lex_new(char *source)
   Lex lex;
   lex.start = lex.current = source;
   lex.line = 1;
+  lex.escaping_string = false;
 
   return lex;
 }
@@ -215,6 +292,8 @@ void print_token(Token token)
   CASE(LPAREN)
   CASE(RPAREN)
   CASE(NUMERAL)
+  CASE(STRCONT)
+  CASE(STREND)
   CASE(WORD)
   }
 
