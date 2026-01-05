@@ -36,41 +36,44 @@ static bool match(Compiler *c, TokenType expected)
 
 static const ParseRule parse_rules[] =
   {
-/*  token type       NUD        LED        */
-    [TK_EOF]     = { NULL,      no_op      },
-    [TK_ERR]     = { NULL,      NULL       },
+/*  token type       NUD         LED        */
+    [TK_EOF]     = { NULL,       no_op      },
+    [TK_ERR]     = { NULL,       NULL       },
 
-    [TK_PLUS]    = { prefix_op, infix_op   },
-    [TK_MINUS]   = { prefix_op, infix_op   },
-    [TK_STAR]    = { NULL,      infix_op   },
-    [TK_SLASH]   = { NULL,      infix_op   },
-    [TK_CARET]   = { NULL,      infix_op   },
-    [TK_PERCENT] = { NULL,      led_op     },
-    [TK_BANG]    = { NULL,      postfix_op },
+    [TK_PLUS]    = { prefix_op,  infix_op   },
+    [TK_MINUS]   = { prefix_op,  infix_op   },
+    [TK_STAR]    = { NULL,       infix_op   },
+    [TK_SLASH]   = { NULL,       infix_op   },
+    [TK_CARET]   = { NULL,       infix_op   },
+    [TK_PERCENT] = { NULL,       led_op     },
+    [TK_BANG]    = { NULL,       postfix_op },
+    [TK_2PIPE]   = { NULL,       infix_op   },
 
-    [TK_EQ]      = { NULL,      cmp_op     },
-    [TK_NEQ]     = { NULL,      cmp_op     },
-    [TK_LT]      = { NULL,      cmp_op     },
-    [TK_GT]      = { NULL,      cmp_op     },
-    [TK_LEQ]     = { NULL,      cmp_op     },
-    [TK_GEQ]     = { NULL,      cmp_op     },
+    [TK_EQ]      = { NULL,       cmp_op     },
+    [TK_NEQ]     = { NULL,       cmp_op     },
+    [TK_LT]      = { NULL,       cmp_op     },
+    [TK_GT]      = { NULL,       cmp_op     },
+    [TK_LEQ]     = { NULL,       cmp_op     },
+    [TK_GEQ]     = { NULL,       cmp_op     },
 
-    [TK_NOT]     = { prefix_op, NULL       },
-    [TK_AND]     = { NULL,      infix_op   },
-    [TK_OR]      = { NULL,      infix_op   },
+    [TK_NOT]     = { prefix_op,  NULL       },
+    [TK_AND]     = { NULL,       infix_op   },
+    [TK_OR]      = { NULL,       infix_op   },
 
-    [TK_TRUE]    = { boolean,   NULL       },
-    [TK_FALSE]   = { boolean,   NULL       },
+    [TK_TRUE]    = { boolean,    NULL       },
+    [TK_FALSE]   = { boolean,    NULL       },
 
-    [TK_ARROW]   = { NULL,      infix_op   },
+    [TK_ARROW]   = { NULL,       infix_op   },
 
-    [TK_LPAREN]  = { grouping,  NULL       },
-    [TK_RPAREN]  = { NULL,      no_op      },
+    [TK_LPAREN]  = { grouping,   NULL       },
+    [TK_RPAREN]  = { NULL,       no_op      },
 
-    [TK_NUMERAL] = { number,    NULL       },
-    [TK_STRCONT] = { NULL,      NULL       },
-    [TK_STREND]  = { NULL,      NULL       },
-    [TK_WORD]    = { NULL,      NULL       },
+    [TK_NUMERAL] = { number,     NULL       },
+
+    [TK_STRCONT] = { metastring, no_op      },
+    [TK_STREND]  = { string,     no_op      },
+
+    [TK_WORD]    = { NULL,       NULL       },
   };
 
 static inline
@@ -116,6 +119,7 @@ static const BinaryOp infix_ops[] = {
   [TK_SLASH]   = { OP_MUL,    PREC_FACTOR, ASSOC_LEFT  },
   [TK_CARET]   = { OP_POW,    PREC_POWER,  ASSOC_RIGHT },
   [TK_PERCENT] = { OP_MODULO, PREC_FACTOR, ASSOC_LEFT  },
+  [TK_2PIPE]   = { OP_CONCAT, PREC_CONCAT, ASSOC_LEFT  },
   [TK_AND]     = { OP_AND,    PREC_AND,    ASSOC_LEFT  },
   [TK_OR]      = { OP_OR,     PREC_OR,     ASSOC_LEFT  },
   [TK_ARROW]   = { OP_I9N,    PREC_I9N,    ASSOC_LEFT  },
@@ -261,8 +265,39 @@ void boolean(Compiler *c)
 void number(Compiler *c)
 {
   Token tok = eat(c);
-  float64_t n = strtod(tok.string.s, NULL);
+  Str n_str = str_copy_slice(tok.raw_str);
+  float64_t n = strtod(n_str.s, NULL);
   emit_constant(&c->code, tok.line, value_new(n, number));
+}
+
+void metastring(Compiler *c)
+{
+  string(c); // Consume STRCONT
+
+  for (bool found_end = false; !found_end;) {
+    switch (c->current.type) {
+    case TK_STRCONT:
+      string(c);
+      emit_byte(&c->code, c->current.line, OP_CONCAT);
+      break;
+    case TK_STREND:
+      found_end = true;
+      break;
+    default:
+      expr(c, PREC_NONE); // \(...)
+      emit_bytes(&c->code, c->current.line, 2, OP_TO_STR, OP_CONCAT);
+    }
+  }
+
+  string(c);
+  emit_byte(&c->code, c->current.line, OP_CONCAT);
+}
+
+void string(Compiler *c)
+{
+  Token tok = eat(c);
+  Str str = str_copy_slice(tok.raw_str);
+  emit_constant(&c->code, tok.line, value_new(str, string));
 }
 
 // An impl of Pratt parsing.

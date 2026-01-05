@@ -20,13 +20,6 @@ void emit_byte(PCode *code, size_t line, uint8_t byte)
   LineInfo_push(&code->lines, l);
 }
 
-// For brevity
-#define emit_bytes(code, line, n, ...) do { \
-  uint8_t b[] = {__VA_ARGS__}; \
-  for (int i = 0; i < (n); i++) \
-    emit_byte((code), (line), b[i]); \
-} while (false)
-
 static size_t make_constant(PCode *code, Value value)
 {
   Constants_push(&code->constants, value);

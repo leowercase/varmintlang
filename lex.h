@@ -15,6 +15,7 @@ typedef enum {
   TK_CARET,
   TK_PERCENT,
   TK_BANG,
+  TK_2PIPE,
   TK_EQ, TK_NEQ, TK_LT, TK_GT, TK_LEQ, TK_GEQ,
   TK_NOT,
   TK_AND, TK_OR,
@@ -46,7 +47,7 @@ bool is_ident(char c)
 
 typedef struct {
   TokenType type;
-  Str string;
+  StrSlice raw_str; // Not a C string!
   size_t line;
 } Token;
 
@@ -54,10 +55,25 @@ typedef struct {
   char *start;
   char *current;
   size_t line;
+
   bool escaping_string;
+  int template_nesting;
+  int unmatched_parens;
 } Lex;
 
-Lex lex_new(char *source);
+inline Lex lex_new(char *source)
+{
+  Lex lex;
+  lex.start = lex.current = source;
+  lex.line = 1;
+
+  lex.escaping_string = false;
+  lex.template_nesting = 0;
+  lex.unmatched_parens = 0;
+
+  return lex;
+}
+
 Token lex_token(Lex *lex);
 
 const char *tok_cstring(const TokenType type);

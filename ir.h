@@ -32,6 +32,8 @@ typedef enum {
   OP_GT,
   OP_LEQ,
   OP_GEQ,
+  OP_TO_STR,
+  OP_CONCAT,
   OP_CHAIN_BINOP,
   OP_RETURN,
 } Opcode;
@@ -74,6 +76,14 @@ static inline PCode new_p_code()
 }
 
 void emit_byte(PCode *code, size_t line, uint8_t byte);
+
+// For brevity.
+#define emit_bytes(code, line, n, ...) do { \
+  uint8_t b[] = {__VA_ARGS__}; \
+  for (int i = 0; i < (n); i++) \
+    emit_byte((code), (line), b[i]); \
+} while (false)
+
 void emit_constant(PCode *code, size_t line, Value value);
 
 #endif

@@ -26,4 +26,6 @@ Value __vat_less_than_or_eq(Value a, Value b);
 Value __vat_greater_than(Value a, Value b);
 Value __vat_greater_than_or_eq(Value a, Value b);
 
+Value __vat_concat(Value head, Value tail);
+
 #endif

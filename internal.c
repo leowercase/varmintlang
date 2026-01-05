@@ -99,3 +99,11 @@ Value __vat_greater_than_or_eq(Value a, Value b)
 
   return value_new(a_raw > b_raw || a_raw == b_raw, number);
 }
+
+Value __vat_concat(Value head, Value tail)
+{
+  Str head_raw = typechecked(head, string),
+      tail_raw = typechecked(tail, string);
+
+  return value_new(str_concat(head_raw, tail_raw), string);
+}

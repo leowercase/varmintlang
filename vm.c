@@ -94,6 +94,9 @@ static inline bool execute_instruction(VM *vm, PCode *code)
   case OP_LEQ: BINARY(__vat_less_than_or_eq(lhs, rhs))
   case OP_GEQ: BINARY(__vat_greater_than_or_eq(lhs, rhs))
 
+  case OP_TO_STR: UNARY(value_new(value_to_str(operand), string))
+  case OP_CONCAT: BINARY(__vat_concat(lhs, rhs))
+
   case OP_CHAIN_BINOP:
     {
       // The good ol' switcheroo.

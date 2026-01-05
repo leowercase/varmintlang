@@ -20,8 +20,8 @@
 #define ANSI_RESET   "\x1b[0m"
 
 // Helper function for errors.
-void error_out(const char *msg_template, ...);
-void runtime_error(const char *msg_template, ...);
+void error_out(const char *fmt, ...);
+void runtime_error(const char *fmt, ...);
 
 // Two passes of macro expansion are required for macro identifiers to expand
 #define CONCAT(a, b) a##b

@@ -62,6 +62,8 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   CASE(GT)
   CASE(LEQ)
   CASE(GEQ)
+  CASE(TO_STR)
+  CASE(CONCAT)
   CASE(CHAIN_BINOP)
   CASE(RETURN)
   }

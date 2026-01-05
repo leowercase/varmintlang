@@ -33,17 +33,20 @@ Value __value_new(ValueType type, RawValue raw)
 
 #define is_type(val, vat_t) ((val).type == VAL_##vat_t)
 
+static const RawValue empty_raw_value = {0};
+
 // Helper macro.
 #define typechecked(val_ident, vat_t, ...) \
   (is_type(val_ident, vat_t) ? \
     val_ident.raw.vat_t : \
     (runtime_error("Expect type " #vat_t " for " #val_ident ", got %s\n", \
-                   val_type_cstring(val_ident.type)), 0))
+                   value_type_cstring(val_ident.type)), empty_raw_value.vat_t))
 
 bool values_eq(Value a, Value b);
 bool is_falsey(Value val);
 
-const char *val_type_cstring(const ValueType type);
+char *value_type_cstring(ValueType type);
+Str value_to_str(Value val);
 void print_value(Value val);
 
 #endif

@@ -26,7 +26,7 @@ bool is_falsey(Value val)
     return false;
 }
 
-const char *val_type_cstring(const ValueType type)
+char *value_type_cstring(ValueType type)
 {
 #define CASE(name) case VAL_##name: return #name;
 
@@ -39,9 +39,28 @@ const char *val_type_cstring(const ValueType type)
 #undef CASE
 }
 
+Str value_to_str(Value val)
+{
+  switch (val.type) {
+  case VAL_number:
+    {
+      Str string = str_fmt("%g", val.raw.number);
+      if (string.s == NULL) {
+        error_out("Failed to convert number to string\n");
+        exit(EX_OSERR);
+      }
+      return string;
+    }
+  case VAL_boolean:
+    return str_from(val.raw.boolean ? "True" : "False");
+  case VAL_string:
+    return val.raw.string;
+  }
+}
+
 void print_value(Value val)
 {
-  switch(val.type) {
+  switch (val.type) {
   case VAL_number:
     printf(ANSI_RED);
     printf("%g", val.raw.number);
@@ -54,8 +73,9 @@ void print_value(Value val)
     break;
   case VAL_string:
     printf(ANSI_YELLOW);
-    printf("\"%.*s\"", (int)val.raw.string.len, val.raw.string.s);
+    printf("\"%s\"", val.raw.string.s);
     printf(ANSI_RESET);
+    printf("(%li)", val.raw.string.len);
     break;
   }
 }

@@ -1,7 +1,6 @@
 #include "lex.h"
 
 #include <ctype.h>
-#include <stdio.h>
 #include <string.h>
 
 // 1 character of lookahead.
@@ -29,11 +28,11 @@ static bool match(Lex *lex, const char expected)
 
 static Token token(Lex *lex, TokenType type)
 {
-  Str string;
-  string.s = lex->start;
-  string.len = lex->current - lex->start;
+  StrSlice slice;
+  slice.s = lex->start;
+  slice.len = lex->current - lex->start;
 
-  Token tok = {type, string, lex->line};
+  Token tok = {type, slice, lex->line};
   return tok;
 }
 
@@ -69,8 +68,8 @@ static Token metastring(Lex *lex)
       lex->current--;
       break;
     case '\\':
-      lex->escaping_string = true;
-      return token(lex, TK_STRCONT);
+        lex->escaping_string = true;
+        return token(lex, TK_STRCONT);
     case '\0':
       return error_token(lex, "unterminated string");
     case '\n':
@@ -96,35 +95,44 @@ static Token string(Lex *lex)
 static Token escape_sequence(Lex *lex)
 {
   char escape_character = next(lex);
+  char *c;
 
-  // https://en.wikipedia.org/wiki/Escape_sequences_in_C#Escape_sequences
-  char *s;
   switch (escape_character) {
-  case 'a': s = "\a"; break;
-  case 'b': s = "\b"; break;
-  case 'e': s = "\x1b"; break;
-  case 'f': s = "\f"; break;
-  case 'n': s = "\n"; break;
-  case 'r': s = "\r"; break;
-  case 't': s = "\t"; break;
-  case 'v': s = "\v"; break;
-  case '\\': s = "\\"; break;
-  case '"': s = "\""; break;
-  case '0': s = "\0"; break;
+    // https://en.wikipedia.org/wiki/Escape_sequences_in_C#Escape_sequences
+  case 'a': c = "\a"; break;
+  case 'b': c = "\b"; break;
+  case 'e': c = "\x1b"; break;
+  case 'f': c = "\f"; break;
+  case 'n': c = "\n"; break;
+  case 'r': c = "\r"; break;
+  case 't': c = "\t"; break;
+  case 'v': c = "\v"; break;
+  case '\\': c = "\\"; break;
+  case '"': c = "\""; break;
+  case '0': c = "\0"; break;
+
+    // \(...)
+    // https://en.wikipedia.org/wiki/String_interpolation
+  case '(':
+    next(lex);
+    lex->escaping_string = false;
+    lex->template_nesting++;
+    return lex_token(lex);
 
   case '\0':
     return error_token(lex, "unterminated string");
   default:
     return error_token(lex, "invalid escape sequence");
   }
-  Str string = str_from(s);
+
+  Str str = {c, 1};
   next(lex);
 
-  Token tok = {TK_STRCONT, string, lex->line};
+  Token tok = {TK_STRCONT, str, lex->line};
   return tok;
 }
 
-static TokenType is_keyword(Str string)
+static TokenType is_keyword(Str str)
 {
   const char *keywords[] = {
     [TK_NOT] = "not",
@@ -135,7 +143,7 @@ static TokenType is_keyword(Str string)
   };
 
   for (TokenType i = TK_NOT; i < TK_FALSE + 1; i++) {
-    if (strncmp(keywords[i], string.s, string.len) == 0)
+    if (strncmp(keywords[i], str.s, str.len) == 0)
       return i;
   }
 
@@ -149,7 +157,7 @@ static Token word(Lex *lex)
 
   Token word = token(lex, TK_WORD);
 
-  TokenType keyword = is_keyword(word.string);
+  TokenType keyword = is_keyword(word.raw_str);
   if (keyword)
     word.type = keyword;
 
@@ -205,11 +213,14 @@ Token lex_token(Lex *lex)
 
   char c = *lex->current;
 
-  if (isdigit(c)) return number(lex);
+  if (isdigit(c))
+    return number(lex);
 
-  if (is_ident_beginning(c)) return word(lex);
+  if (is_ident_beginning(c))
+    return word(lex);
 
-  if (c == '"') return string(lex);
+  if (c == '"')
+    return string(lex);
 
   next(lex);
   switch (c) {
@@ -220,8 +231,21 @@ Token lex_token(Lex *lex)
       return eof;
     }
 
-  case '(': return token(lex, TK_LPAREN);
-  case ')': return token(lex, TK_RPAREN);
+  case '(':
+    lex->unmatched_parens++;
+    return token(lex, TK_LPAREN);
+
+  case ')':
+    if (lex->template_nesting > 0 && lex->unmatched_parens == 0) {
+      // We're ending \(...)
+      lex->template_nesting--;
+      lex->escaping_string = true;
+      return lex_token(lex);
+    }
+    else {
+      lex->unmatched_parens--;
+      return token(lex, TK_RPAREN);
+    }
 
   case '+': return token(lex, TK_PLUS);
   case '*': return token(lex, TK_STAR);
@@ -233,6 +257,10 @@ Token lex_token(Lex *lex)
   case '-':
     return token(lex,
       match(lex, '>') ? TK_ARROW : TK_MINUS);
+
+  case '|':
+    if (match(lex, '|'))
+      return token(lex, TK_2PIPE);
 
   case '!':
     return token(lex,
@@ -250,16 +278,6 @@ Token lex_token(Lex *lex)
   return error_token(lex, "illegal token");
 }
 
-Lex lex_new(char *source)
-{
-  Lex lex;
-  lex.start = lex.current = source;
-  lex.line = 1;
-  lex.escaping_string = false;
-
-  return lex;
-}
-
 const char *tok_cstring(const TokenType type)
 {
 #define CASE(name) case TK_##name: return #name;
@@ -271,6 +289,7 @@ const char *tok_cstring(const TokenType type)
   CASE(CARET)
   CASE(PERCENT)
   CASE(BANG)
+  CASE(2PIPE)
   CASE(EQ) CASE(NEQ) CASE(LT) CASE(GT) CASE(LEQ) CASE(GEQ)
   CASE(NOT)
   CASE(AND) CASE(OR) CASE(ARROW)

@@ -14,6 +14,7 @@ typedef enum {
   PREC_NOT,       // not
   PREC_TERM,      // + -
   PREC_FACTOR,    // * / %
+  PREC_CONCAT,    // ||
   PREC_POWER,     // ^
   PREC_SIGN,      // + -
   PREC_FACTORIAL, // !
@@ -52,6 +53,8 @@ void prefix_op(Compiler *c);
 void grouping(Compiler *c);
 void boolean(Compiler *c);
 void number(Compiler *c);
+void metastring(Compiler *c);
+void string(Compiler *c);
 
 // Token is valid, but shouldn't be used as LED
 static inline bool no_op(Compiler *_, int __)
@@ -72,10 +75,10 @@ void invalid_token(Token tok)
 
   if (tok.type == TK_ERR)
     runtime_error("lexing error: \"%.*s\"\n",
-        tok.string.len, tok.string.s);
+        tok.raw_str.len, tok.raw_str.s);
   else
     runtime_error("invalid token %s `%.*s`\n",
-        tok_cstring(tok.type), tok.string.len, tok.string.s);
+        tok_cstring(tok.type), tok.raw_str.len, tok.raw_str.s);
 }
 
 #endif
