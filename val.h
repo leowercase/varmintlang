@@ -2,24 +2,48 @@
 #define LANG_VAL_H
 
 #include "util.h"
+#include "str.h"
 
 #include <assert.h>
-#include <string.h>
 
-typedef float64_t Value;
+typedef enum {
+  VAL_number,
+  VAL_boolean,
+  VAL_string
+} ValueType;
 
-void print_value(Value value);
+typedef union {
+  float64_t number;
+  int boolean;
+  Str string;
+} RawValue;
 
 typedef struct {
-  const char *s;
-  size_t len;
-} Str;
+  ValueType type;
+  RawValue raw;
+} Value;
 
-static inline
-Str str_from(const char *s)
+inline
+Value __value_new(ValueType type, RawValue raw)
 {
-  Str str = {s, sizeof(s)};
-  return str;
+  Value val = {type, raw};
+  return val;
 }
+#define value_new(raw, vat_t) __value_new(VAL_##vat_t, (RawValue)(raw))
+
+#define is_type(val, vat_t) ((val).type == VAL_##vat_t)
+
+// Helper macro.
+#define typechecked(val_ident, vat_t, ...) \
+  (is_type(val_ident, vat_t) ? \
+    val_ident.raw.vat_t : \
+    (runtime_error("Expect type " #vat_t " for " #val_ident ", got %s\n", \
+                   val_type_cstring(val_ident.type)), 0))
+
+bool values_eq(Value a, Value b);
+bool is_falsey(Value val);
+
+const char *val_type_cstring(const ValueType type);
+void print_value(Value val);
 
 #endif

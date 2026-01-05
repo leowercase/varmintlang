@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "lex.h"
 #include "parsing.h"
+#include "val.h"
 
 static inline Token peek(Compiler *c)
 {
@@ -57,6 +58,10 @@ static const ParseRule parse_rules[] =
     [TK_NOT]     = { prefix_op, NULL       },
     [TK_AND]     = { NULL,      infix_op   },
     [TK_OR]      = { NULL,      infix_op   },
+
+    [TK_TRUE]    = { boolean,   NULL       },
+    [TK_FALSE]   = { boolean,   NULL       },
+
     [TK_ARROW]   = { NULL,      infix_op   },
 
     [TK_LPAREN]  = { grouping,  NULL       },
@@ -241,11 +246,23 @@ void grouping(Compiler *c)
     invalid_token(c->current);
 }
 
+void boolean(Compiler *c)
+{
+  Token tok = eat(c);
+  bool P;
+  switch (tok.type) {
+  case TK_TRUE: P = true; break;
+  case TK_FALSE: P = false; break;
+  default: abort(); // Unreachable
+  }
+  emit_constant(&c->code, tok.line, value_new((int)P, boolean));
+}
+
 void number(Compiler *c)
 {
   Token tok = eat(c);
-  Value val = strtod(tok.string.s, NULL);
-  emit_constant(&c->code, tok.line, val);
+  float64_t n = strtod(tok.string.s, NULL);
+  emit_constant(&c->code, tok.line, value_new(n, number));
 }
 
 // An impl of Pratt parsing.

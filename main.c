@@ -28,7 +28,7 @@ void repl()
 
     PCode code = compile(input);
     Value result = vm_run(&vm, &code);
-    printf("%g\n", result);
+    print_value(result);
 
     free(input);
   }
@@ -80,9 +80,8 @@ void run_file(const char *filename)
     Token tok;
     do {
       tok = lex_token(&l);
-      printf("%.2li ", tok.line);
-      print_token(tok);
-      printf("\n");
+      printf("%.2li %s `%.*s`\n", tok.line, tok_cstring(tok.type),
+          (int)tok.string.len, tok.string.s);
     } while (tok.type != TK_EOF);
   }
 
@@ -92,7 +91,7 @@ void run_file(const char *filename)
   disassemble(&code);
 
   Value result = vm_run(&vm, &code);
-  printf("%g\n", result);
+  print_value(result);
 
   vm_free(&vm);
   fclose(file);

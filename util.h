@@ -21,6 +21,7 @@
 
 // Helper function for errors.
 void error_out(const char *msg_template, ...);
+void runtime_error(const char *msg_template, ...);
 
 // Two passes of macro expansion are required for macro identifiers to expand
 #define CONCAT(a, b) a##b

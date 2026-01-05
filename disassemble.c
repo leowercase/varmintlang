@@ -8,11 +8,9 @@ static size_t constant(PCode *code, size_t offset)
 {
   uint8_t idx = code->instruc.data[offset + 1];
 
-  printf("    [%i] = " ANSI_RED "'", idx);
-
+  printf("    [%i] = ", idx);
   print_value(code->constants.data[idx]);
-
-  printf("'" ANSI_CYAN);
+  printf(ANSI_CYAN);
 
   return offset + 2;
 }
@@ -21,11 +19,9 @@ static size_t constant16(PCode *code, size_t offset)
 {
   uint16_t idx = uint8_to_16(code->instruc.data + offset + 1);
 
-  printf("  [%i] = " ANSI_RED "'", idx);
-
+  printf("  [%i] = ", idx);
   print_value(code->constants.data[idx]);
-
-  printf("'" ANSI_CYAN);
+  printf(ANSI_CYAN);
 
   return offset + 3;
 }

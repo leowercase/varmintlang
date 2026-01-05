@@ -130,9 +130,11 @@ static TokenType is_keyword(Str string)
     [TK_NOT] = "not",
     [TK_AND] = "and",
     [TK_OR]  = "or",
+    [TK_TRUE] = "True",
+    [TK_FALSE] = "False",
   };
 
-  for (TokenType i = TK_NOT; i < TK_OR + 1; i++) {
+  for (TokenType i = TK_NOT; i < TK_FALSE + 1; i++) {
     if (strncmp(keywords[i], string.s, string.len) == 0)
       return i;
   }
@@ -258,45 +260,26 @@ Lex lex_new(char *source)
   return lex;
 }
 
-void print_token(Token token)
+const char *tok_cstring(const TokenType type)
 {
-#define CASE(name) \
-  case TK_##name: \
-    printf("<" #name "> `%.*s`", (int)token.string.len, token.string.s); \
-    break;
+#define CASE(name) case TK_##name: return #name;
 
-  switch (token.type) {
-  case TK_EOF:
-    printf("<EOF>");
-    break;
-  case TK_ERR:
-    error_out("<lex error: %.*s>", (int)token.string.len, token.string.s, token.line);
-    break;
-  CASE(PLUS)
-  CASE(MINUS)
-  CASE(STAR)
-  CASE(SLASH)
+  switch (type) {
+  CASE(EOF)
+  CASE(ERR)
+  CASE(PLUS) CASE(MINUS) CASE(STAR) CASE(SLASH)
   CASE(CARET)
   CASE(PERCENT)
   CASE(BANG)
-  CASE(EQ)
-  CASE(NEQ)
-  CASE(LT)
-  CASE(GT)
-  CASE(LEQ)
-  CASE(GEQ)
+  CASE(EQ) CASE(NEQ) CASE(LT) CASE(GT) CASE(LEQ) CASE(GEQ)
   CASE(NOT)
-  CASE(AND)
-  CASE(OR)
-  CASE(ARROW)
-  CASE(LPAREN)
-  CASE(RPAREN)
+  CASE(AND) CASE(OR) CASE(ARROW)
+  CASE(LPAREN) CASE(RPAREN)
   CASE(NUMERAL)
-  CASE(STRCONT)
-  CASE(STREND)
+  CASE(STRCONT) CASE(STREND)
+  CASE(TRUE) CASE(FALSE)
   CASE(WORD)
   }
 
 #undef CASE
 }
-

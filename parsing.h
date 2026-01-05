@@ -50,6 +50,7 @@ void expr(Compiler *c, int min_bp);
 
 void prefix_op(Compiler *c);
 void grouping(Compiler *c);
+void boolean(Compiler *c);
 void number(Compiler *c);
 
 // Token is valid, but shouldn't be used as LED
@@ -65,12 +66,16 @@ bool cmp_op(Compiler *c, int min_bp);
 
 // Helper function
 static inline
-void invalid_token(Token t)
+void invalid_token(Token tok)
 {
-  error_out("Line %i: invalid token ", t.line);
-  print_token(t);
-  printf("\n");
-  exit(EX_DATAERR);
+  error_out("Line %i: ", tok.line);
+
+  if (tok.type == TK_ERR)
+    runtime_error("lexing error: \"%.*s\"\n",
+        tok.string.len, tok.string.s);
+  else
+    runtime_error("invalid token %s `%.*s`\n",
+        tok_cstring(tok.type), tok.string.len, tok.string.s);
 }
 
 #endif

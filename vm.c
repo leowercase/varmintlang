@@ -1,5 +1,6 @@
 #include "internal.h"
 #include "util.h"
+#include "val.h"
 #include "vm.h"
 
 #define T Value
@@ -35,20 +36,17 @@ static inline bool execute_instruction(VM *vm, PCode *code)
 {
   Opcode instruction = *(vm->ip++);
 
-#define UNARY_FN(fn) { \
+#define UNARY(expr) { \
   Value operand = pop(vm); \
-  push(vm, (fn)); \
+  push(vm, (expr)); \
   break; \
 }
-#define UNARY_OP(op) UNARY_FN(op operand)
-
-#define BINARY_FN(fn) { \
+#define BINARY(expr) { \
   Value rhs = pop(vm); \
   Value lhs = pop(vm); \
-  push(vm, (fn)); \
+  push(vm, (expr)); \
   break; \
 }
-#define BINARY_OP(op) BINARY_FN(lhs op rhs)
 
   switch (instruction) {
   case OP_NONE:
@@ -70,30 +68,31 @@ static inline bool execute_instruction(VM *vm, PCode *code)
       break;
     }
 
-  case OP_NOT:    UNARY_OP(!)
-  case OP_NEGATE: UNARY_OP(-)
+  case OP_NOT:    UNARY(value_new((int)is_falsey(operand), boolean))
+  case OP_NEGATE: UNARY(__vat_negate(operand))
 
-  case OP_FACTORIAL:  UNARY_FN(factorial(operand))
-  case OP_PERCENTAGE: UNARY_FN(operand * 0.01)
+  case OP_FACTORIAL:  UNARY(__vat_factorial(operand))
+  case OP_PERCENTAGE: UNARY(__vat_percentage(operand))
 
-  case OP_ADD: BINARY_OP(+)
-  case OP_SUB: BINARY_OP(-)
-  case OP_MUL: BINARY_OP(*)
-  case OP_DIV: BINARY_OP(/)
+  case OP_ADD: BINARY(__vat_add(lhs, rhs))
+  case OP_SUB: BINARY(__vat_subtract(lhs, rhs))
+  case OP_MUL: BINARY(__vat_multiply(lhs, rhs))
+  case OP_DIV: BINARY(__vat_divide(lhs, rhs))
 
-  case OP_POW:    BINARY_FN(pow(lhs, rhs))
-  case OP_MODULO: BINARY_FN(fmod(lhs, rhs))
+  case OP_POW:    BINARY(__vat_pow(lhs, rhs))
+  case OP_MODULO: BINARY(__vat_modulo(lhs, rhs))
 
-  case OP_AND: BINARY_OP(&&)
-  case OP_OR:  BINARY_OP(||)
-  case OP_I9N: BINARY_FN(implies(lhs, rhs))
+  case OP_AND: BINARY(__vat_and(lhs, rhs))
+  case OP_OR:  BINARY(__vat_or(lhs, rhs))
+  case OP_I9N: BINARY(__vat_implies(lhs, rhs))
 
-  case OP_EQ:  BINARY_FN(equals(lhs, rhs))
-  case OP_NEQ: BINARY_FN(!equals(lhs, rhs))
-  case OP_LT:  BINARY_OP(<)
-  case OP_GT:  BINARY_OP(>)
-  case OP_LEQ: BINARY_OP(<=)
-  case OP_GEQ: BINARY_OP(>=)
+  case OP_EQ:  BINARY(value_new((int)values_eq(lhs, rhs), boolean))
+  case OP_NEQ: BINARY(value_new((int)!values_eq(lhs, rhs), boolean))
+
+  case OP_LT:  BINARY(__vat_less_than(lhs, rhs))
+  case OP_GT:  BINARY(__vat_greater_than(lhs, rhs))
+  case OP_LEQ: BINARY(__vat_less_than_or_eq(lhs, rhs))
+  case OP_GEQ: BINARY(__vat_greater_than_or_eq(lhs, rhs))
 
   case OP_CHAIN_BINOP:
     {

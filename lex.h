@@ -17,7 +17,9 @@ typedef enum {
   TK_BANG,
   TK_EQ, TK_NEQ, TK_LT, TK_GT, TK_LEQ, TK_GEQ,
   TK_NOT,
-  TK_AND, TK_OR, TK_ARROW,
+  TK_AND, TK_OR,
+  TK_TRUE, TK_FALSE,
+  TK_ARROW,
   TK_LPAREN, TK_RPAREN,
   TK_NUMERAL,
   TK_STRCONT, TK_STREND,
@@ -58,6 +60,6 @@ typedef struct {
 Lex lex_new(char *source);
 Token lex_token(Lex *lex);
 
-void print_token(Token token);
+const char *tok_cstring(const TokenType type);
 
 #endif

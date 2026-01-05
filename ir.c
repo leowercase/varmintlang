@@ -45,10 +45,7 @@ void emit_constant(PCode *code, size_t line, Value value)
     emit_bytes(code, line, 3, OP_CONST16, bytes[0], bytes[1]);
   }
 
-  else {
-    error_out("Too many constants\n");
-    exit(EX_DATAERR);
-  }
+  else runtime_error("Too many constants\n");
 }
 
 size_t get_line(LineInfo *lines, size_t offset)
