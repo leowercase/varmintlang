@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+// Format strings just like sprintf et al., except retaining sanity
 Str str_fmt(const char *fmt, ...)
 {
   // man 3 vnsprintf
@@ -24,6 +25,7 @@ Str str_fmt(const char *fmt, ...)
   if (s == NULL)
     return NULL_STR;
 
+  // Actually do the thing™
   va_start(args, fmt);
   n = vsnprintf(s, len + 1, fmt, args);
   va_end(args);
@@ -41,8 +43,8 @@ Str str_fmt(const char *fmt, ...)
 Str str_concat(Str head, Str tail)
 {
   size_t len = head.len + tail.len;
-
   char *s = malloc(len * sizeof(char) + sizeof('\0'));
+
   if (s == NULL) {
     error_out("Out of memory\n");
     exit(EX_OSERR);

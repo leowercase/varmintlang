@@ -12,7 +12,7 @@ PCode compile(char *source)
   Compiler c = {lex, current, lookahead, code};
 
   expr(&c, PREC_NONE);
-  emit_byte(&c.code, c.code.lines.len, OP_RETURN);
+  emit_byte(&c.code, c.code.lines.len - 1, OP_RETURN);
 
   return c.code;
 }

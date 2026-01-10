@@ -9,7 +9,7 @@
 typedef enum {
   VAL_number,
   VAL_boolean,
-  VAL_string
+  VAL_string,
 } ValueType;
 
 typedef union {

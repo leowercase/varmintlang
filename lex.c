@@ -253,6 +253,8 @@ Token lex_token(Lex *lex)
   case '^': return token(lex, TK_CARET);
   case '%': return token(lex, TK_PERCENT);
   case '=': return token(lex, TK_EQ);
+  case ';': return token(lex, TK_SEMICOL);
+  case ',': return token(lex, TK_COMMA);
 
   case '-':
     return token(lex,
@@ -294,6 +296,7 @@ const char *tok_cstring(const TokenType type)
   CASE(NOT)
   CASE(AND) CASE(OR) CASE(ARROW)
   CASE(LPAREN) CASE(RPAREN)
+  CASE(SEMICOL) CASE(COMMA)
   CASE(NUMERAL)
   CASE(STRCONT) CASE(STREND)
   CASE(TRUE) CASE(FALSE)

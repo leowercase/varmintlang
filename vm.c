@@ -3,12 +3,6 @@
 #include "val.h"
 #include "vm.h"
 
-#define T Value
-#define TYPE_NAME ProgramStack
-#include "dyn_array.h"
-
-#include <math.h>
-
 VM vm_new()
 {
   VM vm;
@@ -30,6 +24,23 @@ static inline Value pop(VM *vm)
 static inline Value peek(VM *vm)
 {
   return Stack_top(&vm->stack);
+}
+
+static void build_list(VM *vm, size_t len)
+{
+  error_out("TODO!\n");
+  abort();
+}
+
+// Stitch together the metastrings emitted by the compiler
+static Value build_string(VM *vm, int substrs)
+{
+  Str str = value_to_str(pop(vm));
+
+  for (int i = 1; i < substrs; i++)
+    str = str_concat(value_to_str(pop(vm)), str);
+
+  return value_new(str, string);
 }
 
 static inline bool execute_instruction(VM *vm, PCode *code)
@@ -54,15 +65,14 @@ static inline bool execute_instruction(VM *vm, PCode *code)
 
   case OP_CONST:
     {
-      Value constant = code->constants.data[*vm->ip];
+      Value constant = code->constants.data[*(vm->ip++)];
       push(vm, constant);
-      vm->ip++;
       break;
     }
   case OP_CONST16:
     {
-      uint16_t constant_idx = uint8_to_16(vm->ip);
-      Value constant = code->constants.data[constant_idx];
+      uint16_t idx = uint8_to_16(vm->ip);
+      Value constant = code->constants.data[idx];
       push(vm, constant);
       vm->ip += 2;
       break;
@@ -94,8 +104,36 @@ static inline bool execute_instruction(VM *vm, PCode *code)
   case OP_LEQ: BINARY(__vat_less_than_or_eq(lhs, rhs))
   case OP_GEQ: BINARY(__vat_greater_than_or_eq(lhs, rhs))
 
+  case OP_BUILD_LIST:
+    {
+      uint8_t len = *(vm->ip++);
+      build_list(vm, len);
+      break;
+    }
+  case OP_BUILD_LIST16:
+    {
+      uint16_t len = uint8_to_16(vm->ip);
+      vm->ip += 2;
+      build_list(vm, len);
+      break;
+    }
+
   case OP_TO_STR: UNARY(value_new(value_to_str(operand), string))
   case OP_CONCAT: BINARY(__vat_concat(lhs, rhs))
+
+  case OP_BUILD_STR:
+    {
+      uint8_t substrs = *(vm->ip++);
+      push(vm, build_string(vm, substrs));
+      break;
+    }
+  case OP_BUILD_STR16:
+    {
+      uint16_t substrs = uint8_to_16(vm->ip);
+      vm->ip += 2;
+      push(vm, build_string(vm, substrs));
+      break;
+    }
 
   case OP_CHAIN_BINOP:
     {
@@ -105,6 +143,10 @@ static inline bool execute_instruction(VM *vm, PCode *code)
       push(vm, rhs);
       return running;
     }
+
+  case OP_DISCARD:
+    pop(vm);
+    break;
 
   case OP_RETURN:
     {

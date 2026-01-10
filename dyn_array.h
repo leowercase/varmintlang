@@ -1,10 +1,7 @@
-#ifndef LANG_DYN_ARRAY_H
-#define LANG_DYN_ARRAY_H
-
 #include "mem.h"
 #include "util.h"
 
-#endif
+#include <string.h>
 
 /*
  * This header file declares a dynamic array of elements of type T.
@@ -41,6 +38,19 @@ TYPE_NAME METHOD(_new)()
   return dyn_array;
 }
 
+static inline
+TYPE_NAME METHOD(_with_cap)(size_t cap)
+{
+  TYPE_NAME dyn_array;
+  dyn_array.len = dyn_array.cap = 0;
+  dyn_array.data = NULL;
+
+  adjust_array_cap((void **)&dyn_array.data, sizeof(T),
+      &dyn_array.cap, cap);
+
+  return dyn_array;
+}
+
 // Append an element
 static inline
 void METHOD(_push)(TYPE_NAME *dyn_array, T elem)
@@ -63,6 +73,20 @@ static inline
 T METHOD(_top)(TYPE_NAME *dyn_array)
 {
   return dyn_array->data[dyn_array->len - 1];
+}
+
+// Concatenate two dynamic arrays
+static inline
+TYPE_NAME METHOD(_concat)(TYPE_NAME *head, TYPE_NAME *tail)
+{
+  size_t len = head->len + tail->len - 1;
+  TYPE_NAME dyn_array = METHOD(_with_cap)(len);
+  dyn_array.len = len;
+
+  memcpy(dyn_array.data, head->data, head->len);
+  memcpy(dyn_array.data + head->len, tail->data, tail->len);
+
+  return dyn_array;
 }
 
 #undef METHOD

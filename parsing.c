@@ -68,6 +68,9 @@ static const ParseRule parse_rules[] =
     [TK_LPAREN]  = { grouping,   NULL       },
     [TK_RPAREN]  = { NULL,       no_op      },
 
+    [TK_SEMICOL] = { NULL,       statement  },
+    [TK_COMMA]   = { NULL,       list       },
+
     [TK_NUMERAL] = { number,     NULL       },
 
     [TK_STRCONT] = { metastring, no_op      },
@@ -250,6 +253,46 @@ void grouping(Compiler *c)
     invalid_token(c->current);
 }
 
+bool statement(Compiler *c, int min_bp)
+{
+  if (PREC_STATEMENT < min_bp)
+    return true;
+
+  Token semicolon = eat(c);
+  // The statement separator ; discards the preceding expression.
+  emit_byte(&c->code, semicolon.line, OP_DISCARD);
+
+  const int r_bp = PREC_STATEMENT + ASSOC_RIGHT;
+  expr(c, r_bp);
+
+  return true; // Expression parsing shouldn't be continued further.
+}
+
+bool list(Compiler *c, int min_bp)
+{
+  if (PREC_LIST < min_bp)
+    return true;
+
+  next(c); // ,
+
+  const int r_bp = PREC_LIST + ASSOC_RIGHT;
+
+  // NB! One list element has already been consumed
+  size_t list_len;
+  for (list_len = 1; match(c, TK_COMMA); list_len++) {
+    if (parse_rule(c->current.type)->led == no_op)
+      break;
+    expr(c, r_bp);
+  }
+  printf("List has len %li\n", list_len);
+
+  emit_byte(&c->code, c->current.line, OP_BUILD_LIST);
+  error_out("TODO!\n");
+  abort();
+
+  return true;
+}
+
 void boolean(Compiler *c)
 {
   Token tok = eat(c);
@@ -273,24 +316,23 @@ void number(Compiler *c)
 void metastring(Compiler *c)
 {
   string(c); // Consume STRCONT
+  size_t substrs = 1;
 
-  for (bool found_end = false; !found_end;) {
+  for (bool found_end = false; !found_end; substrs++) {
     switch (c->current.type) {
     case TK_STRCONT:
       string(c);
-      emit_byte(&c->code, c->current.line, OP_CONCAT);
       break;
     case TK_STREND:
+      string(c);
       found_end = true;
       break;
     default:
       expr(c, PREC_NONE); // \(...)
-      emit_bytes(&c->code, c->current.line, 2, OP_TO_STR, OP_CONCAT);
     }
   }
 
-  string(c);
-  emit_byte(&c->code, c->current.line, OP_CONCAT);
+  emit_size(&c->code, c->current.line, OP_BUILD_STR, substrs);
 }
 
 void string(Compiler *c)

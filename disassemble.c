@@ -4,26 +4,16 @@
 
 #include <stdio.h>
 
-static size_t constant(PCode *code, size_t offset)
+static void constant(PCode *code, int idx)
 {
-  uint8_t idx = code->instruc.data[offset + 1];
-
-  printf("    [%i] = ", idx);
-  print_value(code->constants.data[idx]);
-  printf(ANSI_CYAN);
-
-  return offset + 2;
-}
-
-static size_t constant16(PCode *code, size_t offset)
-{
-  uint16_t idx = uint8_to_16(code->instruc.data + offset + 1);
-
   printf("  [%i] = ", idx);
   print_value(code->constants.data[idx]);
   printf(ANSI_CYAN);
+}
 
-  return offset + 3;
+static void size(PCode *code, int s)
+{
+  printf(" " ANSI_YELLOW "(%i)" ANSI_CYAN, s);
 }
 
 // Returns the offset where the instruction ends.
@@ -31,18 +21,31 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
 {
   Opcode instruction = code->instruc.data[offset];
 
-#define CASE_E(name, return_expr) \
+#define CASE_(name, statement) \
   case OP_##name: { \
       printf("%.2i " #name, (int)get_line(&code->lines, offset)); \
-      return return_expr; \
+      statement; \
   }
 
-#define CASE(name) CASE_E(name, offset + 1)
+// Instructions with 8-bit operands
+#define CASE_8(name, fn) \
+  CASE_(name, \
+        fn(code, code->instruc.data[offset + 1]); \
+        return offset + 2)
+
+// Instructions with 16-bit operands
+#define CASE_16(name, fn) \
+  CASE_(name, \
+        uint8_t *ip = code->instruc.data + offset + 1; \
+        fn(code, uint8_to_16(ip)); \
+        return offset + 3)
+
+#define CASE(name) CASE_(name, return offset + 1)
 
   switch (instruction) {
   CASE(NONE)
-  CASE_E(CONST, constant(code, offset))
-  CASE_E(CONST16, constant16(code, offset))
+  CASE_8(CONST, constant)
+  CASE_16(CONST16, constant)
   CASE(NOT)
   CASE(NEGATE)
   CASE(FACTORIAL)
@@ -62,13 +65,20 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   CASE(GT)
   CASE(LEQ)
   CASE(GEQ)
+  CASE_8(BUILD_LIST, size)
+  CASE_16(BUILD_LIST16, size)
   CASE(TO_STR)
   CASE(CONCAT)
+  CASE_8(BUILD_STR, size)
+  CASE_16(BUILD_STR16, size)
   CASE(CHAIN_BINOP)
+  CASE(DISCARD)
   CASE(RETURN)
   }
 
-#undef CASE_E
+#undef CASE_
+#undef CASE_8
+#undef CASE_16
 #undef CASE
 }
 

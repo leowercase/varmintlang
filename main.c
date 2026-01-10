@@ -27,8 +27,12 @@ void repl()
     add_history(input);
 
     PCode code = compile(input);
+
+    disassemble(&code);
+
     Value result = vm_run(&vm, &code);
     print_value(result);
+    printf("\n");
 
     free(input);
   }
@@ -92,6 +96,7 @@ void run_file(const char *filename)
 
   Value result = vm_run(&vm, &code);
   print_value(result);
+  printf("\n");
 
   vm_free(&vm);
   fclose(file);

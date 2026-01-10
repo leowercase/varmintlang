@@ -32,9 +32,14 @@ typedef enum {
   OP_GT,
   OP_LEQ,
   OP_GEQ,
+  OP_BUILD_LIST,
+  OP_BUILD_LIST16,
   OP_TO_STR,
   OP_CONCAT,
+  OP_BUILD_STR,
+  OP_BUILD_STR16,
   OP_CHAIN_BINOP,
+  OP_DISCARD,
   OP_RETURN,
 } Opcode;
 
@@ -64,6 +69,7 @@ typedef struct {
   Constants constants;
   Instructions instruc;
   LineInfo lines;
+  size_t variable_count;
 } PCode;
 
 static inline PCode new_p_code()
@@ -75,6 +81,7 @@ static inline PCode new_p_code()
   return p_code;
 }
 
+// Record a byte into code.
 void emit_byte(PCode *code, size_t line, uint8_t byte);
 
 // For brevity.
@@ -84,6 +91,15 @@ void emit_byte(PCode *code, size_t line, uint8_t byte);
     emit_byte((code), (line), b[i]); \
 } while (false)
 
+// Returns an instruction pointer to the (16-bit) operand.
+uint8_t *defer_operand(PCode *code, size_t line);
+// Inserts operand of defer_operand into the code
+void patch_operand(PCode *code, uint8_t *ip, uint16_t operand);
+
+// Emit an operation that has a variable sized size operand
+bool emit_size(PCode *code, size_t line, Opcode opcode, size_t size);
+
+// Emit a code constant.
 void emit_constant(PCode *code, size_t line, Value value);
 
 #endif

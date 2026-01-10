@@ -20,6 +20,37 @@ void emit_byte(PCode *code, size_t line, uint8_t byte)
   LineInfo_push(&code->lines, l);
 }
 
+uint8_t *defer_operand(PCode *code, size_t line)
+{
+  emit_bytes(code, line, 2, 0xff, 0xff);
+  return code->instruc.data + code->instruc.len - 1;
+}
+
+void patch_operand(PCode *code, uint8_t *ip, uint16_t operand)
+{
+  uint8_t bytes[2] = uint16_to_8(operand);
+  ip[0] = bytes[0];
+  ip[1] = bytes[1];
+}
+
+// Here we can take make use of the fact that an 8-bit and a 16-bit op
+// reside next to each other in the enum.
+bool emit_size(PCode *code, size_t line, Opcode opcode, size_t size)
+{
+  if (size <= UINT8_MAX)
+    emit_bytes(code, line, 2, opcode, (uint8_t)size);
+
+  else if (size <= UINT16_MAX) {
+    uint8_t bytes[2] = uint16_to_8((uint16_t)size);
+    emit_bytes(code, line, 3, opcode + 1, bytes[0], bytes[1]);
+  }
+
+  else
+    return false;
+
+  return true;
+}
+
 static size_t make_constant(PCode *code, Value value)
 {
   Constants_push(&code->constants, value);
@@ -28,17 +59,12 @@ static size_t make_constant(PCode *code, Value value)
 
 void emit_constant(PCode *code, size_t line, Value value)
 {
-  size_t constant_idx = make_constant(code, value);
+  size_t idx = make_constant(code, value);
 
-  if (constant_idx <= UINT8_MAX)
-    emit_bytes(code, line, 2, OP_CONST, constant_idx);
+  if (emit_size(code, line, OP_CONST, idx))
+    return;
 
-  else if (constant_idx <= UINT16_MAX) {
-    uint8_t bytes[2] = uint16_to_8((uint16_t)constant_idx);
-    emit_bytes(code, line, 3, OP_CONST16, bytes[0], bytes[1]);
-  }
-
-  else runtime_error("Too many constants\n");
+  runtime_error("Too many constants\n");
 }
 
 size_t get_line(LineInfo *lines, size_t offset)

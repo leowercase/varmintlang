@@ -7,6 +7,8 @@
 
 typedef enum {
   PREC_NONE,
+  PREC_STATEMENT, // ...; ...
+  PREC_LIST,      // ..., ...
   PREC_OR,        // or
   PREC_AND,       // and
   PREC_I9N,       // -> (implication)
@@ -62,6 +64,8 @@ static inline bool no_op(Compiler *_, int __)
   return true;
 }
 
+bool statement(Compiler *c, int min_bp);
+bool list(Compiler *c, int min_bp);
 bool infix_op(Compiler *c, int min_bp);
 bool postfix_op(Compiler *c, int min_bp);
 bool led_op(Compiler *c, int min_bp);
