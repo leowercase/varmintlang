@@ -31,5 +31,6 @@ static const Str NULL_STR = {NULL, 0};
 Str str_fmt(const char *fmt, ...);
 Str str_concat(Str head, Str tail);
 Str str_copy_slice(StrSlice slice);
+bool strs_eq(Str a, Str b);
 
 #endif

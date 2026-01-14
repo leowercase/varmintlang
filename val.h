@@ -7,6 +7,7 @@
 #include <assert.h>
 
 typedef enum {
+  VAL_no,
   VAL_number,
   VAL_boolean,
   VAL_string,
@@ -23,7 +24,7 @@ typedef struct {
   RawValue raw;
 } Value;
 
-inline
+static inline
 Value __value_new(ValueType type, RawValue raw)
 {
   Value val = {type, raw};
@@ -33,14 +34,16 @@ Value __value_new(ValueType type, RawValue raw)
 
 #define is_type(val, vat_t) ((val).type == VAL_##vat_t)
 
-static const RawValue empty_raw_value = {0};
+// Allows some "cheating" with the type system et al.
+static const RawValue EMPTY_RAW_VAL = {0};
+static const Value NO_VAL = {VAL_no, EMPTY_RAW_VAL};
 
 // Helper macro.
 #define typechecked(val_ident, vat_t, ...) \
   (is_type(val_ident, vat_t) ? \
     val_ident.raw.vat_t : \
     (runtime_error("Expect type " #vat_t " for " #val_ident ", got %s\n", \
-                   value_type_cstring(val_ident.type)), empty_raw_value.vat_t))
+                   value_type_cstring(val_ident.type)), EMPTY_RAW_VAL.vat_t))
 
 bool values_eq(Value a, Value b);
 bool is_falsey(Value val);

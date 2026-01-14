@@ -5,6 +5,7 @@
 #include "val.h"
 
 #include <ctype.h>
+#include <string.h>
 
 // Lexical analysis splits text into lexically meaningful tokens.
 
@@ -17,11 +18,14 @@ typedef enum {
   TK_BANG,
   TK_2PIPE,
   TK_EQ, TK_NEQ, TK_LT, TK_GT, TK_LEQ, TK_GEQ,
+  TK_ASSIGN,
+  TK_LET,
   TK_NOT,
   TK_AND, TK_OR,
   TK_TRUE, TK_FALSE,
   TK_ARROW,
   TK_LPAREN, TK_RPAREN,
+  TK_LCURLY, TK_RCURLY,
   TK_SEMICOL, TK_COMMA,
   TK_NUMERAL,
   TK_STRCONT, TK_STREND,
@@ -46,9 +50,29 @@ bool is_ident(char c)
   return is_ident_beginning(c) || isdigit(c);
 }
 
+static inline
+TokenType is_keyword(Str str)
+{
+  const char *keywords[] = {
+    [TK_LET] = "let",
+    [TK_NOT] = "not",
+    [TK_AND] = "and",
+    [TK_OR]  = "or",
+    [TK_TRUE] = "True",
+    [TK_FALSE] = "False",
+  };
+
+  for (int i = TK_LET; i < TK_FALSE + 1; i++) {
+    if (strncmp(keywords[i], str.s, str.len) == 0)
+      return (TokenType)i;
+  }
+
+  return (TokenType)false;
+}
+
 typedef struct {
   TokenType type;
-  StrSlice raw_str; // Not a C string!
+  StrSlice slice; // Not a C string!
   size_t line;
 } Token;
 
@@ -59,10 +83,11 @@ typedef struct {
 
   bool escaping_string;
   int template_nesting;
-  int unmatched_parens;
+  int unmatched_parens, unmatched_curlies;
 } Lex;
 
-inline Lex lex_new(char *source)
+static inline
+Lex lex_new(char *source)
 {
   Lex lex;
   lex.start = lex.current = source;
@@ -70,7 +95,7 @@ inline Lex lex_new(char *source)
 
   lex.escaping_string = false;
   lex.template_nesting = 0;
-  lex.unmatched_parens = 0;
+  lex.unmatched_parens = lex.unmatched_curlies = 0;
 
   return lex;
 }

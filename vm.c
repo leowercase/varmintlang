@@ -26,26 +26,11 @@ static inline Value peek(VM *vm)
   return Stack_top(&vm->stack);
 }
 
-static void build_list(VM *vm, size_t len)
-{
-  error_out("TODO!\n");
-  abort();
-}
-
-// Stitch together the metastrings emitted by the compiler
-static Value build_string(VM *vm, int substrs)
-{
-  Str str = value_to_str(pop(vm));
-
-  for (int i = 1; i < substrs; i++)
-    str = str_concat(value_to_str(pop(vm)), str);
-
-  return value_new(str, string);
-}
-
 static inline bool execute_instruction(VM *vm, PCode *code)
 {
   Opcode instruction = *(vm->ip++);
+
+  // Macros really help with some of the tedium here.
 
 #define UNARY(expr) { \
   Value operand = pop(vm); \
@@ -59,24 +44,29 @@ static inline bool execute_instruction(VM *vm, PCode *code)
   break; \
 }
 
+  // Opcode with variable sized operand (8/16-bit)
+#define case_size_op(op_name, operand_ident, stmt) \
+  case op_name: { \
+    uint8_t operand_ident = *vm->ip; \
+    vm->ip++; \
+    stmt; \
+  } \
+  case op_name##16: { \
+    uint16_t operand_ident = uint8_to_16(vm->ip); \
+    vm->ip += 2; \
+    stmt; \
+  }
+
   switch (instruction) {
   case OP_NONE:
     abort(); // Unreachable
 
-  case OP_CONST:
+  case_size_op(OP_CONST, idx,
     {
-      Value constant = code->constants.data[*(vm->ip++)];
-      push(vm, constant);
-      break;
-    }
-  case OP_CONST16:
-    {
-      uint16_t idx = uint8_to_16(vm->ip);
       Value constant = code->constants.data[idx];
       push(vm, constant);
-      vm->ip += 2;
       break;
-    }
+    })
 
   case OP_NOT:    UNARY(value_new((int)is_falsey(operand), boolean))
   case OP_NEGATE: UNARY(__vat_negate(operand))
@@ -104,36 +94,27 @@ static inline bool execute_instruction(VM *vm, PCode *code)
   case OP_LEQ: BINARY(__vat_less_than_or_eq(lhs, rhs))
   case OP_GEQ: BINARY(__vat_greater_than_or_eq(lhs, rhs))
 
-  case OP_BUILD_LIST:
+    // Weaves a list.
+  case_size_op(OP_BUILD_LIST, len,
     {
-      uint8_t len = *(vm->ip++);
-      build_list(vm, len);
-      break;
-    }
-  case OP_BUILD_LIST16:
-    {
-      uint16_t len = uint8_to_16(vm->ip);
-      vm->ip += 2;
-      build_list(vm, len);
-      break;
-    }
+      error_out("TODO!\n");
+      abort();
+    })
 
   case OP_TO_STR: UNARY(value_new(value_to_str(operand), string))
   case OP_CONCAT: BINARY(__vat_concat(lhs, rhs))
 
-  case OP_BUILD_STR:
+    // Stitches together the metastrings emitted by the compiler.
+  case_size_op(OP_BUILD_STR, metastrs,
     {
-      uint8_t substrs = *(vm->ip++);
-      push(vm, build_string(vm, substrs));
+      Str str = value_to_str(pop(vm));
+
+      for (int i = 1; i < metastrs; i++)
+        str = str_concat(value_to_str(pop(vm)), str);
+
+      push(vm, value_new(str, string));
       break;
-    }
-  case OP_BUILD_STR16:
-    {
-      uint16_t substrs = uint8_to_16(vm->ip);
-      vm->ip += 2;
-      push(vm, build_string(vm, substrs));
-      break;
-    }
+    })
 
   case OP_CHAIN_BINOP:
     {
@@ -144,23 +125,57 @@ static inline bool execute_instruction(VM *vm, PCode *code)
       return running;
     }
 
+  case_size_op(OP_SET, stack_slot,
+    {
+      Value val;
+      val = vm->stack.data[stack_slot] = pop(vm);
+      push(vm, val);
+      break;
+    })
+
+  case_size_op(OP_GET, stack_slot,
+    {
+      push(vm, vm->stack.data[stack_slot]);
+      break;
+    })
+
+  case OP_RESERVE_SLOT:
+    push(vm, NO_VAL);
+    break;
   case OP_DISCARD:
     pop(vm);
     break;
+  case_size_op(OP_DISCARDN, n,
+    {
+      for (int i = 0; i < n; i++)
+        pop(vm);
+
+      break;
+    })
+  case_size_op(OP_RETAIN1_DISCARDN, n,
+    {
+      Value retained_val = pop(vm);
+
+      for (int i = 1; i < n; i++)
+        pop(vm);
+
+      push(vm, retained_val);
+      break;
+    })
 
   case OP_RETURN:
     {
-      vm->result = pop(vm);
+      vm->result =
+        vm->stack.len == 0 ? NO_VAL : peek(vm);
       return false;
     }
   }
 
   return true;
 
-#undef UNARY_FN
-#undef UNARY_OP
-#undef BINARY_FN
-#undef BINARY_OP
+#undef UNARY
+#undef BINARY
+#undef case_size_op
 }
 
 Value vm_run(VM *vm, PCode *code)

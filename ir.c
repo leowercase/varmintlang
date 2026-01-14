@@ -35,7 +35,7 @@ void patch_operand(PCode *code, uint8_t *ip, uint16_t operand)
 
 // Here we can take make use of the fact that an 8-bit and a 16-bit op
 // reside next to each other in the enum.
-bool emit_size(PCode *code, size_t line, Opcode opcode, size_t size)
+bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size)
 {
   if (size <= UINT8_MAX)
     emit_bytes(code, line, 2, opcode, (uint8_t)size);
@@ -61,7 +61,7 @@ void emit_constant(PCode *code, size_t line, Value value)
 {
   size_t idx = make_constant(code, value);
 
-  if (emit_size(code, line, OP_CONST, idx))
+  if (emit_size_op(code, line, OP_CONST, idx))
     return;
 
   runtime_error("Too many constants\n");

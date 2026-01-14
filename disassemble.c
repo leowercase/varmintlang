@@ -21,65 +21,68 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
 {
   Opcode instruction = code->instruc.data[offset];
 
-#define CASE_(name, statement) \
+#define case_(name, stmt) \
   case OP_##name: { \
       printf("%.2i " #name, (int)get_line(&code->lines, offset)); \
-      statement; \
+      stmt; \
   }
 
 // Instructions with 8-bit operands
-#define CASE_8(name, fn) \
-  CASE_(name, \
+#define case_size_op(name, fn) \
+  case_(name, \
+    { \
         fn(code, code->instruc.data[offset + 1]); \
-        return offset + 2)
-
-// Instructions with 16-bit operands
-#define CASE_16(name, fn) \
-  CASE_(name, \
+        return offset + 2; \
+    }) \
+  case_(name##16, \
+    { \
         uint8_t *ip = code->instruc.data + offset + 1; \
         fn(code, uint8_to_16(ip)); \
-        return offset + 3)
+        return offset + 3; \
+    })
 
-#define CASE(name) CASE_(name, return offset + 1)
+#define case_op(name) case_(name, return offset + 1)
 
   switch (instruction) {
-  CASE(NONE)
-  CASE_8(CONST, constant)
-  CASE_16(CONST16, constant)
-  CASE(NOT)
-  CASE(NEGATE)
-  CASE(FACTORIAL)
-  CASE(PERCENTAGE)
-  CASE(ADD)
-  CASE(SUB)
-  CASE(MUL)
-  CASE(DIV)
-  CASE(POW)
-  CASE(MODULO)
-  CASE(AND)
-  CASE(OR)
-  CASE(I9N)
-  CASE(EQ)
-  CASE(NEQ)
-  CASE(LT)
-  CASE(GT)
-  CASE(LEQ)
-  CASE(GEQ)
-  CASE_8(BUILD_LIST, size)
-  CASE_16(BUILD_LIST16, size)
-  CASE(TO_STR)
-  CASE(CONCAT)
-  CASE_8(BUILD_STR, size)
-  CASE_16(BUILD_STR16, size)
-  CASE(CHAIN_BINOP)
-  CASE(DISCARD)
-  CASE(RETURN)
+  case_op(NONE)
+  case_size_op(CONST, constant)
+  case_op(NOT)
+  case_op(NEGATE)
+  case_op(FACTORIAL)
+  case_op(PERCENTAGE)
+  case_op(ADD)
+  case_op(SUB)
+  case_op(MUL)
+  case_op(DIV)
+  case_op(POW)
+  case_op(MODULO)
+  case_op(AND)
+  case_op(OR)
+  case_op(I9N)
+  case_op(EQ)
+  case_op(NEQ)
+  case_op(LT)
+  case_op(GT)
+  case_op(LEQ)
+  case_op(GEQ)
+  case_size_op(BUILD_LIST, size)
+  case_op(TO_STR)
+  case_op(CONCAT)
+  case_size_op(BUILD_STR, size)
+  case_op(CHAIN_BINOP)
+  case_size_op(GET, size)
+  case_size_op(SET, size)
+  case_op(RESERVE_SLOT)
+  case_op(DISCARD)
+  case_size_op(DISCARDN, size)
+  case_size_op(RETAIN1_DISCARDN, size)
+  case_op(RETURN)
   }
 
-#undef CASE_
-#undef CASE_8
-#undef CASE_16
-#undef CASE
+#undef case_
+#undef case_8
+#undef case_16
+#undef case_op
 }
 
 void disassemble(PCode *code)

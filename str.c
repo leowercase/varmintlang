@@ -39,7 +39,7 @@ Str str_fmt(const char *fmt, ...)
   return str_new(s, len);
 }
 
-// Concats two null-terminated strings.
+// Concatenate two null-terminated strings.
 Str str_concat(Str head, Str tail)
 {
   size_t len = head.len + tail.len;
@@ -66,4 +66,13 @@ Str str_copy_slice(StrSlice slice)
 
   Str copy = {cstring, slice.len};
   return copy;
+}
+
+// Compare strings.
+bool strs_eq(Str a, Str b)
+{
+  if (a.len != b.len)
+    return false;
+
+  return memcmp(a.s, b.s, a.len) == 0;
 }

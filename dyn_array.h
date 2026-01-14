@@ -61,7 +61,7 @@ void METHOD(_push)(TYPE_NAME *dyn_array, T elem)
   dyn_array->data[dyn_array->len++] = elem;
 }
 
-// Pop an element
+// Pop an element off the top
 static inline
 T METHOD(_pop)(TYPE_NAME *dyn_array)
 {

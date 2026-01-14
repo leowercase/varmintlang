@@ -85,7 +85,7 @@ void run_file(const char *filename)
     do {
       tok = lex_token(&l);
       printf("%.2li %s `%.*s`\n", tok.line, tok_cstring(tok.type),
-          (int)tok.raw_str.len, tok.raw_str.s);
+          (int)tok.slice.len, tok.slice.s);
     } while (tok.type != TK_EOF);
   }
 

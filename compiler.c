@@ -1,18 +1,23 @@
-#include "compiler.h"
 #include "parsing.h"
 
 PCode compile(char *source)
 {
   Lex lex = lex_new(source);
+
   Token current = lex_token(&lex);
   Token lookahead = lex_token(&lex);
 
   PCode code = new_p_code();
 
-  Compiler c = {lex, current, lookahead, code};
+  Scope scope;
+  scope.locals = Locals_new();
+  scope.depth = 0;
+  scope.enclosing_scope = NULL;
 
-  expr(&c, PREC_NONE);
-  emit_byte(&c.code, c.code.lines.len - 1, OP_RETURN);
+  Parser p = {lex, current, lookahead, code, scope};
 
-  return c.code;
+  expr(&p, PREC_NONE);
+  emit_byte(&p.code, p.code.lines.len - 1, OP_RETURN);
+
+  return p.code;
 }

@@ -21,7 +21,8 @@
 
 // Helper function for errors.
 void error_out(const char *fmt, ...);
-void runtime_error(const char *fmt, ...);
+#define runtime_error(...) \
+  (error_out(__VA_ARGS__), exit(EX_DATAERR))
 
 // Two passes of macro expansion are required for macro identifiers to expand
 #define CONCAT(a, b) a##b

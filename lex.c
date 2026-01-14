@@ -111,13 +111,21 @@ static Token escape_sequence(Lex *lex)
   case '"': c = "\""; break;
   case '0': c = "\0"; break;
 
-    // \(...)
     // https://en.wikipedia.org/wiki/String_interpolation
+    // \(...)
   case '(':
+    lex->start = lex->current;
     next(lex);
     lex->escaping_string = false;
     lex->template_nesting++;
-    return lex_token(lex);
+    return token(lex, TK_LPAREN);
+    // \{...}
+  case '{':
+    lex->start = lex->current;
+    next(lex);
+    lex->escaping_string = false;
+    lex->template_nesting++;
+    return token(lex, TK_LCURLY);
 
   case '\0':
     return error_token(lex, "unterminated string");
@@ -132,24 +140,6 @@ static Token escape_sequence(Lex *lex)
   return tok;
 }
 
-static TokenType is_keyword(Str str)
-{
-  const char *keywords[] = {
-    [TK_NOT] = "not",
-    [TK_AND] = "and",
-    [TK_OR]  = "or",
-    [TK_TRUE] = "True",
-    [TK_FALSE] = "False",
-  };
-
-  for (TokenType i = TK_NOT; i < TK_FALSE + 1; i++) {
-    if (strncmp(keywords[i], str.s, str.len) == 0)
-      return i;
-  }
-
-  return false;
-}
-
 static Token word(Lex *lex)
 {
   while (is_ident(*lex->current))
@@ -157,7 +147,7 @@ static Token word(Lex *lex)
 
   Token word = token(lex, TK_WORD);
 
-  TokenType keyword = is_keyword(word.raw_str);
+  TokenType keyword = is_keyword(word.slice);
   if (keyword)
     word.type = keyword;
 
@@ -222,6 +212,7 @@ Token lex_token(Lex *lex)
   if (c == '"')
     return string(lex);
 
+  // One or two character tokens
   next(lex);
   switch (c) {
   case '\0':
@@ -240,12 +231,24 @@ Token lex_token(Lex *lex)
       // We're ending \(...)
       lex->template_nesting--;
       lex->escaping_string = true;
-      return lex_token(lex);
     }
-    else {
+    else
       lex->unmatched_parens--;
-      return token(lex, TK_RPAREN);
+    return token(lex, TK_RPAREN);
+
+  case '{':
+    lex->unmatched_curlies++;
+    return token(lex, TK_LCURLY);
+
+  case '}':
+    if (lex->template_nesting > 0 && lex->unmatched_curlies == 0) {
+      // Ending \{...}.
+      lex->template_nesting--;
+      lex->escaping_string = true;
     }
+    else
+      lex->unmatched_curlies--;
+    return token(lex, TK_RCURLY);
 
   case '+': return token(lex, TK_PLUS);
   case '*': return token(lex, TK_STAR);
@@ -275,6 +278,10 @@ Token lex_token(Lex *lex)
   case '>':
     return token(lex,
       match(lex, '=') ? TK_GEQ : TK_GT);
+
+  case ':':
+    if (match(lex, '='))
+      return token(lex, TK_ASSIGN);
   }
 
   return error_token(lex, "illegal token");
@@ -282,26 +289,29 @@ Token lex_token(Lex *lex)
 
 const char *tok_cstring(const TokenType type)
 {
-#define CASE(name) case TK_##name: return #name;
+#define case_(name) case TK_##name: return #name;
 
   switch (type) {
-  CASE(EOF)
-  CASE(ERR)
-  CASE(PLUS) CASE(MINUS) CASE(STAR) CASE(SLASH)
-  CASE(CARET)
-  CASE(PERCENT)
-  CASE(BANG)
-  CASE(2PIPE)
-  CASE(EQ) CASE(NEQ) CASE(LT) CASE(GT) CASE(LEQ) CASE(GEQ)
-  CASE(NOT)
-  CASE(AND) CASE(OR) CASE(ARROW)
-  CASE(LPAREN) CASE(RPAREN)
-  CASE(SEMICOL) CASE(COMMA)
-  CASE(NUMERAL)
-  CASE(STRCONT) CASE(STREND)
-  CASE(TRUE) CASE(FALSE)
-  CASE(WORD)
+  case_(EOF)
+  case_(ERR)
+  case_(PLUS) case_(MINUS) case_(STAR) case_(SLASH)
+  case_(CARET)
+  case_(PERCENT)
+  case_(BANG)
+  case_(2PIPE)
+  case_(EQ) case_(NEQ) case_(LT) case_(GT) case_(LEQ) case_(GEQ)
+  case_(ASSIGN)
+  case_(LET)
+  case_(NOT)
+  case_(AND) case_(OR) case_(ARROW)
+  case_(LPAREN) case_(RPAREN)
+  case_(LCURLY) case_(RCURLY)
+  case_(SEMICOL) case_(COMMA)
+  case_(NUMERAL)
+  case_(STRCONT) case_(STREND)
+  case_(TRUE) case_(FALSE)
+  case_(WORD)
   }
 
-#undef CASE
+#undef case_
 }

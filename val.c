@@ -7,6 +7,8 @@ bool values_eq(Value a, Value b)
   if (a.type != b.type) return false;
   else {
     switch (a.type) {
+      case VAL_no:
+        abort();
       case VAL_number:
         return a.raw.number == b.raw.number;
       case VAL_boolean:
@@ -31,6 +33,8 @@ char *value_type_cstring(ValueType type)
 #define CASE(name) case VAL_##name: return #name;
 
   switch (type) {
+  case VAL_no:
+    return "no value";
   CASE(number)
   CASE(boolean)
   CASE(string)
@@ -42,6 +46,8 @@ char *value_type_cstring(ValueType type)
 Str value_to_str(Value val)
 {
   switch (val.type) {
+  case VAL_no:
+    abort();
   case VAL_number:
     {
       Str string = str_fmt("%g", val.raw.number);
@@ -61,6 +67,9 @@ Str value_to_str(Value val)
 void print_value(Value val)
 {
   switch (val.type) {
+  case VAL_no:
+    printf("no value");
+    break;
   case VAL_number:
     printf(ANSI_RED);
     printf("%g", val.raw.number);

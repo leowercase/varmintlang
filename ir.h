@@ -39,9 +39,20 @@ typedef enum {
   OP_BUILD_STR,
   OP_BUILD_STR16,
   OP_CHAIN_BINOP,
+  OP_GET,
+  OP_GET16,
+  OP_SET,
+  OP_SET16,
+  OP_RESERVE_SLOT,
   OP_DISCARD,
+  OP_DISCARDN,
+  OP_DISCARDN16,
+  OP_RETAIN1_DISCARDN,
+  OP_RETAIN1_DISCARDN16,
   OP_RETURN,
 } Opcode;
+
+static_assert(OP_RETURN <= UINT8_MAX, "Oops! Too many opcodes.");
 
 #define T uint8_t
 #define TYPE_NAME Instructions
@@ -96,8 +107,11 @@ uint8_t *defer_operand(PCode *code, size_t line);
 // Inserts operand of defer_operand into the code
 void patch_operand(PCode *code, uint8_t *ip, uint16_t operand);
 
+// Maximum size of variable sized operands
+static const size_t MAX_OPERAND_SIZE = UINT16_MAX;
+
 // Emit an operation that has a variable sized size operand
-bool emit_size(PCode *code, size_t line, Opcode opcode, size_t size);
+bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size);
 
 // Emit a code constant.
 void emit_constant(PCode *code, size_t line, Value value);
