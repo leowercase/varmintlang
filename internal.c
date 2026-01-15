@@ -102,8 +102,15 @@ Value __vat_greater_than_or_eq(Value a, Value b)
 
 Value __vat_concat(Value head, Value tail)
 {
-  Str head_raw = typechecked(head, string),
-      tail_raw = typechecked(tail, string);
+  StringVal *head_raw = typechecked(head, string),
+            *tail_raw = typechecked(tail, string);
 
-  return value_new(str_concat(head_raw, tail_raw), string);
+  // TODO
+  StringVal *val = malloc(sizeof(StringVal));
+  if (val == NULL)
+    exit(EX_OSERR);
+
+  val->str = str_concat(head_raw->str, tail_raw->str);
+
+  return value_new(val, string);
 }

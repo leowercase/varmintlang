@@ -3,30 +3,22 @@
 #include "val.h"
 #include "vm.h"
 
-VM vm_new()
-{
-  VM vm;
-  vm.ip = NULL;
-  vm.stack = Stack_new();
-  return vm;
-}
-
-static inline void push(VM *vm, Value value)
+static inline void push(Varmint *vm, Value value)
 {
   Stack_push(&vm->stack, value);
 }
 
-static inline Value pop(VM *vm)
+static inline Value pop(Varmint *vm)
 {
   return Stack_pop(&vm->stack);
 }
 
-static inline Value peek(VM *vm)
+static inline Value peek(Varmint *vm)
 {
   return Stack_top(&vm->stack);
 }
 
-static inline bool execute_instruction(VM *vm, PCode *code)
+static inline bool execute_instruction(Varmint *vm, PCode *code)
 {
   Opcode instruction = *(vm->ip++);
 
@@ -101,7 +93,8 @@ static inline bool execute_instruction(VM *vm, PCode *code)
       abort();
     })
 
-  case OP_TO_STR: UNARY(value_new(value_to_str(operand), string))
+  case OP_TO_STR: UNARY(value_new(stringval_new(
+                          value_to_str(operand)), string))
   case OP_CONCAT: BINARY(__vat_concat(lhs, rhs))
 
     // Stitches together the metastrings emitted by the compiler.
@@ -112,7 +105,7 @@ static inline bool execute_instruction(VM *vm, PCode *code)
       for (int i = 1; i < metastrs; i++)
         str = str_concat(value_to_str(pop(vm)), str);
 
-      push(vm, value_new(str, string));
+      push(vm, value_new(stringval_new(str), string));
       break;
     })
 
@@ -178,7 +171,7 @@ static inline bool execute_instruction(VM *vm, PCode *code)
 #undef case_size_op
 }
 
-Value vm_run(VM *vm, PCode *code)
+void run(Varmint *vm, PCode *code)
 {
   vm->ip = code->instruc.data;
 
@@ -186,11 +179,4 @@ Value vm_run(VM *vm, PCode *code)
   do
     running = execute_instruction(vm, code);
   while (running);
-
-  return vm->result;
-}
-
-void vm_free(VM *vm)
-{
-  free(vm->stack.data);
 }

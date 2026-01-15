@@ -20,9 +20,9 @@ Str str_new(char *s, size_t len)
 }
 
 static inline
-Str str_from(const char *s)
+const Str str_from(const char *s)
 {
-  Str str = {s, sizeof(s)};
+  const Str str = {s, sizeof(s)};
   return str;
 }
 

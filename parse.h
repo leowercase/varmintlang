@@ -1,40 +1,32 @@
 #ifndef LANG_PARSING_H
 #define LANG_PARSING_H
 
-#include "compile.h"
+#include "varmint.h"
 #include "lex.h"
+#include "ir.h"
 
 #include <stdio.h>
 
-// Local variable
-typedef struct {
-  StrSlice name;
-  int depth;
-  bool initialized;
-  size_t stack_slot;
-} Local;
-
-#define T Local
-#define TYPE_NAME Locals
-#include "dyn_array.h"
-
-typedef struct Scope {
-  Locals locals;
-  int depth;
-  struct Scope *enclosing_scope;
-} Scope;
+/*
+ * Single pass compilation is parsing & compiling in one step.
+ * Expressions are translated into stack-based RPN bytecode.
+ *
+ * https://en.wikipedia.org/wiki/Stack_machine#Design
+ * https://en.wikipedia.org/wiki/Reverse_Polish_notation
+ * https://en.wikipedia.org/wiki/Operator-precedence_parser#Pratt_parsing
+ */
 
 typedef struct {
   Lex lex;
   Token current, lookahead;
   PCode code;
-  Scope scope;
-} Parser;
+  FnScope *scope;
+} Parse;
 
 typedef enum {
   PREC_NONE,
-  PREC_STATEMENT, // ...; ... let
-  PREC_LIST,      // ..., ...
+  PREC_STATEMENT, // { let ...; ...; ... }
+  PREC_LIST,      // [..., ...]
   PREC_ASSIGN,    // :=
   PREC_OR,        // or
   PREC_AND,       // and
@@ -57,11 +49,15 @@ typedef enum {
 } Associativity;
 
 // Null-denoted parse; preceded by nothing (prefix)
-typedef void (*NudRule)(Parser *p);
+typedef void (*NudRule)(Parse *p);
+
+typedef enum {
+  LED_CONTINUE = 0,
+  LED_STOP = 1,
+} LedResult;
 
 // Left-denoted parse; preceded by something (infix/postfix)
-typedef bool (*LedRule)(Parser *p, int min_bp);
-// Rule returns true if the parse wasn't continued.
+typedef LedResult (*LedRule)(Parse *p, int min_bp);
 
 // Internal lookup table for the parser.
 typedef struct {
@@ -76,28 +72,31 @@ ParseRule;
  * One Op to rule them all, One Op to find them;
  * One Op to bring them all and in the darkness "bind" them.
  */
-void expr(Parser *p, int min_bp);
+void expr(Parse *p, int min_bp);
 
-void prefix_op(Parser *p);
-void grouping(Parser *p);
-void block(Parser *p);
-void boolean(Parser *p);
-void number(Parser *p);
-void metastring(Parser *p);
-void string(Parser *p);
-void ident(Parser *p);
+void stmt(Parse *p);
+
+void prefix_op(Parse *p);
+void grouping(Parse *p);
+void block(Parse *p);
+void boolean(Parse *p);
+void number(Parse *p);
+void metastring(Parse *p);
+void string(Parse *p);
+void ident(Parse *p);
 
 // Token is valid, but shouldn't be used as LED
-static inline bool no_op(Parser *_, int __)
+static inline
+LedResult no_op(Parse *_, int __)
 {
-  return true;
+  return LED_STOP;
 }
 
-bool list(Parser *p, int min_bp);
-bool infix_op(Parser *p, int min_bp);
-bool postfix_op(Parser *p, int min_bp);
-bool led_op(Parser *p, int min_bp);
-bool cmp_op(Parser *p, int min_bp);
+LedResult list(Parse *p, int min_bp);
+LedResult infix_op(Parse *p, int min_bp);
+LedResult postfix_op(Parse *p, int min_bp);
+LedResult led_op(Parse *p, int min_bp);
+LedResult cmp_op(Parse *p, int min_bp);
 
 // Helper function
 static inline

@@ -1,7 +1,5 @@
-#include "compile.h"
-#include "disassemble.h"
 #include "util.h"
-#include "vm.h"
+#include "varmint.h"
 
 #include <sysexits.h>
 #include <stdio.h>
@@ -12,7 +10,7 @@
 
 void repl()
 {
-  VM vm = vm_new();
+  Varmint vm = varmint_start();
 
   // https://en.wikipedia.org/wiki/GNU_Readline#Sample_code
 
@@ -26,18 +24,14 @@ void repl()
 
     add_history(input);
 
-    PCode code = compile(input);
-
-    disassemble(&code);
-
-    Value result = vm_run(&vm, &code);
+    Value result = varmint_go(&vm, input);
     print_value(result);
     printf("\n");
 
     free(input);
   }
 
-  vm_free(&vm);
+  varmint_free(&vm);
 }
 
 size_t file_size(FILE *file)
@@ -78,27 +72,14 @@ void run_file(const char *filename)
     exit(EX_NOINPUT);
   }
 
-  {
-    Lex l = lex_new(source);
+  Varmint vm = varmint_start();
 
-    Token tok;
-    do {
-      tok = lex_token(&l);
-      printf("%.2li %s `%.*s`\n", tok.line, tok_cstring(tok.type),
-          (int)tok.slice.len, tok.slice.s);
-    } while (tok.type != TK_EOF);
-  }
-
-  VM vm = vm_new();
-  PCode code = compile(source);
-
-  disassemble(&code);
-
-  Value result = vm_run(&vm, &code);
+  Value result = varmint_go(&vm, source);
   print_value(result);
   printf("\n");
 
-  vm_free(&vm);
+  varmint_free(&vm);
+  free(source);
   fclose(file);
 }
 

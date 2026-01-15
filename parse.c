@@ -1,13 +1,13 @@
 #include "lex.h"
-#include "parsing.h"
+#include "parse.h"
 #include "val.h"
 
-static inline Token peek(Parser *p)
+static inline Token peek(Parse *p)
 {
   return p->lookahead;
 }
 
-static inline Token next(Parser *p)
+static inline Token next(Parse *p)
 {
   Token next_tok = p->lookahead;
   p->current = next_tok;
@@ -15,14 +15,14 @@ static inline Token next(Parser *p)
   return next_tok;
 }
 
-static inline Token eat(Parser *p)
+static inline Token eat(Parse *p)
 {
   Token tok = p->current;
   next(p);
   return tok;
 }
 
-static bool match(Parser *p, TokenType expected)
+static bool match(Parse *p, TokenType expected)
 {
   Token tok = p->current;
   if (tok.type != TK_EOF && tok.type == expected) {
@@ -32,7 +32,7 @@ static bool match(Parser *p, TokenType expected)
   else return false;
 }
 
-static Token consume(Parser *p, TokenType expected)
+static Token consume(Parse *p, TokenType expected)
 {
   Token tok = p->current;
   if (tok.type != TK_EOF && tok.type == expected) {
@@ -118,7 +118,7 @@ static const UnaryOp prefix_ops[] = {
     [TK_NOT] =   { OP_NOT,                     PREC_NOT  },
 };
 
-void prefix_op(Parser *p)
+void prefix_op(Parse *p)
 {
   Token op_token = eat(p);
   UnaryOp op = prefix_ops[op_token.type];
@@ -144,14 +144,14 @@ static const BinaryOp infix_ops[] = {
   [TK_ARROW]   = { OP_I9N,    PREC_I9N,    ASSOC_LEFT  },
 };
 
-bool infix_op(Parser *p, int min_bp)
+LedResult infix_op(Parse *p, int min_bp)
 {
   Token op_token = p->current;
   BinaryOp op = infix_ops[op_token.type];
 
   int l_bp = op.precedence;
   if (l_bp < min_bp)
-    return true;
+    return LED_STOP;
 
   next(p); // Consume op_token
 
@@ -159,7 +159,7 @@ bool infix_op(Parser *p, int min_bp)
   expr(p, r_bp); // Parse and emit right operand.
 
   emit_byte(&p->code, op_token.line, op.opcode);
-  return false;
+  return LED_CONTINUE;
 }
 
 static inline bool is_prefix_and_infix(TokenType op)
@@ -173,19 +173,19 @@ static const UnaryOp postfix_ops[] = {
   [TK_BANG]    = { OP_FACTORIAL,  PREC_FACTORIAL },
 };
 
-bool postfix_op(Parser *p, int min_bp)
+LedResult postfix_op(Parse *p, int min_bp)
 {
   Token op_token = p->current;
   UnaryOp op = postfix_ops[op_token.type];
 
   int l_bp = op.precedence;
   if (l_bp < min_bp)
-    return true;
+    return LED_STOP;
 
   next(p); // Consume op_token
 
   emit_byte(&p->code, op_token.line, op.opcode);
-  return false;
+  return LED_CONTINUE;
 }
 
 static bool led_op_is_infix(TokenType op, TokenType next)
@@ -208,7 +208,7 @@ static bool led_op_is_infix(TokenType op, TokenType next)
 
 // LED op tokens of ambiguous fixity.
 // 50% + 3
-bool led_op(Parser *p, int min_bp)
+LedResult led_op(Parse *p, int min_bp)
 {
   if (led_op_is_infix(p->current.type, peek(p).type))
     return infix_op(p, min_bp);
@@ -218,10 +218,10 @@ bool led_op(Parser *p, int min_bp)
 
 // Comparison operators that can be chained.
 // a < b <= c != 0
-bool cmp_op(Parser *p, int min_bp)
+LedResult cmp_op(Parse *p, int min_bp)
 {
   if (PREC_CMP < min_bp)
-    return true;
+    return LED_STOP;
 
   Token op_token = eat(p);
   size_t line = op_token.line;
@@ -255,10 +255,10 @@ bool cmp_op(Parser *p, int min_bp)
 
   else emit_byte(&p->code, line, opcode);
 
-  return false;
+  return LED_CONTINUE;
 }
 
-void grouping(Parser *p)
+void grouping(Parse *p)
 {
   next(p); // (
 
@@ -269,7 +269,7 @@ void grouping(Parser *p)
     invalid_token(p->current);
 }
 
-static void declaration(Parser *p)
+static void declaration(Parse *p)
 {
   next(p); // let
 
@@ -290,14 +290,14 @@ static void declaration(Parser *p)
   }
 
   // Declare local variable.
-  Local local = {ident_tok.slice, p->scope.depth, initialized, stack_slot};
-  Locals_push(&p->scope.locals, local);
+  Local local = {ident_tok.slice, p->scope->depth, initialized, stack_slot};
+  Locals_push(&p->scope->locals, local);
 
   if (stack_slot > MAX_OPERAND_SIZE)
     runtime_error("Too many locals!");
 }
 
-void stmt(Parser *p)
+void stmt(Parse *p)
 {
   const int r_bp = PREC_STATEMENT + ASSOC_RIGHT;
   Token tok = p->current;
@@ -314,11 +314,11 @@ void stmt(Parser *p)
 }
 
 // A block is a series of statements.
-void block(Parser *p)
+void block(Parse *p)
 {
   next(p); // {
 
-  p->scope.depth++;
+  p->scope->depth++;
 
   size_t line = p->current.line;
   // Consume first statement
@@ -329,9 +329,9 @@ void block(Parser *p)
   for (; match(p, TK_SEMICOL); statements++)
     stmt(p);
 
-  p->scope.depth--;
-  Locals *locals = &p->scope.locals;
-  while (locals->len > 0 && Locals_top(locals).depth > p->scope.depth)
+  p->scope->depth--;
+  Locals *locals = &p->scope->locals;
+  while (locals->len > 0 && Locals_top(locals).depth > p->scope->depth)
     Locals_pop(locals);
 
   // The statement separator ; discards the preceding expression.
@@ -341,10 +341,10 @@ void block(Parser *p)
     invalid_token(p->current);
 }
 
-bool list(Parser *p, int min_bp)
+LedResult list(Parse *p, int min_bp)
 {
   if (PREC_LIST < min_bp)
-    return true;
+    return LED_STOP;
 
   next(p); // ,
 
@@ -363,10 +363,10 @@ bool list(Parser *p, int min_bp)
   error_out("TODO!\n");
   abort();
 
-  return true;
+  return LED_STOP;
 }
 
-void boolean(Parser *p)
+void boolean(Parse *p)
 {
   Token tok = eat(p);
   bool P;
@@ -378,7 +378,7 @@ void boolean(Parser *p)
   emit_constant(&p->code, tok.line, value_new((int)P, boolean));
 }
 
-void number(Parser *p)
+void number(Parse *p)
 {
   Token tok = eat(p);
   Str n_str = str_copy_slice(tok.slice);
@@ -386,7 +386,7 @@ void number(Parser *p)
   emit_constant(&p->code, tok.line, value_new(n, number));
 }
 
-void metastring(Parser *p)
+void metastring(Parse *p)
 {
   string(p); // Consume STRCONT
   size_t substrs = 1;
@@ -408,20 +408,21 @@ void metastring(Parser *p)
   emit_size_op(&p->code, p->current.line, OP_BUILD_STR, substrs);
 }
 
-void string(Parser *p)
+void string(Parse *p)
 {
   Token tok = eat(p);
   Str str = str_copy_slice(tok.slice);
-  emit_constant(&p->code, tok.line, value_new(str, string));
+
+  emit_constant(&p->code, tok.line, value_new(stringval_new(str), string));
 }
 
-static Local *resolve_local(Parser *p, StrSlice name)
+static Local *resolve_local(Parse *p, StrSlice name)
 {
-  if (p->scope.locals.len == 0)
+  if (p->scope->locals.len == 0)
     return NULL;
 
-  for (size_t i = p->scope.locals.len - 1; i >= 0; i--) {
-    Local *local = &p->scope.locals.data[i];
+  for (size_t i = p->scope->locals.len - 1; i >= 0; i--) {
+    Local *local = &p->scope->locals.data[i];
 
     if (strs_eq(name, local->name))
       return local;
@@ -431,7 +432,7 @@ static Local *resolve_local(Parser *p, StrSlice name)
 }
 
 // x
-void ident(Parser *p)
+void ident(Parse *p)
 {
   Token ident_tok = eat(p);
   StrSlice name = ident_tok.slice;
@@ -460,7 +461,7 @@ void ident(Parser *p)
 
 // An impl of Pratt parsing.
 // Handles prefix, infix, postfix and mixfix expressions
-void expr(Parser *p, int min_bp)
+void expr(Parse *p, int min_bp)
 {
   Token lhs_token = p->current;
   NudRule lhs_rule = parse_rule(lhs_token.type)->nud;
@@ -481,8 +482,8 @@ void expr(Parser *p, int min_bp)
       invalid_token(op_token);
     }
 
-    bool is_no_op = op_rule(p, min_bp);
-    if (is_no_op)
+    LedResult stop = op_rule(p, min_bp);
+    if (stop)
       break; // Precedence is too small or op otherwise cannot be used as a LED
   }
 }
