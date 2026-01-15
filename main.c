@@ -1,4 +1,4 @@
-#include "compiler.h"
+#include "compile.h"
 #include "disassemble.h"
 #include "util.h"
 #include "vm.h"

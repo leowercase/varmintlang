@@ -1,7 +1,7 @@
 #ifndef LANG_PARSING_H
 #define LANG_PARSING_H
 
-#include "compiler.h"
+#include "compile.h"
 #include "lex.h"
 
 #include <stdio.h>
