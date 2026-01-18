@@ -250,7 +250,6 @@ Token lex_token(Lex *lex)
       lex->unmatched_curlies--;
     return token(lex, TK_RCURLY);
 
-  case '+': return token(lex, TK_PLUS);
   case '*': return token(lex, TK_STAR);
   case '/': return token(lex, TK_SLASH);
   case '^': return token(lex, TK_CARET);
@@ -258,32 +257,42 @@ Token lex_token(Lex *lex)
   case '=': return token(lex, TK_EQ);
   case '[': return token(lex, TK_LBRACK);
   case ']': return token(lex, TK_RBRACK);
-  case ';': return token(lex, TK_SEMICOL);
+  case ';': return token(lex, TK_SEMICOLON);
   case ',': return token(lex, TK_COMMA);
 
   case '-':
+    switch (*lex->current) {
+    case '>':
+      next(lex); return token(lex, TK_ARROW);
+    case '-':
+      next(lex); return token(lex, TK_2MINUS);
+    default:
+      return token(lex, TK_MINUS);
+    }
+
+  case '+':
     return token(lex,
-      match(lex, '>') ? TK_ARROW : TK_MINUS);
+        match(lex, '+') ? TK_2PLUS : TK_PLUS);
+
+  case '!':
+    return token(lex,
+        match(lex, '=') ? TK_NEQ : TK_BANG);
+
+  case '<':
+    return token(lex,
+        match(lex, '=') ? TK_LEQ : TK_LT);
+
+  case '>':
+    return token(lex,
+        match(lex, '=') ? TK_GEQ : TK_GT);
+
+  case ':':
+    return token(lex,
+        match(lex, '=') ? TK_ASSIGN : TK_COLON);
 
   case '|':
     if (match(lex, '|'))
       return token(lex, TK_2PIPE);
-
-  case '!':
-    return token(lex,
-      match(lex, '=') ? TK_NEQ : TK_BANG);
-
-  case '<':
-    return token(lex,
-      match(lex, '=') ? TK_LEQ : TK_LT);
-
-  case '>':
-    return token(lex,
-      match(lex, '=') ? TK_GEQ : TK_GT);
-
-  case ':':
-    if (match(lex, '='))
-      return token(lex, TK_ASSIGN);
   }
 
   return error_token(lex, "illegal token");
@@ -303,16 +312,21 @@ const char *tok_cstring(const TokenType type)
   case_(2PIPE)
   case_(EQ) case_(NEQ) case_(LT) case_(GT) case_(LEQ) case_(GEQ)
   case_(ASSIGN)
+  case_(2PLUS) case_(2MINUS)
   case_(LET)
   case_(NOT)
-  case_(AND) case_(OR) case_(ARROW)
+  case_(AND) case_(OR)
+  case_(TRUE) case_(FALSE)
+  case_(IF) case_(ELSE)
+  case_(LOOP) case_(FOR) case_(WHILE)
+  case_(BREAK) case_(CONTINUE)
+  case_(ARROW)
   case_(LPAREN) case_(RPAREN)
   case_(LBRACK) case_(RBRACK)
   case_(LCURLY) case_(RCURLY)
-  case_(SEMICOL) case_(COMMA)
+  case_(COLON) case_(SEMICOLON) case_(COMMA)
   case_(NUMERAL)
   case_(STRCONT) case_(STREND)
-  case_(TRUE) case_(FALSE)
   case_(WORD)
   }
 

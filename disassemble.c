@@ -46,6 +46,14 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   switch (instruction) {
   case_op(NONE)
   case_size_op(CONST, constant)
+  case_(ONE,
+    {
+      const Value one = value_new(1.0, number);
+      printf(" ");
+      print_value(one);
+      printf(ANSI_CYAN);
+      return offset + 1;
+    })
   case_op(NOT)
   case_op(NEGATE)
   case_op(FACTORIAL)
@@ -72,7 +80,9 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   case_op(CHAIN_BINOP)
   case_size_op(GET, size)
   case_size_op(SET, size)
+  case_size_op(DISCARD_SET, size)
   case_op(RESERVE_SLOT)
+  case_op(DUPLICATE)
   case_op(DISCARD)
   case_size_op(DISCARDN, size)
   case_size_op(RETAIN1_DISCARDN, size)

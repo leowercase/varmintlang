@@ -62,6 +62,13 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
       break;
     })
 
+  case OP_ONE:
+    {
+      const Value one = value_new(1.0, number);
+      push(vm, one);
+      break;
+    }
+
   case OP_NOT:    UNARY(value_new((int)is_falsey(operand), boolean))
   case OP_NEGATE: UNARY(__vat_negate(operand))
 
@@ -119,31 +126,37 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
       break;
     })
 
+    // Chains the right hand side of an op to be the left hand of another.
+    // The good ol' switcheroo.
   case OP_CHAIN_BINOP:
     {
-      // The good ol' switcheroo.
       Value rhs = peek(vm);
       bool running = execute_instruction(vm, code);
       push(vm, rhs);
       return running;
     }
 
-  case_size_op(OP_SET, stack_slot,
-    {
-      Value val;
-      val = vm->stack.data[stack_slot] = pop(vm);
-      push(vm, val);
-      break;
-    })
-
   case_size_op(OP_GET, stack_slot,
     {
       push(vm, vm->stack.data[stack_slot]);
       break;
     })
+  case_size_op(OP_SET, stack_slot,
+    {
+      vm->stack.data[stack_slot] = peek(vm);
+      break;
+    })
+  case_size_op(OP_DISCARD_SET, stack_slot,
+    {
+      vm->stack.data[stack_slot] = pop(vm);
+      break;
+    })
 
   case OP_RESERVE_SLOT:
     push(vm, NO_VAL);
+    break;
+  case OP_DUPLICATE:
+    push(vm, peek(vm));
     break;
   case OP_DISCARD:
     pop(vm);

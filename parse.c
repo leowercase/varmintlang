@@ -46,56 +46,68 @@ static Token consume(Parse *p, TokenType expected)
 
 static const ParseRule parse_rules[] =
   {
-/*  token type       NUD         LED        */
-    [TK_EOF]     = { NULL,       no_op      },
-    [TK_ERR]     = { NULL,       NULL       },
+/*  token type         NUD         LED        */
+    [TK_EOF]       = { NULL,       no_op      },
+    [TK_ERR]       = { NULL,       NULL       },
 
-    [TK_PLUS]    = { prefix_op,  infix_op   },
-    [TK_MINUS]   = { prefix_op,  infix_op   },
-    [TK_STAR]    = { NULL,       infix_op   },
-    [TK_SLASH]   = { NULL,       infix_op   },
-    [TK_CARET]   = { NULL,       infix_op   },
-    [TK_PERCENT] = { NULL,       led_op     },
-    [TK_BANG]    = { NULL,       postfix_op },
-    [TK_2PIPE]   = { NULL,       infix_op   },
+    [TK_PLUS]      = { prefix_op,  infix_op   },
+    [TK_MINUS]     = { prefix_op,  infix_op   },
+    [TK_STAR]      = { NULL,       infix_op   },
+    [TK_SLASH]     = { NULL,       infix_op   },
+    [TK_CARET]     = { NULL,       infix_op   },
+    [TK_PERCENT]   = { NULL,       led_op     },
+    [TK_BANG]      = { NULL,       postfix_op },
+    [TK_2PIPE]     = { NULL,       infix_op   },
 
-    [TK_EQ]      = { NULL,       cmp_op     },
-    [TK_NEQ]     = { NULL,       cmp_op     },
-    [TK_LT]      = { NULL,       cmp_op     },
-    [TK_GT]      = { NULL,       cmp_op     },
-    [TK_LEQ]     = { NULL,       cmp_op     },
-    [TK_GEQ]     = { NULL,       cmp_op     },
+    [TK_EQ]        = { NULL,       cmp_op     },
+    [TK_NEQ]       = { NULL,       cmp_op     },
+    [TK_LT]        = { NULL,       cmp_op     },
+    [TK_GT]        = { NULL,       cmp_op     },
+    [TK_LEQ]       = { NULL,       cmp_op     },
+    [TK_GEQ]       = { NULL,       cmp_op     },
 
-    [TK_ASSIGN]  = { NULL,       NULL       },
-    [TK_LET]     = { NULL,       NULL       },
+    [TK_ASSIGN]    = { NULL,       NULL       },
+    [TK_2PLUS]     = { precrement, NULL       },
+    [TK_2MINUS]    = { precrement, NULL       },
+    [TK_LET]       = { NULL,       NULL       },
 
-    [TK_NOT]     = { prefix_op,  NULL       },
-    [TK_AND]     = { NULL,       infix_op   },
-    [TK_OR]      = { NULL,       infix_op   },
+    [TK_NOT]       = { prefix_op,  NULL       },
+    [TK_AND]       = { NULL,       infix_op   },
+    [TK_OR]        = { NULL,       infix_op   },
 
-    [TK_TRUE]    = { boolean,    NULL       },
-    [TK_FALSE]   = { boolean,    NULL       },
+    [TK_IF]        = { NULL,       NULL       },
+    [TK_ELSE]      = { NULL,       NULL       },
 
-    [TK_ARROW]   = { NULL,       infix_op   },
+    [TK_LOOP]      = { NULL,       NULL       },
+    [TK_FOR]       = { NULL,       NULL       },
+    [TK_WHILE]     = { NULL,       NULL       },
+    [TK_BREAK]     = { NULL,       NULL       },
+    [TK_CONTINUE]  = { NULL,       NULL       },
 
-    [TK_LPAREN]  = { grouping,   NULL       },
-    [TK_RPAREN]  = { NULL,       no_op      },
+    [TK_TRUE]      = { boolean,    NULL       },
+    [TK_FALSE]     = { boolean,    NULL       },
 
-    [TK_LCURLY]  = { block,      NULL       },
-    [TK_RCURLY]  = { NULL,       no_op      },
+    [TK_ARROW]     = { NULL,       infix_op   },
 
-    [TK_LBRACK] = { list,       NULL       },
-    [TK_RBRACK] = { NULL,       no_op      },
+    [TK_LPAREN]    = { grouping,   NULL       },
+    [TK_RPAREN]    = { NULL,       no_op      },
 
-    [TK_SEMICOL] = { NULL,       no_op      },
-    [TK_COMMA]   = { NULL,       no_op      },
+    [TK_LCURLY]    = { block,      NULL       },
+    [TK_RCURLY]    = { NULL,       no_op      },
 
-    [TK_NUMERAL] = { number,     NULL       },
+    [TK_LBRACK]    = { list,       NULL       },
+    [TK_RBRACK]    = { NULL,       no_op      },
 
-    [TK_STRCONT] = { metastring, no_op      },
-    [TK_STREND]  = { string,     no_op      },
+    [TK_COLON]     = { NULL,       no_op      },
+    [TK_SEMICOLON] = { NULL,       no_op      },
+    [TK_COMMA]     = { NULL,       no_op      },
 
-    [TK_WORD]    = { ident,      NULL       },
+    [TK_NUMERAL]   = { number,     NULL       },
+
+    [TK_STRCONT]   = { metastring, no_op      },
+    [TK_STREND]    = { string,     no_op      },
+
+    [TK_WORD]      = { ident,      NULL       },
   };
 
 static inline
@@ -116,9 +128,9 @@ typedef struct {
 } BinaryOp;
 
 static const UnaryOp prefix_ops[] = {
-    [TK_PLUS]  = { /* special case */ OP_NONE, PREC_SIGN },
-    [TK_MINUS] = { OP_NEGATE,                  PREC_SIGN },
-    [TK_NOT] =   { OP_NOT,                     PREC_NOT  },
+  [TK_PLUS]  = { /* special case */ OP_NONE, PREC_SIGN },
+  [TK_MINUS] = { OP_NEGATE,                  PREC_SIGN },
+  [TK_NOT] =   { OP_NOT,                     PREC_NOT  },
 };
 
 void prefix_op(Parse *p)
@@ -222,6 +234,15 @@ LedResult led_op(Parse *p, int min_bp)
     return postfix_op(p, min_bp);
 }
 
+static const Opcode cmp_opcodes[] = {
+  [TK_EQ]  = OP_EQ,
+  [TK_NEQ] = OP_NEQ,
+  [TK_LT]  = OP_LT,
+  [TK_LEQ] = OP_LEQ,
+  [TK_GT]  = OP_GT,
+  [TK_GEQ] = OP_GEQ,
+};
+
 // Comparison operators that can be chained.
 // a < b <= c != 0
 LedResult cmp_op(Parse *p, int min_bp)
@@ -230,21 +251,13 @@ LedResult cmp_op(Parse *p, int min_bp)
     return LED_STOP;
 
   Token op_token = eat(p);
-  size_t line = op_token.line;
 
-  const Opcode opcodes[] = {
-    [TK_EQ]  = OP_EQ,
-    [TK_NEQ] = OP_NEQ,
-    [TK_LT]  = OP_LT,
-    [TK_LEQ] = OP_LEQ,
-    [TK_GT]  = OP_GT,
-    [TK_GEQ] = OP_GEQ,
-  };
-  Opcode opcode = opcodes[op_token.type];
+  Opcode opcode = cmp_opcodes[op_token.type];
 
   const int r_bp = (int)PREC_CMP + (int)ASSOC_LEFT;
   expr(p, r_bp); // Parse and emit right operand.
 
+  size_t line = p->current.line;
   // Allow chaining.
   if (is_cmp_token(p->current.type)) {
     // Previous op's rhs becomes next op's lhs!
@@ -331,7 +344,7 @@ void block(Parse *p)
 
   // Consume statements ...;
   size_t statements = 1;
-  for (; match(p, TK_SEMICOL); statements++)
+  for (; match(p, TK_SEMICOLON); statements++)
     stmt(p);
 
   // End scope.
@@ -391,17 +404,19 @@ void number(Parse *p)
 
 void metastring(Parse *p)
 {
-  string(p); // Consume STRCONT
-  size_t substrs = 1;
+  size_t substrs = 0;
 
   for (bool found_end = false; !found_end; substrs++) {
     switch (p->current.type) {
-    case TK_STRCONT:
-      string(p);
-      break;
     case TK_STREND:
-      string(p);
       found_end = true;
+    case TK_STRCONT:
+      if (p->current.slice.len == 0) {
+        // Don't emit empty string constants.
+        next(p);
+        substrs--;
+      }
+      else string(p);
       break;
     default:
       expr(p, PREC_NONE); // \(...)
@@ -434,6 +449,85 @@ static Local *resolve_local(Parse *p, StrSlice name)
   return NULL;
 }
 
+// Increment and decrement.
+// https://en.cppreference.com/w/c/language/operator_incdec.html
+static const Opcode crement_opcodes[] = {
+  [TK_2PLUS]  = OP_ADD,
+  [TK_2MINUS] = OP_SUB,
+};
+
+// ++x; --y
+void precrement(Parse *p)
+{
+  Token op_tok = eat(p),
+        ident_tok = consume(p, TK_WORD);
+
+  StrSlice name = ident_tok.slice;
+
+  Local *local = resolve_local(p, name);
+  if (local == NULL) {
+    error_out("Expecting valid identifier.\n");
+    invalid_token(ident_tok);
+  }
+  emit_size_op(&p->code, ident_tok.line, OP_GET, local->stack_slot);
+
+  Opcode opcode = crement_opcodes[op_tok.type];
+  emit_bytes(&p->code, op_tok.line, 2, OP_ONE, (uint8_t)opcode);
+}
+
+static bool match_mutation(Parse *p, size_t stack_slot)
+{
+  const int r_bp = (int)TK_ASSIGN + (int)ASSOC_RIGHT;
+  Token tok = p->current;
+
+  // x := ...
+  if (match(p, TK_ASSIGN))
+    expr(p, r_bp);
+
+  // Assignment operator syntax.
+  // https://en.cppreference.com/w/c/language/operator_assignment.html#Compound_assignment
+  else if (peek(p).type == TK_ASSIGN) {
+    Opcode opcode;
+
+    if (is_infix_op_token(tok.type))
+      opcode = infix_ops[tok.type].opcode;
+
+    else if (is_cmp_token(tok.type))
+      opcode = cmp_opcodes[tok.type];
+
+    else return false;
+
+    next(p); next(p); // op:=
+
+    emit_size_op(&p->code, tok.line, OP_GET, stack_slot); // identifier lhs
+    expr(p, r_bp);
+    emit_byte(&p->code, tok.line, (uint8_t)opcode);
+  }
+
+  // Postcrement.
+  // x--; y++
+  else if (is_crement_op(tok.type)) {
+    Opcode opcode = crement_opcodes[tok.type];
+
+    next(p); // op
+
+    emit_size_op(&p->code, tok.line, OP_GET, stack_slot); // identifier lhs
+    emit_byte(&p->code, tok.line, OP_DUPLICATE);
+    emit_bytes(&p->code, tok.line, 2, OP_ONE, (uint8_t)opcode);
+
+    // Postcrement operators result in the value before mutation.
+    emit_size_op(&p->code, tok.line, OP_DISCARD_SET, stack_slot);
+    return true;
+  }
+
+  // Nope
+  else return false;
+
+  // Assign the value of the assignment expression to the variable.
+  emit_size_op(&p->code, tok.line, OP_SET, stack_slot);
+  return true;
+}
+
 // x
 void ident(Parse *p)
 {
@@ -446,13 +540,9 @@ void ident(Parse *p)
     invalid_token(ident_tok);
   }
 
-  if (match(p, TK_ASSIGN)) {
+  if (match_mutation(p, local->stack_slot))
     // Assignment!
-    const int r_bp = (int)TK_ASSIGN + (int)ASSOC_RIGHT;
-    expr(p, r_bp);
-    emit_size_op(&p->code, ident_tok.line, OP_SET, local->stack_slot);
     local->initialized = true;
-  }
   else if (local->initialized)
     // Access!
     emit_size_op(&p->code, ident_tok.line, OP_GET, local->stack_slot);

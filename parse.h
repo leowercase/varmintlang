@@ -96,6 +96,7 @@ void boolean(Parse *p);
 void number(Parse *p);
 void metastring(Parse *p);
 void string(Parse *p);
+void precrement(Parse *p);
 void ident(Parse *p);
 
 // Token is valid, but shouldn't be used as LED
