@@ -20,7 +20,7 @@ Str str_fmt(const char *fmt, ...)
     // Error.
     return NULL_STR;
 
-  size_t len = n;
+  size_t len = (size_t)n;
   char *s = malloc(len * sizeof(char) + sizeof('\0'));
   if (s == NULL)
     return NULL_STR;

@@ -38,11 +38,11 @@ void patch_operand(PCode *code, uint8_t *ip, uint16_t operand)
 bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size)
 {
   if (size <= UINT8_MAX)
-    emit_bytes(code, line, 2, opcode, (uint8_t)size);
+    emit_bytes(code, line, 2, (uint8_t)opcode, (uint8_t)size);
 
   else if (size <= UINT16_MAX) {
     uint8_t bytes[2] = uint16_to_8((uint16_t)size);
-    emit_bytes(code, line, 3, opcode + 1, bytes[0], bytes[1]);
+    emit_bytes(code, line, 3, (uint8_t)opcode + 1, bytes[0], bytes[1]);
   }
 
   else

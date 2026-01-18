@@ -30,7 +30,7 @@ static Token token(Lex *lex, TokenType type)
 {
   StrSlice slice;
   slice.s = lex->start;
-  slice.len = lex->current - lex->start;
+  slice.len = (size_t)(lex->current - lex->start);
 
   Token tok = {type, slice, lex->line};
   return tok;

@@ -40,7 +40,7 @@ void repl()
 size_t file_size(FILE *file)
 {
   fseek(file, 0L, SEEK_END);
-  size_t size = ftell(file);
+  size_t size = (size_t)ftell(file);
 
   rewind(file);
 

@@ -126,12 +126,12 @@ void prefix_op(Parse *p)
   Token op_token = eat(p);
   UnaryOp op = prefix_ops[op_token.type];
 
-  int r_bp = op.precedence;
+  int r_bp = (int)op.precedence;
   expr(p, r_bp); // Parse and emit right operand.
 
   // A little optimization; unary + does nothing.
   if (op_token.type != TK_PLUS)
-    emit_byte(&p->code, op_token.line, op.opcode);
+    emit_byte(&p->code, op_token.line, (uint8_t)op.opcode);
 }
 
 static const BinaryOp infix_ops[] = {
@@ -152,16 +152,16 @@ LedResult infix_op(Parse *p, int min_bp)
   Token op_token = p->current;
   BinaryOp op = infix_ops[op_token.type];
 
-  int l_bp = op.precedence;
+  int l_bp = (int)op.precedence;
   if (l_bp < min_bp)
     return LED_STOP;
 
   next(p); // Consume op_token
 
-  int r_bp = l_bp + op.associativity;
+  int r_bp = (int)l_bp + (int)op.associativity;
   expr(p, r_bp); // Parse and emit right operand.
 
-  emit_byte(&p->code, op_token.line, op.opcode);
+  emit_byte(&p->code, op_token.line, (uint8_t)op.opcode);
   return LED_CONTINUE;
 }
 
@@ -181,13 +181,13 @@ LedResult postfix_op(Parse *p, int min_bp)
   Token op_token = p->current;
   UnaryOp op = postfix_ops[op_token.type];
 
-  int l_bp = op.precedence;
+  int l_bp = (int)op.precedence;
   if (l_bp < min_bp)
     return LED_STOP;
 
   next(p); // Consume op_token
 
-  emit_byte(&p->code, op_token.line, op.opcode);
+  emit_byte(&p->code, op_token.line, (uint8_t)op.opcode);
   return LED_CONTINUE;
 }
 
@@ -202,8 +202,11 @@ static bool led_op_is_infix(TokenType op, TokenType next)
     return true; // Next token is not an infix op.
 
   else {
-    int op_bp = infix_ops[op].precedence + infix_ops[op].associativity;
-    int next_bp = infix_ops[next].precedence + infix_ops[next].associativity;
+    int op_bp = (int)infix_ops[op].precedence +
+                (int)infix_ops[op].associativity;
+
+    int next_bp = (int)infix_ops[next].precedence +
+                  (int)infix_ops[next].associativity;
 
     return op_bp < next_bp; // Battle of the binding powers!
   }
@@ -239,24 +242,24 @@ LedResult cmp_op(Parse *p, int min_bp)
   };
   Opcode opcode = opcodes[op_token.type];
 
-  const int r_bp = PREC_CMP + ASSOC_LEFT;
+  const int r_bp = (int)PREC_CMP + (int)ASSOC_LEFT;
   expr(p, r_bp); // Parse and emit right operand.
 
   // Allow chaining.
   if (is_cmp_token(p->current.type)) {
     // Previous op's rhs becomes next op's lhs!
-    emit_byte(&p->code, line, OP_CHAIN_BINOP);
+    emit_byte(&p->code, line, (uint8_t)OP_CHAIN_BINOP);
 
-    emit_byte(&p->code, line, opcode);
+    emit_byte(&p->code, line, (uint8_t)opcode);
 
     cmp_op(p, 0); // Parse and emit chaining operator.
 
     // 1 = 2 = 3
     // 1 = 2 AND 2 = 3
-    emit_byte(&p->code, line, OP_AND);
+    emit_byte(&p->code, line, (uint8_t)OP_AND);
   }
 
-  else emit_byte(&p->code, line, opcode);
+  else emit_byte(&p->code, line, (uint8_t)opcode);
 
   return LED_CONTINUE;
 }
@@ -283,7 +286,7 @@ static void declaration(Parse *p)
 
   bool initialized;
   if (match(p, TK_ASSIGN)) {
-    const int r_bp = PREC_ASSIGN + ASSOC_LEFT;
+    const int r_bp = (int)PREC_ASSIGN + (int)ASSOC_LEFT;
     expr(p, r_bp);
     initialized = true;
   }
@@ -327,7 +330,7 @@ void block(Parse *p)
   stmt(p);
 
   // Consume statements ...;
-  int statements = 1;
+  size_t statements = 1;
   for (; match(p, TK_SEMICOL); statements++)
     stmt(p);
 
@@ -352,7 +355,7 @@ void list(Parse *p)
   expr(p, PREC_NONE);
 
   // Consume list elements ...,
-  int list_len = 1;
+  size_t list_len = 1;
   for (; match(p, TK_COMMA); list_len++) {
     if (parse_rule(p->current.type)->nud == NULL)
       break;
@@ -445,7 +448,7 @@ void ident(Parse *p)
 
   if (match(p, TK_ASSIGN)) {
     // Assignment!
-    const int r_bp = TK_ASSIGN + ASSOC_RIGHT;
+    const int r_bp = (int)TK_ASSIGN + (int)ASSOC_RIGHT;
     expr(p, r_bp);
     emit_size_op(&p->code, ident_tok.line, OP_SET, local->stack_slot);
     local->initialized = true;
