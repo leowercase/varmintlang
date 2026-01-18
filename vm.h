@@ -4,6 +4,6 @@
 #include "ir.h"
 #include "varmint.h"
 
-void run(Varmint *vm, PCode *code);
+void run_code(Varmint *vm, PCode *code);
 
 #endif

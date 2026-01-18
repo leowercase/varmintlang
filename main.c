@@ -1,4 +1,3 @@
-#include "util.h"
 #include "varmint.h"
 
 #include <sysexits.h>
@@ -7,6 +6,13 @@
 
 #include <readline/readline.h>
 #include <readline/history.h>
+
+void run(Varmint *vm, char *source)
+{
+  Value result = varmint_run(vm, source);
+  print_value(result);
+  printf("\n");
+}
 
 void repl()
 {
@@ -21,12 +27,9 @@ void repl()
   for (;;) {
     char *input = readline("> ");
     if (!input) break;
-
     add_history(input);
 
-    Value result = varmint_go(&vm, input);
-    print_value(result);
-    printf("\n");
+    run(&vm, input);
 
     free(input);
   }
@@ -74,9 +77,7 @@ void run_file(const char *filename)
 
   Varmint vm = varmint_start();
 
-  Value result = varmint_go(&vm, source);
-  print_value(result);
-  printf("\n");
+  run(&vm, source);
 
   varmint_free(&vm);
   free(source);

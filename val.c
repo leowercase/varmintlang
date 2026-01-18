@@ -33,18 +33,18 @@ bool is_falsey(Value val)
 
 char *value_type_cstring(ValueType type)
 {
-#define CASE(name) case VAL_##name: return #name;
+#define case_(name) case VAL_##name: return #name;
 
   switch (type) {
   case VAL_no:
     return "no value";
-  CASE(number)
-  CASE(boolean)
-  CASE(string)
-  CASE(list)
+  case_(number)
+  case_(boolean)
+  case_(string)
+  case_(list)
   }
 
-#undef CASE
+#undef case_
 }
 
 Str value_to_str(Value val)
@@ -67,7 +67,7 @@ Str value_to_str(Value val)
     return val.raw.string->str;
   case VAL_list:
     {
-      List *list = &val.raw.list->list;
+      ValueList *list = val.raw.list;
       Str str = str_fmt("[%s", value_to_str(list->data[0]).s);
 
       for (size_t i = 1; i < list->len - 1; i++) {
@@ -105,15 +105,15 @@ void print_value(Value val)
     break;
   case VAL_list:
     {
-      List *list = &val.raw.list->list;
-      printf(ANSI_WHITE "[");
+      ValueList *list = val.raw.list;
+      printf(ANSI_MAGENTA "[");
       for (size_t i = 0; i < list->len; i++)
       {
         print_value(list->data[i]);
         if (i < list->len - 1)
           printf(", ");
       }
-      printf(ANSI_WHITE "]" ANSI_RESET);
+      printf(ANSI_MAGENTA "]" ANSI_RESET);
     }
   }
 }

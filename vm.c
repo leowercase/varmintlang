@@ -38,16 +38,18 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
 
   // Opcode with variable sized operand (8/16-bit)
 #define case_size_op(op_name, operand_ident, stmt) \
-  case op_name: { \
-    uint8_t operand_ident = *vm->ip; \
-    vm->ip++; \
-    stmt; \
-  } \
-  case op_name##16: { \
-    uint16_t operand_ident = uint8_to_16(vm->ip); \
-    vm->ip += 2; \
-    stmt; \
-  }
+  case op_name: \
+    { \
+      uint8_t operand_ident = *vm->ip; \
+      vm->ip++; \
+      stmt; \
+    } \
+  case op_name##16: \
+    { \
+      uint16_t operand_ident = uint8_to_16(vm->ip); \
+      vm->ip += 2; \
+      stmt; \
+    }
 
   switch (instruction) {
   case OP_NONE:
@@ -89,12 +91,20 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
     // Weaves a list.
   case_size_op(OP_BUILD_LIST, len,
     {
-      error_out("TODO!\n");
-      abort();
+      ValueList list = ValueList_with_cap(len);
+      list.len = len;
+
+      for (int i = len - 1; i >= 0; i--)
+        list.data[i] = pop(vm);
+
+      Value val = heaped_value_new(ValueList, list);
+      *val.raw.list = list;
+
+      push(vm, val);
+      break;
     })
 
-  case OP_TO_STR: UNARY(value_new(stringval_new(
-                          value_to_str(operand)), string))
+  case OP_TO_STR: UNARY(string_value_new(value_to_str(operand)))
   case OP_CONCAT: BINARY(__vat_concat(lhs, rhs))
 
     // Stitches together the metastrings emitted by the compiler.
@@ -105,7 +115,7 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
       for (int i = 1; i < metastrs; i++)
         str = str_concat(value_to_str(pop(vm)), str);
 
-      push(vm, value_new(stringval_new(str), string));
+      push(vm, string_value_new(str));
       break;
     })
 
@@ -171,7 +181,7 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
 #undef case_size_op
 }
 
-void run(Varmint *vm, PCode *code)
+void run_code(Varmint *vm, PCode *code)
 {
   vm->ip = code->instruc.data;
 

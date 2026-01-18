@@ -18,15 +18,10 @@
 #endif
 
 #ifndef TYPE_NAME
-#define TYPE_NAME JOIN(DynamicArray_, T)
+#error Oops! Must define the list structure TYPE_NAME.
 #endif
 
 #define METHOD(name) JOIN(TYPE_NAME, name)
-
-typedef struct {
-  size_t len, cap;
-  T *data;
-} TYPE_NAME;
 
 // Lazily initialize a new dynamic array
 static inline

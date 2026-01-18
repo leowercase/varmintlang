@@ -1,6 +1,7 @@
 #ifndef LANG_VAL_H
 #define LANG_VAL_H
 
+#include "dyn_array_header.h"
 #include "str.h"
 #include "util.h"
 
@@ -31,14 +32,23 @@ typedef union {
 
   struct GCData *gc_data; // Accessed by the garbage collector.
 
-  struct StringVal *string;
-  struct ListVal *list;
+  struct StringValue *string;
+  struct ValueList *list;
 } RawValue;
 
 typedef struct {
   ValueType type;
   RawValue raw;
 } Value;
+
+static inline
+Value __value_new(ValueType type, RawValue raw)
+{
+  Value val = {type, raw};
+  return val;
+}
+#define value_new(raw, vat_t) \
+  __value_new(VAL_##vat_t, (RawValue)(raw))
 
 // GC'd values have the same initial sequence, GCData.
 typedef struct GCData {
@@ -47,12 +57,24 @@ typedef struct GCData {
 } GCData;
 
 static inline
-Value __value_new(ValueType type, RawValue raw)
+Value __heaped_value_new(ValueType type, size_t size)
 {
+  RawValue raw;
+  raw.gc_data = (GCData *)malloc(size);
+  if (raw.gc_data == NULL)
+    exit(EX_OSERR);
+
   Value val = {type, raw};
   return val;
 }
-#define value_new(raw, vat_t) __value_new(VAL_##vat_t, (RawValue)(raw))
+#define heaped_value_new(type, vat_t) \
+  __heaped_value_new(VAL_##vat_t, sizeof(type))
+
+static inline
+bool is_heaped_value(ValueType type)
+{
+  return type >= VAL_string;
+}
 
 #define is_type(val, vat_t) ((val).type == VAL_##vat_t)
 
@@ -66,29 +88,27 @@ Value __value_new(ValueType type, RawValue raw)
 static const RawValue EMPTY_RAW_VAL = {0};
 static const Value NO_VAL = {VAL_no, EMPTY_RAW_VAL};
 
-typedef struct StringVal {
+typedef struct StringValue {
   GCData gc_data;
   Str str;
-} StringVal;
+} StringValue;
 
 static inline
-StringVal *stringval_new(Str str)
+Value string_value_new(Str str)
 {
-  StringVal *val = (StringVal *)malloc(sizeof(StringVal));
-  if (val == NULL)
-    exit(EX_OSERR);
-  val->str = str;
+  Value val = heaped_value_new(StringValue, string);
+  val.raw.string->str = str;
   return val;
 }
 
-#define T Value
-#define TYPE_NAME List
-#include "dyn_array.h"
-
-typedef struct ListVal {
+typedef struct ValueList {
   GCData gc_data;
-  List list;
-} ListVal;
+  DYN_ARRAY(Value)
+} ValueList;
+
+#define T Value
+#define TYPE_NAME ValueList
+#include "dyn_array.h"
 
 bool values_eq(Value a, Value b);
 bool is_falsey(Value val);

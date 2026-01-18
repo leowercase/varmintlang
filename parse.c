@@ -84,8 +84,11 @@ static const ParseRule parse_rules[] =
     [TK_LCURLY]  = { block,      NULL       },
     [TK_RCURLY]  = { NULL,       no_op      },
 
+    [TK_LBRACK] = { list,       NULL       },
+    [TK_RBRACK] = { NULL,       no_op      },
+
     [TK_SEMICOL] = { NULL,       no_op      },
-    [TK_COMMA]   = { NULL,       list       },
+    [TK_COMMA]   = { NULL,       no_op      },
 
     [TK_NUMERAL] = { number,     NULL       },
 
@@ -164,7 +167,7 @@ LedResult infix_op(Parse *p, int min_bp)
 
 static inline bool is_prefix_and_infix(TokenType op)
 {
-  // Can add more later.
+  // Can be extended later.
   return op == TK_PLUS || op == TK_MINUS;
 }
 
@@ -299,16 +302,15 @@ static void declaration(Parse *p)
 
 void stmt(Parse *p)
 {
-  const int r_bp = PREC_STATEMENT + ASSOC_RIGHT;
   Token tok = p->current;
 
   // A block is the only place where `let` is allowed.
-  // It is the only pure statement in the language's grammar.
+  // It is the only "pure" statement in the language's grammar.
   if (tok.type == TK_LET)
     declaration(p);
 
-  else if (parse_rule(p->current.type)->nud != NULL)
-    expr(p, r_bp);
+  else if (parse_rule(tok.type)->nud != NULL)
+    expr(p, PREC_NONE);
   else
     emit_constant(&p->code, tok.line, NO_VAL);
 }
@@ -318,9 +320,9 @@ void block(Parse *p)
 {
   next(p); // {
 
+  // Start scope
   p->scope->depth++;
 
-  size_t line = p->current.line;
   // Consume first statement
   stmt(p);
 
@@ -329,41 +331,39 @@ void block(Parse *p)
   for (; match(p, TK_SEMICOL); statements++)
     stmt(p);
 
+  // End scope.
   p->scope->depth--;
   Locals *locals = &p->scope->locals;
   while (locals->len > 0 && Locals_top(locals).depth > p->scope->depth)
     Locals_pop(locals);
 
   // The statement separator ; discards the preceding expression.
-  emit_size_op(&p->code, line, OP_RETAIN1_DISCARDN, statements);
+  emit_size_op(&p->code, p->current.line, OP_RETAIN1_DISCARDN, statements);
 
-  if (!match(p, TK_RCURLY))
+  if (!match(p, TK_RCURLY)) // }
     invalid_token(p->current);
 }
 
-LedResult list(Parse *p, int min_bp)
+void list(Parse *p)
 {
-  if (PREC_LIST < min_bp)
-    return LED_STOP;
+  next(p); // [
 
-  next(p); // ,
+  // Consume first element.
+  expr(p, PREC_NONE);
 
-  const int r_bp = PREC_LIST + ASSOC_RIGHT;
-
-  // NB! One list element has already been consumed
-  size_t list_len;
-  for (list_len = 1; match(p, TK_COMMA); list_len++) {
-    if (parse_rule(p->current.type)->led == no_op)
+  // Consume list elements ...,
+  int list_len = 1;
+  for (; match(p, TK_COMMA); list_len++) {
+    if (parse_rule(p->current.type)->nud == NULL)
       break;
-    expr(p, r_bp);
+
+    expr(p, PREC_NONE);
   }
-  printf("List has len %li\n", list_len);
 
-  emit_byte(&p->code, p->current.line, OP_BUILD_LIST);
-  error_out("TODO!\n");
-  abort();
+  emit_size_op(&p->code, p->current.line, OP_BUILD_LIST, list_len);
 
-  return LED_STOP;
+  if (!match(p, TK_RBRACK)) // ]
+    invalid_token(p->current);
 }
 
 void boolean(Parse *p)
@@ -413,7 +413,7 @@ void string(Parse *p)
   Token tok = eat(p);
   Str str = str_copy_slice(tok.slice);
 
-  emit_constant(&p->code, tok.line, value_new(stringval_new(str), string));
+  emit_constant(&p->code, tok.line, string_value_new(str));
 }
 
 static Local *resolve_local(Parse *p, StrSlice name)

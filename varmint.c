@@ -22,10 +22,12 @@ void varmint_free(Varmint *vm)
   free(vm->stack.data);
 }
 
-Value varmint_go(Varmint *vm, char *source)
+Value varmint_run(Varmint *vm, char *source)
 {
-  // <DEBUG>
+#ifdef VARMINT_DEBUG
   {
+    printf("*** TOKENS ***\n");
+
     Lex l = lex_new(source);
 
     Token tok;
@@ -34,23 +36,22 @@ Value varmint_go(Varmint *vm, char *source)
       printf("%.2li %s `%.*s`\n", tok.line, tok_cstring(tok.type),
           (int)tok.slice.len, tok.slice.s);
     } while (tok.type != TK_EOF);
+
+    printf("\n");
   }
-  // </DEBUG>
+#endif
 
-  Lex lex = lex_new(source);
+  Parse p = init_parse(vm, source);
 
-  Token current = lex_token(&lex);
-  Token lookahead = lex_token(&lex);
+  stmt(&p);
+  emit_byte(&p.code, p.code.lines.len, OP_RETURN);
 
-  PCode code = new_p_code();
-  Parse p = {lex, current, lookahead, code, &vm->current_scope};
-
-  expr(&p, PREC_NONE);
-  emit_byte(&p.code, p.code.lines.len - 1, OP_RETURN);
-
-  // DEBUG
+#ifdef VARMINT_DEBUG
+  printf("*** INSTRUCTIONS ***\n");
   disassemble(&p.code);
+  printf("\n");
+#endif
 
-  run(vm, &p.code);
+  run_code(vm, &p.code);
   return vm->result;
 }

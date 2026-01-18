@@ -33,7 +33,7 @@ void patch_operand(PCode *code, uint8_t *ip, uint16_t operand)
   ip[1] = bytes[1];
 }
 
-// Here we can take make use of the fact that an 8-bit and a 16-bit op
+// We make use of the fact that an 8-bit and a 16-bit op
 // reside next to each other in the enum.
 bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size)
 {

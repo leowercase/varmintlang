@@ -7,7 +7,10 @@
 #include <ctype.h>
 #include <string.h>
 
-// Lexical analysis splits text into lexically meaningful tokens.
+/*
+ * Lexical analysis splits text into lexically meaningful tokens.
+ * https://en.wikipedia.org/wiki/Lexical_analysis
+ */
 
 typedef enum {
   TK_EOF,
@@ -25,6 +28,7 @@ typedef enum {
   TK_TRUE, TK_FALSE,
   TK_ARROW,
   TK_LPAREN, TK_RPAREN,
+  TK_LBRACK, TK_RBRACK,
   TK_LCURLY, TK_RCURLY,
   TK_SEMICOL, TK_COMMA,
   TK_NUMERAL,

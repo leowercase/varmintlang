@@ -23,10 +23,22 @@ typedef struct {
   FnScope *scope;
 } Parse;
 
+static inline
+Parse init_parse(Varmint *vm, char *source)
+{
+  Lex lex = lex_new(source);
+
+  Token current = lex_token(&lex);
+  Token lookahead = lex_token(&lex);
+
+  PCode code = new_p_code();
+
+  Parse p = {lex, current, lookahead, code, &vm->current_scope};
+  return p;
+}
+
 typedef enum {
   PREC_NONE,
-  PREC_STATEMENT, // { let ...; ...; ... }
-  PREC_LIST,      // [..., ...]
   PREC_ASSIGN,    // :=
   PREC_OR,        // or
   PREC_AND,       // and
@@ -79,6 +91,7 @@ void stmt(Parse *p);
 void prefix_op(Parse *p);
 void grouping(Parse *p);
 void block(Parse *p);
+void list(Parse *p);
 void boolean(Parse *p);
 void number(Parse *p);
 void metastring(Parse *p);
@@ -92,7 +105,6 @@ LedResult no_op(Parse *_, int __)
   return LED_STOP;
 }
 
-LedResult list(Parse *p, int min_bp);
 LedResult infix_op(Parse *p, int min_bp);
 LedResult postfix_op(Parse *p, int min_bp);
 LedResult led_op(Parse *p, int min_bp);

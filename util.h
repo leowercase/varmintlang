@@ -32,7 +32,7 @@ static_assert(sizeof(double) == 8 * sizeof(uint8_t), "Expect 64-bit double.");
 #define float64_t double
 
 #define uint8_to_16(uints) \
-  (((uints)[0] << 8) | (uints)[1])
+  (uint16_t)(((uints)[0] << 8) | (uints)[1])
 
 #define uint16_to_8(uint) \
   {((uint) & 0xff00) >> 8, (uint) & 0x00ff}

@@ -1,6 +1,7 @@
 #ifndef LANG_IR_H
 #define LANG_IR_H
 
+#include "dyn_array_header.h"
 #include "util.h"
 #include "val.h"
 
@@ -54,12 +55,16 @@ typedef enum {
 
 static_assert(OP_RETURN <= UINT8_MAX, "Oops! Too many opcodes.");
 
+typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
+
 #define T uint8_t
 #define TYPE_NAME Instructions
 #include "dyn_array.h"
 
 // The line of text a group of bytes come from.
 typedef struct { size_t line, nbytes; } LineBytes;
+
+typedef DYN_ARRAY_STRUCT(LineBytes) LineInfo;
 
 #define T LineBytes
 #define TYPE_NAME LineInfo
@@ -71,6 +76,8 @@ typedef struct { size_t line, nbytes; } LineBytes;
  * https://en.wikipedia.org/wiki/Run-length_encoding
  */
 size_t get_line(LineInfo *l, size_t instruction_idx);
+
+typedef DYN_ARRAY_STRUCT(Value) Constants;
 
 #define T Value
 #define TYPE_NAME Constants
@@ -115,5 +122,33 @@ bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size);
 
 // Emit a code constant.
 void emit_constant(PCode *code, size_t line, Value value);
+
+// Local variable that resides on the stack
+typedef struct {
+  StrSlice name;
+  int depth;
+  bool initialized;
+  size_t stack_slot;
+} Local;
+
+typedef DYN_ARRAY_STRUCT(Local) Locals;
+
+#define T Local
+#define TYPE_NAME Locals
+#include "dyn_array.h"
+
+// Scope of a function
+typedef struct FnScope {
+  Locals locals;
+  int depth;
+  struct FnScope *enclosing_scope;
+} FnScope;
+
+// Stack used for operations.
+typedef DYN_ARRAY_STRUCT(Value) Stack;
+
+#define T Value
+#define TYPE_NAME Stack
+#include "dyn_array.h"
 
 #endif
