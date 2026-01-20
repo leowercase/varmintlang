@@ -23,10 +23,10 @@ Value __vat_negate(Value invertee)
 
 Value __vat_factorial(Value n)
 {
-  float64_t n_raw = typechecked(n, number);
+  float64_t _n = typechecked(n, number);
 
   float64_t f = 1;
-  for (int i = 0; i < n_raw; i++) f *= i;
+  for (int i = 0; i < _n; i++) f *= i;
 
   return value_new(f, number);
 }
@@ -50,18 +50,18 @@ Value __vat_divide(Value dividend, Value divisor)
 
 Value __vat_pow(Value base, Value power)
 {
-  float64_t b = typechecked(base, number),
-            n = typechecked(power, number);
+  float64_t _base = typechecked(base, number),
+            _power = typechecked(power, number);
 
-  return value_new(pow(b, n), number);
+  return value_new(pow(_base, _power), number);
 }
 
 Value __vat_modulo(Value a, Value n)
 {
-  float64_t a_raw = typechecked(a, number),
-            n_raw = typechecked(n, number);
+  float64_t _a = typechecked(a, number),
+            _n = typechecked(n, number);
 
-  return value_new(fmod(a_raw, n_raw), number);
+  return value_new(fmod(_a, _n), number);
 }
 
 Value __vat_and(Value P, Value Q)
@@ -72,39 +72,56 @@ Value __vat_or(Value P, Value Q)
 
 Value __vat_implies(Value P, Value Q)
 {
-  bool p = typechecked(P, boolean),
-       q = typechecked(Q, boolean);
+  bool _P = typechecked(P, boolean),
+       _Q = typechecked(Q, boolean);
 
-  return value_new(!p || q, boolean);
+  return value_new(!_P || _Q, boolean);
 }
 
 Value __vat_less_than(Value a, Value b)
   BINOP_(a, <, b, number, boolean)
 
 Value __vat_less_than_or_eq(Value a, Value b)
-{
-  float64_t a_raw = typechecked(a, number),
-            b_raw = typechecked(a, number);
-
-  return value_new(a_raw < b_raw || a_raw == b_raw, number);
-}
+  BINOP_(a, <=, b, number, boolean)
 
 Value __vat_greater_than(Value a, Value b)
   BINOP_(a, >, b, number, boolean)
 
 Value __vat_greater_than_or_eq(Value a, Value b)
-{
-  float64_t a_raw = typechecked(a, number),
-            b_raw = typechecked(a, number);
-
-  return value_new(a_raw > b_raw || a_raw == b_raw, number);
-}
+  BINOP_(a, >=, b, number, boolean)
 
 Value __vat_concat(Value head, Value tail)
 {
-  StringValue *head_raw = typechecked(head, string),
-              *tail_raw = typechecked(tail, string);
+  StringValue *_head = typechecked(head, string),
+              *_tail = typechecked(tail, string);
 
-  Str result = str_concat(head_raw->str, tail_raw->str);
+  Str result = str_concat(_head->str, _tail->str);
   return string_value_new(result);
+}
+
+Value __vat_get_elem(Value list, Value idx)
+{
+  ValueList *_list = typechecked(list, list);
+  size_t _idx = (size_t)typechecked(idx, number);
+
+  if (_idx >= _list->len)
+    runtime_error(
+        "List index [%li] out of range (list length %li)\n",
+        _idx, _list->len);
+
+  return _list->data[_idx];
+}
+
+Value __vat_set_elem(Value list, Value idx, Value val)
+{
+  ValueList *_list = typechecked(list, list);
+  size_t _idx = (size_t)typechecked(idx, number);
+
+  if (_idx >= _list->len)
+    runtime_error(
+        "List assignment index [%li] out of range (list length %li)\n",
+        _idx, _list->len);
+
+  _list->data[_idx] = val;
+  return val;
 }
