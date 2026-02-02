@@ -1,5 +1,8 @@
+common_flags := -std=c11 -Wall -Wconversion -fsanitize=undefined
+lib_flags := $$(pkg-config --cflags --libs readline libxxhash) -lm
+
 lang : $(wildcard *.c *.h)
-	clang -std=c11 -Wall -Wconversion -O2 -fsanitize=undefined -o lang $(wildcard *.c) -lm -lreadline
+	clang -O2 $(common_flags) $(lib_flags) -o lang $(wildcard *.c)
 
 lang-debug : $(wildcard *.c *.h)
-	clang -std=c11 -Wall -Wconversion -O0 -g -fsanitize=undefined -o lang $(wildcard *.c) -lm -lreadline
+	clang -O0 -g $(common_flags) $(lib_flags) -DVARMINT_DEBUG -o lang $(wildcard *.c)
