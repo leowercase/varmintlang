@@ -1,6 +1,7 @@
 #ifndef LANG_PARSING_H
 #define LANG_PARSING_H
 
+#include "astree.h"
 #include "varmint.h"
 #include "lex.h"
 #include "ir.h"
@@ -8,8 +9,8 @@
 #include <stdio.h>
 
 /*
- * Single pass compilation is parsing & compiling in one step.
- * Expressions are translated into stack-based RPN bytecode.
+ * Expressions are translated into an Abstract Syntax Tree.
+ * The AST is then converted into stack-based RPN bytecode.
  *
  * https://en.wikipedia.org/wiki/Stack_machine#Design
  * https://en.wikipedia.org/wiki/Reverse_Polish_notation
@@ -19,8 +20,6 @@
 typedef struct {
   Lex lex;
   Token current, lookahead;
-  PCode code;
-  FnScope *scope;
 } Parse;
 
 static inline
@@ -31,9 +30,7 @@ Parse init_parse(Varmint *vm, char *source)
   Token current = lex_token(&lex);
   Token lookahead = lex_token(&lex);
 
-  PCode code = new_p_code();
-
-  Parse p = {lex, current, lookahead, code, &vm->current_scope};
+  Parse p = {lex, current, lookahead};
   return p;
 }
 
@@ -42,7 +39,7 @@ typedef enum {
   PREC_ASSIGN,    // :=
   PREC_OR,        // or
   PREC_AND,       // and
-  PREC_I9N,       // -> (implication)
+  PREC_I9N,       // ->
   PREC_CMP,       // = != < > <= >=
   PREC_NOT,       // not
   PREC_TERM,      // + -
@@ -52,6 +49,7 @@ typedef enum {
   PREC_SIGN,      // + -
   PREC_FACTORIAL, // !
   PREC_PERCENT,   // %
+  PREC_SUBSCRIPT, // []
 } Precedence;
 
 typedef enum {
@@ -61,15 +59,10 @@ typedef enum {
 } Associativity;
 
 // Null-denoted parse; preceded by nothing (prefix)
-typedef void (*NudRule)(Parse *p);
-
-typedef enum {
-  LED_CONTINUE = 0,
-  LED_STOP = 1,
-} LedResult;
+typedef TNode *(*NudRule)(Parse *p);
 
 // Left-denoted parse; preceded by something (infix/postfix)
-typedef LedResult (*LedRule)(Parse *p, int min_bp);
+typedef TNode *(*LedRule)(Parse *p, TNode *lhs, int min_bp);
 
 // Internal lookup table for the parser.
 typedef struct {
@@ -82,34 +75,35 @@ ParseRule;
  * Binding power (BP) symbolizes how an operator grabs its operands.
  *
  * One Op to rule them all, One Op to find them;
- * One Op to bring them all and in the darkness "bind" them.
+ * One Op to parse them all and in the darkness "bind" them.
  */
-void expr(Parse *p, int min_bp);
+TNode *expr(Parse *p, int min_bp);
 
-void stmt(Parse *p);
+TNode *stmt(Parse *p);
 
-void prefix_op(Parse *p);
-void grouping(Parse *p);
-void block(Parse *p);
-void list(Parse *p);
-void boolean(Parse *p);
-void number(Parse *p);
-void metastring(Parse *p);
-void string(Parse *p);
-void precrement(Parse *p);
-void ident(Parse *p);
+TNode *prefix_op(Parse *p);
+TNode *grouping(Parse *p);
+TNode *block(Parse *p);
+TNode *list(Parse *p);
+TNode *boolean(Parse *p);
+TNode *number(Parse *p);
+TNode *metastring(Parse *p);
+TNode *string(Parse *p);
+TNode *ident(Parse *p);
+TNode *let(Parse *p);
 
-// Token is valid, but shouldn't be used as LED
-static inline
-LedResult no_op(Parse *_, int __)
+// No parse result from function.
+static inline TNode *no_op(Parse *_, TNode *__, int ___)
 {
-  return LED_STOP;
+  return NULL;
 }
 
-LedResult infix_op(Parse *p, int min_bp);
-LedResult postfix_op(Parse *p, int min_bp);
-LedResult led_op(Parse *p, int min_bp);
-LedResult cmp_op(Parse *p, int min_bp);
+TNode *infix_op(Parse *p, TNode *lhs, int min_bp);
+TNode *postfix_op(Parse *p, TNode *lhs, int min_bp);
+TNode *led_op(Parse *p, TNode *lhs, int min_bp);
+TNode *cmp_op(Parse *p, TNode *lhs, int min_bp);
+TNode *assignage(Parse *p, TNode *lhs, int min_bp);
+TNode *subscript(Parse *p, TNode *lhs, int min_bp);
 
 // Helper function
 static inline

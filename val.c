@@ -1,4 +1,5 @@
 #include "val.h"
+#include "proc.h"
 
 #include <stdio.h>
 
@@ -19,6 +20,9 @@ bool values_eq(Value a, Value b)
         error_out("TODO!\n");
         abort();
       }
+    case VAL_function:
+    case VAL_program:
+      return a.raw.proc == b.raw.proc;
     }
   }
 }
@@ -42,6 +46,8 @@ char *value_type_cstring(ValueType type)
   case_(boolean)
   case_(string)
   case_(list)
+  case_(function)
+  case_(program)
   }
 
 #undef case_
@@ -51,7 +57,7 @@ Str value_to_str(Value val)
 {
   switch (val.type) {
   case VAL_no:
-    abort();
+    return str_from(NULL);
   case VAL_number:
     {
       Str str = str_fmt("%g", val.raw.number);
@@ -62,7 +68,7 @@ Str value_to_str(Value val)
       return str;
     }
   case VAL_boolean:
-    return str_from(val.raw.boolean ? "True" : "False");
+    return val.raw.boolean ? str_from("True") : str_from("False");
   case VAL_string:
     return val.raw.string->str;
   case VAL_list:
@@ -78,6 +84,16 @@ Str value_to_str(Value val)
       str = str_fmt("%s]", str.s);
       return str;
     }
+  case VAL_function:
+    {
+      Str name = val.raw.function->name;
+      if (name.s != NULL)
+        return str_fmt("<fn %.*s>", (int)name.len, name.s);
+      else
+        return str_from("<fn>");
+    }
+  case VAL_program:
+    return str_from("<program>");
   }
 }
 
@@ -107,13 +123,27 @@ void print_value(Value val)
     {
       ValueList *list = val.raw.list;
       printf(ANSI_MAGENTA "[");
-      for (size_t i = 0; i < list->len; i++)
-      {
+      for (size_t i = 0; i < list->len; i++) {
         print_value(list->data[i]);
         if (i < list->len - 1)
           printf(", ");
       }
       printf(ANSI_MAGENTA "]" ANSI_RESET);
+      break;
     }
+  case VAL_function:
+    {
+      Str name = val.raw.function->name;
+      printf(ANSI_GREEN);
+      if (name.s != NULL)
+        printf("<fn %.*s>", (int)name.len, name.s);
+      else
+        printf("<fn>");
+      printf(ANSI_RESET);
+      break;
+    }
+  case VAL_program:
+    printf(ANSI_GREEN "<program>" ANSI_RESET);
+    break;
   }
 }

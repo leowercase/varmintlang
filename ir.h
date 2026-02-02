@@ -1,9 +1,10 @@
 #ifndef LANG_IR_H
 #define LANG_IR_H
 
-#include "dyn_array_header.h"
+#include "generic/dyn_array_header.h"
 #include "util.h"
 #include "val.h"
+#include "op.h"
 
 /*
  * Intermediate representation.
@@ -11,33 +12,14 @@
  */
 
 typedef enum {
-  OP_NONE,
-  OP_CONST,
+/*
+  OP_NOT, ...,
+  OP_ADD, ..., */
+  OP_CONST = NATIVE_OPERATOR_COUNT,
   OP_CONST16,
   OP_ONE,
-  OP_NOT,
-  OP_NEGATE,
-  OP_FACTORIAL,
-  OP_PERCENTAGE, // 100% a useful instruction
-  OP_ADD,
-  OP_SUB,
-  OP_MUL,
-  OP_DIV,
-  OP_POW,
-  OP_MODULO,
-  OP_AND,
-  OP_OR,
-  OP_I9N,
-  OP_EQ,
-  OP_NEQ,
-  OP_LT,
-  OP_GT,
-  OP_LEQ,
-  OP_GEQ,
   OP_BUILD_LIST,
   OP_BUILD_LIST16,
-  OP_TO_STR,
-  OP_CONCAT,
   OP_BUILD_STR,
   OP_BUILD_STR16,
   OP_CHAIN_BINOP,
@@ -62,8 +44,8 @@ static_assert(OP_RETURN <= UINT8_MAX, "Oops! Too many opcodes.");
 typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
 
 #define T uint8_t
-#define TYPE_NAME Instructions
-#include "dyn_array.h"
+#define ARR Instructions
+#include "generic/dyn_array.h"
 
 // The line of text a group of bytes come from.
 typedef struct { size_t line, nbytes; } LineBytes;
@@ -71,8 +53,8 @@ typedef struct { size_t line, nbytes; } LineBytes;
 typedef DYN_ARRAY_STRUCT(LineBytes) LineInfo;
 
 #define T LineBytes
-#define TYPE_NAME LineInfo
-#include "dyn_array.h"
+#define ARR LineInfo
+#include "generic/dyn_array.h"
 
 /*
  * Lines are run-length encoded to save memory.
@@ -84,8 +66,8 @@ size_t get_line(LineInfo *l, size_t instruction_idx);
 typedef DYN_ARRAY_STRUCT(Value) Constants;
 
 #define T Value
-#define TYPE_NAME Constants
-#include "dyn_array.h"
+#define ARR Constants
+#include "generic/dyn_array.h"
 
 typedef struct {
   Constants constants;
@@ -138,8 +120,8 @@ typedef struct {
 typedef DYN_ARRAY_STRUCT(Local) Locals;
 
 #define T Local
-#define TYPE_NAME Locals
-#include "dyn_array.h"
+#define ARR Locals
+#include "generic/dyn_array.h"
 
 // Scope of a function
 typedef struct FnScope {
@@ -152,7 +134,7 @@ typedef struct FnScope {
 typedef DYN_ARRAY_STRUCT(Value) Stack;
 
 #define T Value
-#define TYPE_NAME Stack
-#include "dyn_array.h"
+#define ARR Stack
+#include "generic/dyn_array.h"
 
 #endif

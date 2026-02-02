@@ -1,3 +1,4 @@
+#include "compile.h"
 #include "disassemble.h"
 #include "parse.h"
 #include "varmint.h"
@@ -43,15 +44,26 @@ Value varmint_run(Varmint *vm, char *source)
 
   Parse p = init_parse(vm, source);
 
-  stmt(&p);
-  emit_byte(&p.code, p.code.lines.len, OP_RETURN);
+  TNode *ast = stmt(&p);
+
+#ifdef VARMINT_DEBUG
+  printf("*** AST ***\n");
+  treenode_print(ast);
+  printf("\n\n");
+#endif
+
+  Proc program = compile(ast);
+  treenode_free(ast);
+
+  // TODO
+  return NO_VAL;
 
 #ifdef VARMINT_DEBUG
   printf("*** INSTRUCTIONS ***\n");
-  disassemble(&p.code);
+  disassemble(&program.code);
   printf("\n");
 #endif
 
-  run_code(vm, &p.code);
+  run_proc(vm, &program);
   return vm->result;
 }

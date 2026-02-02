@@ -39,4 +39,9 @@ static_assert(sizeof(double) == 8 * sizeof(uint8_t), "Expect 64-bit double.");
   (uint8_t)((uint) & 0x00ff), \
 }
 
+// Modulo is hecka slow (on modern computers).
+// Bitwise AND on the other hand...
+// a mod n = a & (n-1), ∃m∈ℕ(a = 2^m)
+#define mod_2(a, n) ((a) & (n - 1))
+
 #endif

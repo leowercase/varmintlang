@@ -43,17 +43,7 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
 
 #define case_op(name) case_(name, return offset + 1)
 
-  switch (instruction) {
-  case_op(NONE)
-  case_size_op(CONST, constant)
-  case_(ONE,
-    {
-      const Value one = value_new(1.0, number);
-      printf(" ");
-      print_value(one);
-      printf(ANSI_CYAN);
-      return offset + 1;
-    })
+  switch ((int)instruction) {
   case_op(NOT)
   case_op(NEGATE)
   case_op(FACTORIAL)
@@ -73,9 +63,17 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   case_op(GT)
   case_op(LEQ)
   case_op(GEQ)
-  case_size_op(BUILD_LIST, size)
-  case_op(TO_STR)
   case_op(CONCAT)
+  case_size_op(CONST, constant)
+  case_(ONE,
+    {
+      const Value one = value_new(1.0, number);
+      printf(" ");
+      print_value(one);
+      printf(ANSI_CYAN);
+      return offset + 1;
+    })
+  case_size_op(BUILD_LIST, size)
   case_size_op(BUILD_STR, size)
   case_op(CHAIN_BINOP)
   case_size_op(GET, size)
@@ -88,6 +86,8 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   case_size_op(RETAIN1_DISCARDN, size)
   case_op(RETURN)
   }
+
+  abort(); // Unreachable!
 
 #undef case_
 #undef case_8

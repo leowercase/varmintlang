@@ -1,7 +1,7 @@
 #ifndef LANG_VAL_H
 #define LANG_VAL_H
 
-#include "dyn_array_header.h"
+#include "generic/dyn_array_header.h"
 #include "str.h"
 #include "util.h"
 
@@ -24,6 +24,7 @@ typedef enum {
   // GC'd values
   VAL_string,
   VAL_list,
+  VAL_function, VAL_program,
 } ValueType;
 
 typedef union {
@@ -34,6 +35,8 @@ typedef union {
 
   struct StringValue *string;
   struct ValueList *list;
+
+  struct Proc *proc, *function, *program;
 } RawValue;
 
 typedef struct {
@@ -107,8 +110,8 @@ typedef struct ValueList {
 } ValueList;
 
 #define T Value
-#define TYPE_NAME ValueList
-#include "dyn_array.h"
+#define ARR ValueList
+#include "generic/dyn_array.h"
 
 bool values_eq(Value a, Value b);
 bool is_falsey(Value val);

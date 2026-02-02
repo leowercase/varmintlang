@@ -20,6 +20,6 @@ void varmint_free(Varmint *vm);
 Value varmint_run(Varmint *vm, char *source);
 
 // Controls debug output.
-#define VARMINT_DEBUG
+//#define VARMINT_DEBUG
 
 #endif

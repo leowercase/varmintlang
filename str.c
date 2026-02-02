@@ -4,6 +4,15 @@
 #include <stdio.h>
 #include <string.h>
 
+// https://github.com/Cyan4973/xxHash
+#include <xxhash.h>
+
+// Return the 64-bit hash of a string.
+uint64_t str_hash(Str str)
+{
+  return XXH3_64bits(str.s, str.len);
+}
+
 // Format strings just like sprintf et al., except retaining sanity
 Str str_fmt(const char *fmt, ...)
 {
@@ -57,15 +66,14 @@ Str str_concat(Str head, Str tail)
   return catted;
 }
 
-Str str_copy_slice(StrSlice slice)
+Str str_from_slice(StrSlice slice)
 {
   char *cstring = malloc(slice.len * sizeof(char) + sizeof('\0'));
 
   memcpy(cstring, slice.s, slice.len);
   cstring[slice.len] = '\0';
 
-  Str copy = {cstring, slice.len};
-  return copy;
+  return str_new(cstring, slice.len);
 }
 
 // Compare strings.

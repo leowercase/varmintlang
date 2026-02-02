@@ -18,7 +18,7 @@ static inline Value peek(Varmint *vm)
   return Stack_top(&vm->stack);
 }
 
-static inline bool execute_instruction(Varmint *vm, PCode *code)
+static inline bool execute_instruction(Varmint *vm, Proc *proc)
 {
   Opcode instruction = *(vm->ip++);
 
@@ -51,13 +51,38 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
       stmt; \
     }
 
-  switch (instruction) {
-  case OP_NONE:
-    abort(); // Unreachable
+  switch ((int)instruction) {
+  case OP_NOT:    UNARY(value_new((int)is_falsey(operand), boolean))
+  case OP_NEGATE: UNARY(_vm_negate(operand))
+
+  case OP_FACTORIAL:  UNARY(_vm_factorial(operand))
+  case OP_PERCENTAGE: UNARY(_vm_percentage(operand))
+
+  case OP_ADD: BINARY(_vm_add(lhs, rhs))
+  case OP_SUB: BINARY(_vm_subtract(lhs, rhs))
+  case OP_MUL: BINARY(_vm_multiply(lhs, rhs))
+  case OP_DIV: BINARY(_vm_divide(lhs, rhs))
+
+  case OP_POW:    BINARY(_vm_pow(lhs, rhs))
+  case OP_MODULO: BINARY(_vm_modulo(lhs, rhs))
+
+  case OP_AND: BINARY(_vm_and(lhs, rhs))
+  case OP_OR:  BINARY(_vm_or(lhs, rhs))
+  case OP_I9N: BINARY(_vm_implies(lhs, rhs))
+
+  case OP_EQ:  BINARY(value_new((int)values_eq(lhs, rhs), boolean))
+  case OP_NEQ: BINARY(value_new((int)!values_eq(lhs, rhs), boolean))
+
+  case OP_LT:  BINARY(_vm_less_than(lhs, rhs))
+  case OP_GT:  BINARY(_vm_greater_than(lhs, rhs))
+  case OP_LEQ: BINARY(_vm_less_than_or_eq(lhs, rhs))
+  case OP_GEQ: BINARY(_vm_greater_than_or_eq(lhs, rhs))
+
+  case OP_CONCAT: BINARY(_vm_concat(lhs, rhs))
 
   case_size_op(OP_CONST, idx,
     {
-      Value constant = code->constants.data[idx];
+      Value constant = proc->code.constants.data[idx];
       push(vm, constant);
       break;
     })
@@ -68,32 +93,6 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
       push(vm, one);
       break;
     }
-
-  case OP_NOT:    UNARY(value_new((int)is_falsey(operand), boolean))
-  case OP_NEGATE: UNARY(__vat_negate(operand))
-
-  case OP_FACTORIAL:  UNARY(__vat_factorial(operand))
-  case OP_PERCENTAGE: UNARY(__vat_percentage(operand))
-
-  case OP_ADD: BINARY(__vat_add(lhs, rhs))
-  case OP_SUB: BINARY(__vat_subtract(lhs, rhs))
-  case OP_MUL: BINARY(__vat_multiply(lhs, rhs))
-  case OP_DIV: BINARY(__vat_divide(lhs, rhs))
-
-  case OP_POW:    BINARY(__vat_pow(lhs, rhs))
-  case OP_MODULO: BINARY(__vat_modulo(lhs, rhs))
-
-  case OP_AND: BINARY(__vat_and(lhs, rhs))
-  case OP_OR:  BINARY(__vat_or(lhs, rhs))
-  case OP_I9N: BINARY(__vat_implies(lhs, rhs))
-
-  case OP_EQ:  BINARY(value_new((int)values_eq(lhs, rhs), boolean))
-  case OP_NEQ: BINARY(value_new((int)!values_eq(lhs, rhs), boolean))
-
-  case OP_LT:  BINARY(__vat_less_than(lhs, rhs))
-  case OP_GT:  BINARY(__vat_greater_than(lhs, rhs))
-  case OP_LEQ: BINARY(__vat_less_than_or_eq(lhs, rhs))
-  case OP_GEQ: BINARY(__vat_greater_than_or_eq(lhs, rhs))
 
     // Weaves a list.
   case_size_op(OP_BUILD_LIST, len,
@@ -110,9 +109,6 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
       push(vm, val);
       break;
     })
-
-  case OP_TO_STR: UNARY(string_value_new(value_to_str(operand)))
-  case OP_CONCAT: BINARY(__vat_concat(lhs, rhs))
 
     // Stitches together the metastrings emitted by the compiler.
   case_size_op(OP_BUILD_STR, metastrs,
@@ -131,7 +127,7 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
   case OP_CHAIN_BINOP:
     {
       Value rhs = peek(vm);
-      bool running = execute_instruction(vm, code);
+      bool running = execute_instruction(vm, proc);
       push(vm, rhs);
       return running;
     }
@@ -185,6 +181,9 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
         vm->stack.len == 0 ? NO_VAL : peek(vm);
       return false;
     }
+
+  default:
+    abort(); // Unreachable.
   }
 
   return true;
@@ -194,12 +193,12 @@ static inline bool execute_instruction(Varmint *vm, PCode *code)
 #undef case_size_op
 }
 
-void run_code(Varmint *vm, PCode *code)
+void run_proc(Varmint *vm, Proc *proc)
 {
-  vm->ip = code->instruc.data;
+  vm->ip = proc->code.instruc.data;
 
   bool running;
   do
-    running = execute_instruction(vm, code);
+    running = execute_instruction(vm, proc);
   while (running);
 }

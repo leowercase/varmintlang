@@ -3,7 +3,8 @@
 
 #include "ir.h"
 #include "varmint.h"
+#include "proc.h"
 
-void run_code(Varmint *vm, PCode *code);
+void run_proc(Varmint *vm, Proc *proc);
 
 #endif

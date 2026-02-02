@@ -11,17 +11,17 @@
 
 #define BINOP(a, op, b, vat_t) BINOP_(a, op, b, vat_t, vat_t)
 
-Value __vat_not(Value P)
+Value _vm_not(Value P)
 {
   return value_new(!typechecked(P, boolean), boolean);
 }
 
-Value __vat_negate(Value invertee)
+Value _vm_negate(Value invertee)
 {
   return value_new(-typechecked(invertee, number), number);
 }
 
-Value __vat_factorial(Value n)
+Value _vm_factorial(Value n)
 {
   float64_t _n = typechecked(n, number);
 
@@ -31,24 +31,24 @@ Value __vat_factorial(Value n)
   return value_new(f, number);
 }
 
-Value __vat_percentage(Value p)
+Value _vm_percentage(Value p)
 {
   return value_new(typechecked(p, number) * 0.01, number);
 }
 
-Value __vat_add(Value augend, Value addend)
+Value _vm_add(Value augend, Value addend)
   BINOP(augend, +, addend, number)
 
-Value __vat_subtract(Value subtrahend, Value minuend)
+Value _vm_subtract(Value subtrahend, Value minuend)
   BINOP(subtrahend, -, minuend, number)
 
-Value __vat_multiply(Value multiplier, Value multiplicand)
+Value _vm_multiply(Value multiplier, Value multiplicand)
   BINOP(multiplier, *, multiplicand, number)
 
-Value __vat_divide(Value dividend, Value divisor)
+Value _vm_divide(Value dividend, Value divisor)
   BINOP(dividend, /, divisor, number)
 
-Value __vat_pow(Value base, Value power)
+Value _vm_pow(Value base, Value power)
 {
   float64_t _base = typechecked(base, number),
             _power = typechecked(power, number);
@@ -56,7 +56,7 @@ Value __vat_pow(Value base, Value power)
   return value_new(pow(_base, _power), number);
 }
 
-Value __vat_modulo(Value a, Value n)
+Value _vm_modulo(Value a, Value n)
 {
   float64_t _a = typechecked(a, number),
             _n = typechecked(n, number);
@@ -64,13 +64,13 @@ Value __vat_modulo(Value a, Value n)
   return value_new(fmod(_a, _n), number);
 }
 
-Value __vat_and(Value P, Value Q)
+Value _vm_and(Value P, Value Q)
   BINOP(P, &&, Q, boolean)
 
-Value __vat_or(Value P, Value Q)
+Value _vm_or(Value P, Value Q)
   BINOP(P, ||, Q, boolean)
 
-Value __vat_implies(Value P, Value Q)
+Value _vm_implies(Value P, Value Q)
 {
   bool _P = typechecked(P, boolean),
        _Q = typechecked(Q, boolean);
@@ -78,19 +78,19 @@ Value __vat_implies(Value P, Value Q)
   return value_new(!_P || _Q, boolean);
 }
 
-Value __vat_less_than(Value a, Value b)
+Value _vm_less_than(Value a, Value b)
   BINOP_(a, <, b, number, boolean)
 
-Value __vat_less_than_or_eq(Value a, Value b)
+Value _vm_less_than_or_eq(Value a, Value b)
   BINOP_(a, <=, b, number, boolean)
 
-Value __vat_greater_than(Value a, Value b)
+Value _vm_greater_than(Value a, Value b)
   BINOP_(a, >, b, number, boolean)
 
-Value __vat_greater_than_or_eq(Value a, Value b)
+Value _vm_greater_than_or_eq(Value a, Value b)
   BINOP_(a, >=, b, number, boolean)
 
-Value __vat_concat(Value head, Value tail)
+Value _vm_concat(Value head, Value tail)
 {
   StringValue *_head = typechecked(head, string),
               *_tail = typechecked(tail, string);
@@ -99,7 +99,7 @@ Value __vat_concat(Value head, Value tail)
   return string_value_new(result);
 }
 
-Value __vat_get_elem(Value list, Value idx)
+Value _vm_get_elem(Value list, Value idx)
 {
   ValueList *_list = typechecked(list, list);
   size_t _idx = (size_t)typechecked(idx, number);
@@ -112,7 +112,7 @@ Value __vat_get_elem(Value list, Value idx)
   return _list->data[_idx];
 }
 
-Value __vat_set_elem(Value list, Value idx, Value val)
+Value _vm_set_elem(Value list, Value idx, Value val)
 {
   ValueList *_list = typechecked(list, list);
   size_t _idx = (size_t)typechecked(idx, number);

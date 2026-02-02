@@ -38,7 +38,7 @@ static Token token(Lex *lex, TokenType type)
 
 static Token error_token(Lex *lex, const char *msg)
 {
-  Str err_str = str_from(msg);
+  Str err_str = str_new(msg, strlen(msg));
   Token tok = {TK_ERR, err_str, lex->line};
   return tok;
 }

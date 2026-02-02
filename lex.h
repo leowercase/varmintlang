@@ -96,7 +96,7 @@ TokenType is_keyword(Str str)
   // This could be faster with a trie. Still sufficiently fast though.
 
   for (int i = TK_LET; i < TK_FALSE + 1; i++) {
-    if (strncmp(keywords[i], str.s, str.len) == 0)
+    if (strncmp(keywords[i], str.s, strlen(keywords[i])) == 0)
       return (TokenType)i;
   }
 

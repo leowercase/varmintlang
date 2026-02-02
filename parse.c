@@ -66,10 +66,10 @@ static const ParseRule parse_rules[] =
     [TK_LEQ]       = { NULL,       cmp_op     },
     [TK_GEQ]       = { NULL,       cmp_op     },
 
-    [TK_ASSIGN]    = { NULL,       NULL       },
-    [TK_2PLUS]     = { precrement, NULL       },
-    [TK_2MINUS]    = { precrement, NULL       },
-    [TK_LET]       = { NULL,       NULL       },
+    [TK_ASSIGN]    = { NULL,       assignage  },
+    [TK_2PLUS]     = { NULL,       NULL       },
+    [TK_2MINUS]    = { NULL,       NULL       },
+    [TK_LET]       = { let,        NULL       },
 
     [TK_NOT]       = { prefix_op,  NULL       },
     [TK_AND]       = { NULL,       infix_op   },
@@ -95,7 +95,7 @@ static const ParseRule parse_rules[] =
     [TK_LCURLY]    = { block,      NULL       },
     [TK_RCURLY]    = { NULL,       no_op      },
 
-    [TK_LBRACK]    = { list,       NULL       },
+    [TK_LBRACK]    = { list,       subscript  },
     [TK_RBRACK]    = { NULL,       no_op      },
 
     [TK_COLON]     = { NULL,       no_op      },
@@ -117,33 +117,32 @@ const ParseRule *parse_rule(TokenType type)
 }
 
 typedef struct {
-  Opcode opcode;
+  UnOp type;
   Precedence precedence;
 } UnaryOp;
 
 typedef struct {
-  Opcode opcode;
+  BinOp type;
   Precedence precedence;
   Associativity associativity;
 } BinaryOp;
 
 static const UnaryOp prefix_ops[] = {
-  [TK_PLUS]  = { /* special case */ OP_NONE, PREC_SIGN },
-  [TK_MINUS] = { OP_NEGATE,                  PREC_SIGN },
-  [TK_NOT] =   { OP_NOT,                     PREC_NOT  },
+  [TK_PLUS]  = { OP_POSITE, PREC_SIGN },
+  [TK_MINUS] = { OP_NEGATE, PREC_SIGN },
+  [TK_NOT] =   { OP_NOT,    PREC_NOT  },
 };
 
-void prefix_op(Parse *p)
+TNode *prefix_op(Parse *p)
 {
   Token op_token = eat(p);
   UnaryOp op = prefix_ops[op_token.type];
 
+  // Parse right operand.
   int r_bp = (int)op.precedence;
-  expr(p, r_bp); // Parse and emit right operand.
+  TNode *rhs = expr(p, r_bp);
 
-  // A little optimization; unary + does nothing.
-  if (op_token.type != TK_PLUS)
-    emit_byte(&p->code, op_token.line, (uint8_t)op.opcode);
+  return treenode_op(AST_UNOP, op.type, op_token.line, 1, &rhs);
 }
 
 static const BinaryOp infix_ops[] = {
@@ -159,22 +158,23 @@ static const BinaryOp infix_ops[] = {
   [TK_ARROW]   = { OP_I9N,    PREC_I9N,    ASSOC_LEFT  },
 };
 
-LedResult infix_op(Parse *p, int min_bp)
+TNode *infix_op(Parse *p, TNode *lhs, int min_bp)
 {
   Token op_token = p->current;
   BinaryOp op = infix_ops[op_token.type];
 
   int l_bp = (int)op.precedence;
   if (l_bp < min_bp)
-    return LED_STOP;
+    return NULL;
 
   next(p); // Consume op_token
 
+  // Parse right operand.
   int r_bp = (int)l_bp + (int)op.associativity;
-  expr(p, r_bp); // Parse and emit right operand.
+  TNode *rhs = expr(p, r_bp);
 
-  emit_byte(&p->code, op_token.line, (uint8_t)op.opcode);
-  return LED_CONTINUE;
+  TNode *operands[2] = {lhs, rhs};
+  return treenode_op(AST_BINOP, op.type, op_token.line, 2, operands);
 }
 
 static inline bool is_prefix_and_infix(TokenType op)
@@ -188,19 +188,18 @@ static const UnaryOp postfix_ops[] = {
   [TK_BANG]    = { OP_FACTORIAL,  PREC_FACTORIAL },
 };
 
-LedResult postfix_op(Parse *p, int min_bp)
+TNode *postfix_op(Parse *p, TNode *lhs, int min_bp)
 {
   Token op_token = p->current;
   UnaryOp op = postfix_ops[op_token.type];
 
   int l_bp = (int)op.precedence;
   if (l_bp < min_bp)
-    return LED_STOP;
+    return NULL;
 
   next(p); // Consume op_token
 
-  emit_byte(&p->code, op_token.line, (uint8_t)op.opcode);
-  return LED_CONTINUE;
+  return treenode_op(AST_UNOP, op.type, op_token.line, 1, &lhs);
 }
 
 static bool led_op_is_infix(TokenType op, TokenType next)
@@ -226,15 +225,15 @@ static bool led_op_is_infix(TokenType op, TokenType next)
 
 // LED op tokens of ambiguous fixity.
 // 50% + 3
-LedResult led_op(Parse *p, int min_bp)
+TNode *led_op(Parse *p, TNode *lhs, int min_bp)
 {
   if (led_op_is_infix(p->current.type, peek(p).type))
-    return infix_op(p, min_bp);
+    return infix_op(p, lhs, min_bp);
   else
-    return postfix_op(p, min_bp);
+    return postfix_op(p, lhs, min_bp);
 }
 
-static const Opcode cmp_opcodes[] = {
+static const BinOp cmp_types[] = {
   [TK_EQ]  = OP_EQ,
   [TK_NEQ] = OP_NEQ,
   [TK_LT]  = OP_LT,
@@ -243,318 +242,222 @@ static const Opcode cmp_opcodes[] = {
   [TK_GEQ] = OP_GEQ,
 };
 
-// Comparison operators that can be chained.
-// a < b <= c != 0
-LedResult cmp_op(Parse *p, int min_bp)
+static TNode *cmp_op_chain(Parse *p, TNode *lhs)
 {
-  if (PREC_CMP < min_bp)
-    return LED_STOP;
-
-  Token op_token = eat(p);
-
-  Opcode opcode = cmp_opcodes[op_token.type];
-
-  const int r_bp = (int)PREC_CMP + (int)ASSOC_LEFT;
-  expr(p, r_bp); // Parse and emit right operand.
-
-  size_t line = p->current.line;
-  // Allow chaining.
   if (is_cmp_token(p->current.type)) {
-    // Previous op's rhs becomes next op's lhs!
-    emit_byte(&p->code, line, (uint8_t)OP_CHAIN_BINOP);
+    Token op_token = eat(p);
+    TNode *cmp = treenode_new(AST_CONJUNCT_CMP, op_token.line);
 
-    emit_byte(&p->code, line, (uint8_t)opcode);
+    cmp->op.op_type = (Op)cmp_types[op_token.type];
+    cmp->op.operands[0] = lhs;
 
-    cmp_op(p, 0); // Parse and emit chaining operator.
-
-    // 1 = 2 = 3
-    // 1 = 2 AND 2 = 3
-    emit_byte(&p->code, line, (uint8_t)OP_AND);
+    return cmp_op_chain(p, cmp);
   }
-
-  else emit_byte(&p->code, line, (uint8_t)opcode);
-
-  return LED_CONTINUE;
+  else {
+    const int r_bp = (int)PREC_CMP + (int)ASSOC_LEFT;
+    return expr(p, r_bp);
+  }
 }
 
-void grouping(Parse *p)
+// Comparison operators that can be chained.
+// a < b <= c != 0
+TNode *cmp_op(Parse *p, TNode *lhs, int min_bp)
 {
-  next(p); // (
+  if (PREC_CMP < min_bp)
+    return NULL;
+
+  return cmp_op_chain(p, lhs);
+}
+
+TNode *grouping(Parse *p)
+{
+  size_t line = next(p).line; // (
 
   // Parse (...)
-  expr(p, PREC_NONE);
+  TNode *grouping = treenode_new(AST_GROUPING, line);
+  grouping->expr = expr(p, PREC_NONE);
 
   if (!match(p, TK_RPAREN)) // )
     invalid_token(p->current);
+
+  return grouping;
 }
 
-static void declaration(Parse *p)
+TNode *stmt(Parse *p)
 {
-  next(p); // let
+  TokenType tok = p->current.type;
 
-  Token ident_tok = consume(p, TK_WORD);
-
-  size_t stack_slot =
-    p->code.constants.len == 0 ? 0 : p->code.constants.len;
-
-  bool initialized;
-  if (match(p, TK_ASSIGN)) {
-    const int r_bp = (int)PREC_ASSIGN + (int)ASSOC_LEFT;
-    expr(p, r_bp);
-    initialized = true;
-  }
-  else {
-    emit_constant(&p->code, ident_tok.line, NO_VAL);
-    initialized = false;
-  }
-
-  // Declare local variable.
-  Local local = {ident_tok.slice, p->scope->depth, initialized, stack_slot};
-  Locals_push(&p->scope->locals, local);
-
-  if (stack_slot > MAX_OPERAND_SIZE)
-    runtime_error("Too many locals!");
-}
-
-void stmt(Parse *p)
-{
-  Token tok = p->current;
-
-  // A block is the only place where `let` is allowed.
-  // It is the only "pure" statement in the language's grammar.
-  if (tok.type == TK_LET)
-    declaration(p);
-
-  else if (parse_rule(tok.type)->nud != NULL)
-    expr(p, PREC_NONE);
+  if (parse_rule(tok)->nud == NULL)
+    return NULL;
   else
-    emit_constant(&p->code, tok.line, NO_VAL);
+    return expr(p, PREC_NONE);
 }
 
 // A block is a series of statements.
-void block(Parse *p)
+TNode *block(Parse *p)
 {
-  next(p); // {
-
-  // Start scope
-  p->scope->depth++;
+  size_t line = eat(p).line; // {
 
   // Consume first statement
-  stmt(p);
+  TNode *first_stmt = stmt(p);
+
+  if (!first_stmt)
+    runtime_error("illegal empty block, expect statement");
+
+  NodeList stmts = NodeList_with_cap(1);
+  NodeList_push(&stmts, first_stmt);
 
   // Consume statements ...;
-  size_t statements = 1;
-  for (; match(p, TK_SEMICOLON); statements++)
-    stmt(p);
+  while (match(p, TK_SEMICOLON)) {
+    if (p->current.type == TK_RCURLY) {
+      // Trailing semicolon, no value from block expr.
+      NodeList_push(&stmts, treenode_new(AST_NONE, p->current.line));
+      break;
+    }
 
-  // End scope.
-  p->scope->depth--;
-  Locals *locals = &p->scope->locals;
-  while (locals->len > 0 && Locals_top(locals).depth > p->scope->depth)
-    Locals_pop(locals);
+    TNode *s = stmt(p);
+    if (s == NULL)
+      break;
 
-  // The statement separator ; discards the preceding expression.
-  emit_size_op(&p->code, p->current.line, OP_RETAIN1_DISCARDN, statements);
+    NodeList_push(&stmts, s);
+  }
 
   if (!match(p, TK_RCURLY)) // }
     invalid_token(p->current);
+
+  return treenode_list(AST_BLOCK, line, stmts);
 }
 
-void list(Parse *p)
+TNode *list(Parse *p)
 {
-  next(p); // [
-
-  // Consume first element.
-  expr(p, PREC_NONE);
+  size_t line = next(p).line; // [
+  NodeList elems = NodeList_new();
 
   // Consume list elements ...,
-  size_t list_len = 1;
-  for (; match(p, TK_COMMA); list_len++) {
+  // Allows a trailing comma.
+  do {
     if (parse_rule(p->current.type)->nud == NULL)
       break;
 
-    expr(p, PREC_NONE);
-  }
-
-  emit_size_op(&p->code, p->current.line, OP_BUILD_LIST, list_len);
+    NodeList_push(&elems, expr(p, PREC_NONE));
+  } while (match(p, TK_COMMA));
 
   if (!match(p, TK_RBRACK)) // ]
     invalid_token(p->current);
+
+  return treenode_list(AST_LIST, line, elems);
 }
 
-void boolean(Parse *p)
+TNode *boolean(Parse *p)
 {
-  Token tok = eat(p);
-  bool P;
-  switch (tok.type) {
+  Token booltok = eat(p);
+  int P;
+  switch (booltok.type) {
   case TK_TRUE: P = true; break;
   case TK_FALSE: P = false; break;
   default: abort(); // Unreachable
   }
-  emit_constant(&p->code, tok.line, value_new((int)P, boolean));
+
+  return treenode_constant(value_new(P, boolean), booltok.line);
 }
 
-void number(Parse *p)
+TNode *number(Parse *p)
 {
-  Token tok = eat(p);
-  Str n_str = str_copy_slice(tok.slice);
-  float64_t n = strtod(n_str.s, NULL);
-  emit_constant(&p->code, tok.line, value_new(n, number));
+  Token ntok = eat(p);
+
+  // Copying the slice to NUL-terminated so strtod doesn't parse anything extra
+  Str nstr = str_from_slice(ntok.slice);
+  float64_t n = strtod(nstr.s, NULL);
+  free((void *)nstr.s);
+
+  return treenode_constant(value_new(n, number), ntok.line);
 }
 
-void metastring(Parse *p)
+TNode *metastring(Parse *p)
 {
-  size_t substrs = 0;
+  NodeList metas = NodeList_new();
+  size_t line = p->current.line;
 
-  for (bool found_end = false; !found_end; substrs++) {
+  for (bool found_end = false; !found_end;) {
     switch (p->current.type) {
     case TK_STREND:
       found_end = true;
     case TK_STRCONT:
-      if (p->current.slice.len == 0) {
-        // Don't emit empty string constants.
-        next(p);
-        substrs--;
+      if (p->current.slice.len == 0)
+        next(p); // Skip empty string tokens.
+      else {
+        TNode *s = string(p);
+        NodeList_push(&metas, s);
       }
-      else string(p);
       break;
     default:
-      expr(p, PREC_NONE); // \(...)
+      {
+        TNode *interpd_expr = expr(p, PREC_NONE); // \(...)
+        NodeList_push(&metas, interpd_expr);
+      }
     }
   }
 
-  emit_size_op(&p->code, p->current.line, OP_BUILD_STR, substrs);
+  return treenode_list(AST_METASTRING, line, metas);
 }
 
-void string(Parse *p)
+TNode *string(Parse *p)
 {
-  Token tok = eat(p);
-  Str str = str_copy_slice(tok.slice);
-
-  emit_constant(&p->code, tok.line, string_value_new(str));
-}
-
-static Local *resolve_local(Parse *p, StrSlice name)
-{
-  if (p->scope->locals.len == 0)
-    return NULL;
-
-  for (size_t i = p->scope->locals.len - 1; i >= 0; i--) {
-    Local *local = &p->scope->locals.data[i];
-
-    if (strs_eq(name, local->name))
-      return local;
-  }
-
-  return NULL;
-}
-
-// Increment and decrement.
-// https://en.cppreference.com/w/c/language/operator_incdec.html
-static const Opcode crement_opcodes[] = {
-  [TK_2PLUS]  = OP_ADD,
-  [TK_2MINUS] = OP_SUB,
-};
-
-// ++x; --y
-void precrement(Parse *p)
-{
-  Token op_tok = eat(p),
-        ident_tok = consume(p, TK_WORD);
-
-  StrSlice name = ident_tok.slice;
-
-  Local *local = resolve_local(p, name);
-  if (local == NULL) {
-    error_out("Expecting valid identifier.\n");
-    invalid_token(ident_tok);
-  }
-  emit_size_op(&p->code, ident_tok.line, OP_GET, local->stack_slot);
-
-  Opcode opcode = crement_opcodes[op_tok.type];
-  emit_bytes(&p->code, op_tok.line, 2, OP_ONE, (uint8_t)opcode);
-}
-
-static bool match_mutation(Parse *p, size_t stack_slot)
-{
-  const int r_bp = (int)TK_ASSIGN + (int)ASSOC_RIGHT;
-  Token tok = p->current;
-
-  // x := ...
-  if (match(p, TK_ASSIGN))
-    expr(p, r_bp);
-
-  // Assignment operator syntax.
-  // https://en.cppreference.com/w/c/language/operator_assignment.html#Compound_assignment
-  else if (peek(p).type == TK_ASSIGN) {
-    Opcode opcode;
-
-    if (is_infix_op_token(tok.type))
-      opcode = infix_ops[tok.type].opcode;
-
-    else if (is_cmp_token(tok.type))
-      opcode = cmp_opcodes[tok.type];
-
-    else return false;
-
-    next(p); next(p); // op:=
-
-    emit_size_op(&p->code, tok.line, OP_GET, stack_slot); // identifier lhs
-    expr(p, r_bp);
-    emit_byte(&p->code, tok.line, (uint8_t)opcode);
-  }
-
-  // Postcrement.
-  // x--; y++
-  else if (is_crement_op(tok.type)) {
-    Opcode opcode = crement_opcodes[tok.type];
-
-    next(p); // op
-
-    emit_size_op(&p->code, tok.line, OP_GET, stack_slot); // identifier lhs
-    emit_byte(&p->code, tok.line, OP_DUPLICATE);
-    emit_bytes(&p->code, tok.line, 2, OP_ONE, (uint8_t)opcode);
-
-    // Postcrement operators result in the value before mutation.
-    emit_size_op(&p->code, tok.line, OP_DISCARD_SET, stack_slot);
-    return true;
-  }
-
-  // Nope
-  else return false;
-
-  // Assign the value of the assignment expression to the variable.
-  emit_size_op(&p->code, tok.line, OP_SET, stack_slot);
-  return true;
+  Token strtok = eat(p);
+  Str str = str_from_slice(strtok.slice);
+  return treenode_constant(string_value_new(str), strtok.line);
 }
 
 // x
-void ident(Parse *p)
+TNode *ident(Parse *p)
 {
   Token ident_tok = eat(p);
-  StrSlice name = ident_tok.slice;
+  TNode *ident_node = treenode_new(AST_IDENT, ident_tok.line);
+  ident_node->ident = ident_tok.slice;
+  return ident_node;
+}
 
-  Local *local = resolve_local(p, name);
-  if (local == NULL) {
-    error_out("Expecting valid identifier.\n");
-    invalid_token(ident_tok);
-  }
+TNode *subscript(Parse *p, TNode *lhs, int min_bp)
+{
+  if (PREC_SUBSCRIPT < min_bp)
+    return NULL;
 
-  if (match_mutation(p, local->stack_slot))
-    // Assignment!
-    local->initialized = true;
-  else if (local->initialized)
-    // Access!
-    emit_size_op(&p->code, ident_tok.line, OP_GET, local->stack_slot);
-  else
-    // Whoopsie
-    runtime_error("Invalid access: %.*s is unitialized",
-        (int)name.len, name.s);
+  size_t line = eat(p).line; // [
+  TNode *idx = expr(p, PREC_NONE);
+  consume(p, TK_RBRACK); // ]
+
+  TNode *operands[2] = {lhs, idx};
+  return treenode_op(AST_SUBSCRIPT, OP_NONE, line, 2, operands);
+}
+
+TNode *assignage(Parse *p, TNode *lhs, int min_bp)
+{
+  if (PREC_ASSIGN < min_bp)
+    return NULL;
+
+  size_t line = eat(p).line; // Consume :=
+
+  // Parse assignment value.
+  const int r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
+  TNode *rhs = expr(p, r_bp);
+
+  TNode *operands[2] = {lhs, rhs};
+  return treenode_op(AST_ASSIGN, OP_NONE, line, 2, operands);
+}
+
+TNode *let(Parse *p)
+{
+  next(p); // let
+  Token ident_tok = consume(p, TK_WORD);
+
+  TNode *node = treenode_new(AST_LET, ident_tok.line);
+  node->ident = ident_tok.slice;
+  return node;
 }
 
 // An impl of Pratt parsing.
 // Handles prefix, infix, postfix and mixfix expressions
-void expr(Parse *p, int min_bp)
+TNode *expr(Parse *p, int min_bp)
 {
   Token lhs_token = p->current;
   NudRule lhs_rule = parse_rule(lhs_token.type)->nud;
@@ -564,7 +467,7 @@ void expr(Parse *p, int min_bp)
     invalid_token(lhs_token);
   }
 
-  lhs_rule(p);
+  TNode *lhs = lhs_rule(p);
 
   for (;;) {
     Token op_token = p->current;
@@ -575,8 +478,12 @@ void expr(Parse *p, int min_bp)
       invalid_token(op_token);
     }
 
-    LedResult stop = op_rule(p, min_bp);
-    if (stop)
+    TNode *op_result = op_rule(p, lhs, min_bp);
+    if (op_result == NULL)
       break; // Precedence is too small or op otherwise cannot be used as a LED
+
+    lhs = op_result;
   }
+
+  return lhs;
 }
