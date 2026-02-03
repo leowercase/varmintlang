@@ -6,6 +6,7 @@
       gnumake
       pkg-config
       valgrind
+      bear
     ];
     buildInputs = with pkgs; [
       readline.dev
