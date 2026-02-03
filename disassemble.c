@@ -87,7 +87,7 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   case_op(RETURN)
   }
 
-  abort(); // Unreachable!
+  unreachable();
 
 #undef case_
 #undef case_8

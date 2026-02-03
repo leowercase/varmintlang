@@ -36,6 +36,8 @@ typedef enum {
   OP_GT,
   OP_LEQ,
   OP_GEQ,
+  OP_IN,
+  OP_NOTIN,
   OP_CONCAT,
 } BinOp;
 
@@ -43,6 +45,6 @@ static
 const size_t NATIVE_OPERATOR_COUNT = (int)OP_CONCAT + 1;
 
 static
-const size_t OP_NONE = NATIVE_OPERATOR_COUNT;
+const Op OP_NONE = (Op)NATIVE_OPERATOR_COUNT;
 
 #endif

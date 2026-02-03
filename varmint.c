@@ -53,7 +53,6 @@ Value varmint_run(Varmint *vm, char *source)
 #endif
 
   Proc program = compile(ast);
-  treenode_free(ast);
 
   // TODO
   return NO_VAL;

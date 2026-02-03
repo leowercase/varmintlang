@@ -8,8 +8,7 @@ bool values_eq(Value a, Value b)
   if (a.type != b.type) return false;
   else {
     switch (a.type) {
-    case VAL_no:
-      abort(); // Unreachable, if all is well.
+    case VAL_no: unreachable();
     case VAL_number:
       return a.raw.number == b.raw.number;
     case VAL_boolean:

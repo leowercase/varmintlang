@@ -21,6 +21,7 @@ const Str str_new(const char *s, const size_t len)
   return str;
 }
 
+// Create Str from string literal.
 #define str_from(s) (str_new(s, sizeof(s) / sizeof(char) - 1))
 
 static const Str NULL_STR = {NULL, 0};

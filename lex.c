@@ -254,7 +254,6 @@ Token lex_token(Lex *lex)
   case '/': return token(lex, TK_SLASH);
   case '^': return token(lex, TK_CARET);
   case '%': return token(lex, TK_PERCENT);
-  case '=': return token(lex, TK_EQ);
   case '[': return token(lex, TK_LBRACK);
   case ']': return token(lex, TK_RBRACK);
   case ';': return token(lex, TK_SEMICOLON);
@@ -273,6 +272,10 @@ Token lex_token(Lex *lex)
   case '+':
     return token(lex,
         match(lex, '+') ? TK_2PLUS : TK_PLUS);
+
+  case '=':
+    return token(lex,
+        match(lex, '>') ? TK_MAPS_TO : TK_EQ);
 
   case '!':
     return token(lex,
@@ -316,11 +319,14 @@ const char *tok_cstring(const TokenType type)
   case_(LET)
   case_(NOT)
   case_(AND) case_(OR)
-  case_(TRUE) case_(FALSE)
-  case_(IF) case_(ELSE)
+  case_(IN) case_(NOTIN)
+  case_(IF) case_(ELSE) case_(ELIF)
   case_(LOOP) case_(FOR) case_(WHILE)
   case_(BREAK) case_(CONTINUE)
+  case_(TRUE) case_(FALSE)
+  case_(MOD)
   case_(ARROW)
+  case_(MAPS_TO)
   case_(LPAREN) case_(RPAREN)
   case_(LBRACK) case_(RBRACK)
   case_(LCURLY) case_(RCURLY)

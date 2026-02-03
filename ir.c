@@ -77,5 +77,5 @@ size_t get_line(LineInfo *lines, size_t offset)
 
     offset -= l.nbytes;
   };
-  abort(); // Unreachable, assuming well-formed line info
+  unreachable(); // Unreachable, assuming well-formed line info
 }

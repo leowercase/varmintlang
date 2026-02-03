@@ -29,14 +29,21 @@ TNode *treenode_constant(Value val, size_t line)
   return val_node;
 }
 
-TNode *treenode_op(AST_T type, Op op_type, size_t line,
+TNode *treenode_op(AST_T type, size_t line,
     size_t n, TNode *operands[n])
 {
-  TNode *node = treenode_new_pad(type, line, sizeof(TNode *) * n);
-  node->op.op_type = op_type;
+  TNode *op_node = treenode_new_pad(type, line, sizeof(TNode *) * n);
+  memcpy(op_node->operands, operands, sizeof(TNode *) * n);
+  return op_node;
+}
 
-  memcpy(node->op.operands, operands, sizeof(TNode *) * n);
-  return node;
+// Helper.
+TNode *treenode_op_t(AST_T type, Op op_type, size_t line,
+    size_t n, TNode *operands[n])
+{
+  TNode *op_node = treenode_op(type, line, n, operands);
+  op_node->op_type = op_type;
+  return op_node;
 }
 
 TNode *treenode_list(AST_T type, size_t line, NodeList list)
@@ -78,6 +85,8 @@ static const char *binop_cstring(BinOp operator)
   case OP_GT: return ">";
   case OP_LEQ: return "⩽";
   case OP_GEQ: return "⩾";
+  case OP_IN: return "∈";
+  case OP_NOTIN: return "∉";
   case OP_CONCAT: return "||";
   }
 }
@@ -104,6 +113,42 @@ static void print_op(const char *op, TNode *operands[], size_t operand_count)
   print_list(" ", " ", ")", operands, operand_count);
 }
 
+static void print_ctrl_construct(const char *name, TNode *node)
+{
+  printf("(%s ", name);
+  treenode_print(node->ctrl_construct.head);
+  printf(": ");
+  treenode_print(node->ctrl_construct.body);
+  printf(")");
+}
+
+static void print_for(TNode *node)
+{
+  printf("(for %.*s ∈ ", (int)node->for_loop.ident.len, node->for_loop.ident.s);
+  treenode_print(node->for_loop.in);
+  printf(": ");
+  treenode_print(node->for_loop.body);
+  printf(")");
+}
+
+static void print_flow_control(int breaks, bool continues)
+{
+  printf("(");
+  if (breaks > 0) {
+    printf("break");
+    breaks--;
+    while (breaks > 0) {
+      printf(" break");
+      breaks--;
+    }
+    if (continues)
+      printf(" ");
+  }
+  if (continues)
+    printf("continue");
+  printf(")");
+}
+
 void treenode_print(TNode *node)
 {
   switch (node->type) {
@@ -122,21 +167,18 @@ void treenode_print(TNode *node)
     printf(")");
     break;
   case AST_UNOP:
-    print_op(unop_cstring((UnOp)node->op.op_type), node->op.operands, 1);
+    print_op(unop_cstring((UnOp)node->op_type), node->operands, 1);
     break;
   case AST_BINOP:
-    print_op(binop_cstring((BinOp)node->op.op_type), node->op.operands, 2);
+    print_op(binop_cstring((BinOp)node->op_type), node->operands, 2);
     break;
   case AST_CONJUNCT_CMP:
     printf("(" ANSI_RED "%s" ANSI_YELLOW "∧" ANSI_RESET,
-        binop_cstring((BinOp)node->op.op_type));
-    print_list(" ", " ", ")", node->op.operands, 2);
+        binop_cstring((BinOp)node->op_type));
+    print_list(" ", " ", ")", node->operands, 2);
     break;
   case AST_LIST:
     print_list("[", ", ", "]", node->list.data, node->list.len);
-    break;
-  case AST_SUBSCRIPT:
-    print_op("[]", node->op.operands, 2);
     break;
   case AST_BLOCK:
     print_list("{", "; ", "}", node->list.data, node->list.len);
@@ -146,44 +188,37 @@ void treenode_print(TNode *node)
         (int)node->ident.len, node->ident.s);
     break;
   case AST_ASSIGN:
-    print_op(":=", node->op.operands, 2);
+    print_op(":=", node->operands, 2);
+    break;
+  case AST_CALL:
+    print_op("()", node->operands, 2);
+    break;
+  case AST_SUBSCRIPT:
+    print_op("[]", node->operands, 2);
+    break;
+  case AST_MAPLET:
+    print_op("=>", node->operands, 2);
     break;
   case AST_METASTRING:
     print_op("\"\"", node->list.data, node->list.len);
     break;
-  }
-}
-
-void treenode_free(TNode *node)
-{
-  switch (node->type) {
-  case AST_NONE:
-  case AST_CONSTANT:
-  case AST_IDENT:
-  case AST_LET:
+  case AST_IF:
+    print_ctrl_construct("if", node);
     break;
-  case AST_GROUPING:
-    treenode_free(node->expr);
+  case AST_ELSE:
+    print_op("else", node->operands, 2);
     break;
-  case AST_UNOP:
-    treenode_free(node->op.operands[0]);
+  case AST_LOOP:
+    print_ctrl_construct("loop", node);
     break;
-  case AST_BINOP:
-  case AST_CONJUNCT_CMP:
-  case AST_SUBSCRIPT:
-  case AST_ASSIGN:
-    treenode_free(node->op.operands[0]);
-    treenode_free(node->op.operands[1]);
+  case AST_FOR:
+    print_for(node);
     break;
-  case AST_LIST:
-  case AST_BLOCK:
-  case AST_METASTRING:
-    for (size_t i = 0; i < node->list.len; i++)
-      treenode_free(node->list.data[i]);
-    free(node->list.data);
+  case AST_WHILE:
+    print_ctrl_construct("if", node);
+    break;
+  case AST_FLOW_CONTROL:
+    print_flow_control(node->flow_ctrl.breaks, node->flow_ctrl.continues);
     break;
   }
-
-  free(node);
 }
-

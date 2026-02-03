@@ -36,12 +36,15 @@ Parse init_parse(Varmint *vm, char *source)
 
 typedef enum {
   PREC_NONE,
+  PREC_BASE,      // else: elif:
   PREC_ASSIGN,    // :=
+  PREC_MAPLET,    // =>
   PREC_OR,        // or
   PREC_AND,       // and
   PREC_I9N,       // ->
   PREC_CMP,       // = != < > <= >=
   PREC_NOT,       // not
+  PREC_IN,        // in notin
   PREC_TERM,      // + -
   PREC_FACTOR,    // * / %
   PREC_CONCAT,    // ||
@@ -49,7 +52,7 @@ typedef enum {
   PREC_SIGN,      // + -
   PREC_FACTORIAL, // !
   PREC_PERCENT,   // %
-  PREC_SUBSCRIPT, // []
+  PREC_CALL,      // () []
 } Precedence;
 
 typedef enum {
@@ -85,6 +88,11 @@ TNode *prefix_op(Parse *p);
 TNode *grouping(Parse *p);
 TNode *block(Parse *p);
 TNode *list(Parse *p);
+TNode *cond(Parse *p);
+TNode *loop(Parse *p);
+TNode *for_loop(Parse *p);
+TNode *loop_break(Parse *p);
+TNode *loop_cont(Parse *p);
 TNode *boolean(Parse *p);
 TNode *number(Parse *p);
 TNode *metastring(Parse *p);
@@ -102,8 +110,11 @@ TNode *infix_op(Parse *p, TNode *lhs, int min_bp);
 TNode *postfix_op(Parse *p, TNode *lhs, int min_bp);
 TNode *led_op(Parse *p, TNode *lhs, int min_bp);
 TNode *cmp_op(Parse *p, TNode *lhs, int min_bp);
-TNode *assignage(Parse *p, TNode *lhs, int min_bp);
+TNode *else_elif(Parse *p, TNode *lhs, int min_bp);
+TNode *assign(Parse *p, TNode *lhs, int min_bp);
+TNode *invocation(Parse *p, TNode *lhs, int min_bp);
 TNode *subscript(Parse *p, TNode *lhs, int min_bp);
+TNode *maplet(Parse *p, TNode *lhs, int min_bp);
 
 // Helper function
 static inline

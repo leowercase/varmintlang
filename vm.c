@@ -182,8 +182,7 @@ static inline bool execute_instruction(Varmint *vm, Proc *proc)
       return false;
     }
 
-  default:
-    abort(); // Unreachable.
+  default: unreachable();
   }
 
   return true;

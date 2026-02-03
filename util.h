@@ -24,6 +24,12 @@ void error_out(const char *fmt, ...);
 #define runtime_error(...) \
   (error_out(__VA_ARGS__), exit(EX_DATAERR))
 
+// C11 shim.
+// https://en.cppreference.com/w/c/program/unreachable
+#if __STDC_VERSION__ < 202311L
+#define unreachable() abort()
+#endif
+
 // Two passes of macro expansion are required for macro identifiers to expand
 #define CONCAT(a, b) a##b
 #define JOIN(a, b) CONCAT(a, b)

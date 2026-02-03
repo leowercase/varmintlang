@@ -24,15 +24,18 @@ typedef enum {
   TK_2PIPE,
   TK_EQ, TK_NEQ, TK_LT, TK_GT, TK_LEQ, TK_GEQ,
   TK_ASSIGN,
-  TK_2PLUS, TK_2MINUS, 
+  TK_2PLUS, TK_2MINUS,
   TK_LET,
   TK_NOT,
   TK_AND, TK_OR,
-  TK_IF, TK_ELSE,
+  TK_IN, TK_NOTIN,
+  TK_MOD,
+  TK_IF, TK_ELSE, TK_ELIF,
   TK_LOOP, TK_FOR, TK_WHILE,
   TK_BREAK, TK_CONTINUE,
   TK_TRUE, TK_FALSE,
   TK_ARROW,
+  TK_MAPS_TO,
   TK_LPAREN, TK_RPAREN,
   TK_LBRACK, TK_RBRACK,
   TK_LCURLY, TK_RCURLY,
@@ -42,25 +45,12 @@ typedef enum {
   TK_WORD,
 } TokenType;
 
+static const TokenType TK_NEVER = (TokenType)-1;
+
 static inline
 bool is_cmp_token(TokenType type)
 {
   return TK_EQ <= type && type <= TK_LEQ;
-}
-
-static inline
-bool is_infix_op_token(TokenType type)
-{
-  return (TK_PLUS <= type && type <= TK_SLASH)
-    || (TK_CARET <= type && type <= TK_2PIPE)
-    || type == TK_AND || type == TK_OR || type == TK_ARROW;
-}
-
-// Increment/decrement
-static inline
-bool is_crement_op(TokenType type)
-{
-  return type == TK_2PLUS || type == TK_2MINUS;
 }
 
 static inline
@@ -83,8 +73,12 @@ TokenType is_keyword(Str str)
     [TK_NOT]      = "not",
     [TK_AND]      = "and",
     [TK_OR]       = "or",
+    [TK_IN]       = "in",
+    [TK_NOTIN]    = "notin",
+    [TK_MOD]      = "mod",
     [TK_IF]       = "if",
     [TK_ELSE]     = "else",
+    [TK_ELIF]     = "elif",
     [TK_LOOP]     = "loop",
     [TK_FOR]      = "for",
     [TK_WHILE]    = "while",
@@ -96,7 +90,7 @@ TokenType is_keyword(Str str)
   // This could be faster with a trie. Still sufficiently fast though.
 
   for (int i = TK_LET; i < TK_FALSE + 1; i++) {
-    if (strncmp(keywords[i], str.s, strlen(keywords[i])) == 0)
+    if (strncmp(keywords[i], str.s, str.len) == 0)
       return (TokenType)i;
   }
 
