@@ -58,18 +58,14 @@ static const ParseRule parse_rules[] =
     [TK_PERCENT]   = { NULL,       led_op     },
     [TK_BANG]      = { NULL,       postfix_op },
     [TK_2PIPE]     = { NULL,       infix_op   },
-
-    [TK_EQ]        = { NULL,       cmp_op     },
-    [TK_NEQ]       = { NULL,       cmp_op     },
-    [TK_LT]        = { NULL,       cmp_op     },
-    [TK_GT]        = { NULL,       cmp_op     },
-    [TK_LEQ]       = { NULL,       cmp_op     },
-    [TK_GEQ]       = { NULL,       cmp_op     },
+    [TK_EQ]        = { NULL,       infix_op   },
+    [TK_NEQ]       = { NULL,       infix_op   },
+    [TK_LT]        = { NULL,       infix_op   },
+    [TK_GT]        = { NULL,       infix_op   },
+    [TK_LEQ]       = { NULL,       infix_op   },
+    [TK_GEQ]       = { NULL,       infix_op   },
 
     [TK_ASSIGN]    = { NULL,       assign     },
-    [TK_2PLUS]     = { NULL,       NULL       },
-    [TK_2MINUS]    = { NULL,       NULL       },
-
     [TK_LET]       = { let,        NULL       },
 
     [TK_NOT]       = { prefix_op,  NULL       },
@@ -185,6 +181,14 @@ static const BinaryOp infix_ops[] = {
   [TK_CARET]   = { OP_POW,    PREC_POWER,  ASSOC_RIGHT },
   [TK_PERCENT] = { OP_MODULO, PREC_FACTOR, ASSOC_LEFT  },
   [TK_2PIPE]   = { OP_CONCAT, PREC_CONCAT, ASSOC_LEFT  },
+
+  [TK_EQ]      = { OP_EQ,     PREC_CMP,    ASSOC_LEFT  },
+  [TK_NEQ]     = { OP_NEQ,    PREC_CMP,    ASSOC_LEFT  },
+  [TK_LT]      = { OP_LT,     PREC_CMP,    ASSOC_LEFT  },
+  [TK_LEQ]     = { OP_LEQ,    PREC_CMP,    ASSOC_LEFT  },
+  [TK_GT]      = { OP_GT,     PREC_CMP,    ASSOC_LEFT  },
+  [TK_GEQ]     = { OP_GEQ,    PREC_CMP,    ASSOC_LEFT  },
+
   [TK_AND]     = { OP_AND,    PREC_AND,    ASSOC_LEFT  },
   [TK_OR]      = { OP_OR,     PREC_OR,     ASSOC_LEFT  },
   [TK_IN]      = { OP_IN,     PREC_IN,     ASSOC_LEFT  },
@@ -270,45 +274,6 @@ TNode *led_op(Parse *p, TNode *lhs, int min_bp)
     return infix_op(p, lhs, min_bp);
   else
     return postfix_op(p, lhs, min_bp);
-}
-
-static const BinOp cmp_types[] = {
-  [TK_EQ]  = OP_EQ,
-  [TK_NEQ] = OP_NEQ,
-  [TK_LT]  = OP_LT,
-  [TK_LEQ] = OP_LEQ,
-  [TK_GT]  = OP_GT,
-  [TK_GEQ] = OP_GEQ,
-};
-
-static TNode *cmp_op_chain(Parse *p, TNode *lhs)
-{
-  if (is_cmp_token(p->current.type)) {
-    Token op_token = eat(p);
-    Op op_type = (Op)cmp_types[op_token.type];
-
-    TNode *cmp = treenode_op_t(
-        AST_CONJUNCT_CMP, op_type, op_token.line, 1, &lhs);
-    return cmp_op_chain(p, cmp);
-  }
-  else {
-    const int r_bp = (int)PREC_CMP + (int)ASSOC_LEFT;
-    return expr(p, r_bp);
-  }
-}
-
-// Comparison operators that can be chained.
-// a < b <= c != 0
-TNode *cmp_op(Parse *p, TNode *lhs, int min_bp)
-{
-  if (PREC_CMP < min_bp)
-    return NULL;
-
-  // Assignment shorthand.
-  if (peek(p).type == TK_ASSIGN)
-    return assignage(p, lhs, min_bp, cmp_types[p->current.type]);
-
-  return cmp_op_chain(p, lhs);
 }
 
 static TNode *delimited_listing(Parse *p,

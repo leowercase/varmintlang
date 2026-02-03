@@ -250,6 +250,7 @@ Token lex_token(Lex *lex)
       lex->unmatched_curlies--;
     return token(lex, TK_RCURLY);
 
+  case '+': return token(lex, TK_PLUS);
   case '*': return token(lex, TK_STAR);
   case '/': return token(lex, TK_SLASH);
   case '^': return token(lex, TK_CARET);
@@ -260,18 +261,8 @@ Token lex_token(Lex *lex)
   case ',': return token(lex, TK_COMMA);
 
   case '-':
-    switch (*lex->current) {
-    case '>':
-      next(lex); return token(lex, TK_ARROW);
-    case '-':
-      next(lex); return token(lex, TK_2MINUS);
-    default:
-      return token(lex, TK_MINUS);
-    }
-
-  case '+':
     return token(lex,
-        match(lex, '+') ? TK_2PLUS : TK_PLUS);
+        match(lex, '>') ? TK_ARROW : TK_MINUS);
 
   case '=':
     return token(lex,
@@ -315,7 +306,6 @@ const char *tok_cstring(const TokenType type)
   case_(2PIPE)
   case_(EQ) case_(NEQ) case_(LT) case_(GT) case_(LEQ) case_(GEQ)
   case_(ASSIGN)
-  case_(2PLUS) case_(2MINUS)
   case_(LET)
   case_(NOT)
   case_(AND) case_(OR)

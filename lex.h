@@ -24,7 +24,6 @@ typedef enum {
   TK_2PIPE,
   TK_EQ, TK_NEQ, TK_LT, TK_GT, TK_LEQ, TK_GEQ,
   TK_ASSIGN,
-  TK_2PLUS, TK_2MINUS,
   TK_LET,
   TK_NOT,
   TK_AND, TK_OR,
@@ -48,12 +47,6 @@ typedef enum {
 static const TokenType TK_NEVER = (TokenType)-1;
 
 static inline
-bool is_cmp_token(TokenType type)
-{
-  return TK_EQ <= type && type <= TK_LEQ;
-}
-
-static inline
 bool is_ident_beginning(char c)
 {
   return isalpha(c) || c == '_';
@@ -68,31 +61,28 @@ bool is_ident(char c)
 static inline
 TokenType is_keyword(Str str)
 {
-  const char *keywords[] = {
-    [TK_LET]      = "let",
-    [TK_NOT]      = "not",
-    [TK_AND]      = "and",
-    [TK_OR]       = "or",
-    [TK_IN]       = "in",
-    [TK_NOTIN]    = "notin",
-    [TK_MOD]      = "mod",
-    [TK_IF]       = "if",
-    [TK_ELSE]     = "else",
-    [TK_ELIF]     = "elif",
-    [TK_LOOP]     = "loop",
-    [TK_FOR]      = "for",
-    [TK_WHILE]    = "while",
-    [TK_BREAK]    = "break",
-    [TK_CONTINUE] = "continue",
-    [TK_TRUE]     = "True",
-    [TK_FALSE]    = "False",
+  const Str keywords[] = {
+    [TK_LET]      = str_from("let"),
+    [TK_NOT]      = str_from("not"),
+    [TK_AND]      = str_from("and"),
+    [TK_OR]       = str_from("or"),
+    [TK_IN]       = str_from("in"),
+    [TK_NOTIN]    = str_from("notin"),
+    [TK_MOD]      = str_from("mod"),
+    [TK_IF]       = str_from("if"),
+    [TK_ELSE]     = str_from("else"),
+    [TK_ELIF]     = str_from("elif"),
+    [TK_LOOP]     = str_from("loop"),
+    [TK_FOR]      = str_from("for"),
+    [TK_WHILE]    = str_from("while"),
+    [TK_BREAK]    = str_from("break"),
+    [TK_CONTINUE] = str_from("continue"),
+    [TK_TRUE]     = str_from("True"),
+    [TK_FALSE]    = str_from("False"),
   };
   // This could be faster with a trie. Still sufficiently fast though.
-
-  for (int i = TK_LET; i < TK_FALSE + 1; i++) {
-    if (strncmp(keywords[i], str.s, str.len) == 0)
-      return (TokenType)i;
-  }
+  for (int i = TK_LET; i <= TK_FALSE; i++)
+    if (strs_eq(keywords[i], str)) return (TokenType)i;
 
   return (TokenType)false;
 }
