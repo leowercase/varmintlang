@@ -1,4 +1,4 @@
-#include "ir.h"
+#include "pcode.h"
 #include "util.h"
 
 void emit_byte(PCode *code, size_t line, uint8_t byte)

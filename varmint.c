@@ -48,7 +48,7 @@ Value varmint_run(Varmint *vm, char *source)
 
 #ifdef VARMINT_DEBUG
   printf("*** AST ***\n");
-  treenode_print(ast);
+  //treenode_print(ast);
   printf("\n\n");
 #endif
 

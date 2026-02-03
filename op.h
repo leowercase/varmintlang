@@ -8,11 +8,14 @@
  */
 
 // UnOp / BinOp / OP_NONE
-typedef unsigned int Op;
+typedef int Op;
+
+static
+const Op OP_NONE = -1;
 
 typedef enum {
   OP_NOT = 0,
-  OP_POSITE, OP_NEGATE,
+  OP_NEGATE,
   OP_FACTORIAL,
   OP_PERCENTAGE, // 100% a useful op
 } UnOp;
@@ -41,10 +44,19 @@ typedef enum {
   OP_CONCAT,
 } BinOp;
 
-static
-const size_t NATIVE_OPERATOR_COUNT = (int)OP_CONCAT + 1;
+static inline
+bool is_unary_op(Op op)
+{
+  return OP_NOT <= op && op <= OP_PERCENTAGE;
+}
+
+static inline
+bool is_binary_op(Op op)
+{
+  return OP_ADD <= op && op <= OP_CONCAT;
+}
 
 static
-const Op OP_NONE = (Op)NATIVE_OPERATOR_COUNT;
+const size_t NATIVE_OPERATOR_COUNT = (int)OP_CONCAT + 1;
 
 #endif

@@ -65,7 +65,7 @@ static const ParseRule parse_rules[] =
     [TK_LEQ]       = { NULL,       infix_op   },
     [TK_GEQ]       = { NULL,       infix_op   },
 
-    [TK_ASSIGN]    = { NULL,       assign     },
+    [TK_ASSIGN]    = { NULL,       infix_op   },
     [TK_LET]       = { let,        NULL       },
 
     [TK_NOT]       = { prefix_op,  NULL       },
@@ -91,7 +91,7 @@ static const ParseRule parse_rules[] =
     [TK_FALSE]     = { boolean,    NULL       },
 
     [TK_ARROW]     = { NULL,       infix_op   },
-    [TK_MAPS_TO]   = { NULL,       maplet     },
+    [TK_MAPS_TO]   = { NULL,       infix_op   },
 
     [TK_LPAREN]    = { grouping,   invocation },
     [TK_RPAREN]    = { NULL,       no_op      },
@@ -121,26 +121,19 @@ const ParseRule *parse_rule(TokenType type)
 }
 
 typedef struct {
-  UnOp type;
+  AST_T type;
   Precedence precedence;
 } UnaryOp;
 
 typedef struct {
-  BinOp type;
+  AST_T type;
   Precedence precedence;
   Associativity associativity;
 } BinaryOp;
 
-typedef struct {
-  AST_T ast_type;
-  TokenType right_pair;
-  bool allow_trailing_delim;
-} InvocationOp;
-
 static const UnaryOp prefix_ops[] = {
-  [TK_PLUS]  = { OP_POSITE, PREC_SIGN },
-  [TK_MINUS] = { OP_NEGATE, PREC_SIGN },
-  [TK_NOT] =   { OP_NOT,    PREC_NOT  },
+  [TK_MINUS] = { (Op)OP_NEGATE, PREC_SIGN },
+  [TK_NOT] =   { (Op)OP_NOT,    PREC_NOT  },
 };
 
 TNode *prefix_op(Parse *p)
@@ -152,49 +145,62 @@ TNode *prefix_op(Parse *p)
   int r_bp = (int)op.precedence;
   TNode *rhs = expr(p, r_bp);
 
-  return treenode_op_t(AST_UNOP, op.type, op_token.line, 1, &rhs);
+  return treenode_op(op.type, op_token.line, 1, &rhs);
 }
 
+// Allows assignment shorthand +:=
 static TNode *assignage(Parse *p, TNode *lhs, int min_bp, Op op_shorthand)
 {
   if (PREC_ASSIGN < min_bp)
     return NULL;
 
   size_t line = eat(p).line; // op
-  // Allows assignment shorthand op:=
-  if (op_shorthand != OP_NONE)
+  AST_T type;
+  if (op_shorthand != OP_NONE) {
     next(p); // :=
+    type = AST_COMPOUND_ASSIGN;
+  }
+  else type = AST_ASSIGN;
 
   TNode *operands[2];
   operands[0] = lhs;
   const int r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
   operands[1] = expr(p, r_bp);
 
-  return treenode_op_t(AST_ASSIGN, op_shorthand, line, 2, operands);
+  TNode *node = treenode_op(type, line, 2, operands);
+  node->compound_assign_op = op_shorthand;
+  return node;
+}
+
+TNode *assign(Parse *p, TNode *lhs, int min_bp)
+{
+  return assignage(p, lhs, min_bp, OP_NONE);
 }
 
 static const BinaryOp infix_ops[] = {
-  [TK_PLUS]    = { OP_ADD,    PREC_TERM,   ASSOC_LEFT  },
-  [TK_MINUS]   = { OP_SUB,    PREC_TERM,   ASSOC_LEFT  },
-  [TK_STAR]    = { OP_MUL,    PREC_FACTOR, ASSOC_LEFT  },
-  [TK_SLASH]   = { OP_MUL,    PREC_FACTOR, ASSOC_LEFT  },
-  [TK_CARET]   = { OP_POW,    PREC_POWER,  ASSOC_RIGHT },
-  [TK_PERCENT] = { OP_MODULO, PREC_FACTOR, ASSOC_LEFT  },
-  [TK_2PIPE]   = { OP_CONCAT, PREC_CONCAT, ASSOC_LEFT  },
+  [TK_PLUS]    = { (Op)OP_ADD,     PREC_TERM,   ASSOC_LEFT  },
+  [TK_MINUS]   = { (Op)OP_SUB,     PREC_TERM,   ASSOC_LEFT  },
+  [TK_STAR]    = { (Op)OP_MUL,     PREC_FACTOR, ASSOC_LEFT  },
+  [TK_SLASH]   = { (Op)OP_MUL,     PREC_FACTOR, ASSOC_LEFT  },
+  [TK_CARET]   = { (Op)OP_POW,     PREC_POWER,  ASSOC_RIGHT },
+  [TK_PERCENT] = { (Op)OP_MODULO,  PREC_FACTOR, ASSOC_LEFT  },
+  [TK_2PIPE]   = { (Op)OP_CONCAT,  PREC_CONCAT, ASSOC_LEFT  },
 
-  [TK_EQ]      = { OP_EQ,     PREC_CMP,    ASSOC_LEFT  },
-  [TK_NEQ]     = { OP_NEQ,    PREC_CMP,    ASSOC_LEFT  },
-  [TK_LT]      = { OP_LT,     PREC_CMP,    ASSOC_LEFT  },
-  [TK_LEQ]     = { OP_LEQ,    PREC_CMP,    ASSOC_LEFT  },
-  [TK_GT]      = { OP_GT,     PREC_CMP,    ASSOC_LEFT  },
-  [TK_GEQ]     = { OP_GEQ,    PREC_CMP,    ASSOC_LEFT  },
+  [TK_EQ]      = { (Op)OP_EQ,      PREC_CMP,    ASSOC_LEFT  },
+  [TK_NEQ]     = { (Op)OP_NEQ,     PREC_CMP,    ASSOC_LEFT  },
+  [TK_LT]      = { (Op)OP_LT,      PREC_CMP,    ASSOC_LEFT  },
+  [TK_LEQ]     = { (Op)OP_LEQ,     PREC_CMP,    ASSOC_LEFT  },
+  [TK_GT]      = { (Op)OP_GT,      PREC_CMP,    ASSOC_LEFT  },
+  [TK_GEQ]     = { (Op)OP_GEQ,     PREC_CMP,    ASSOC_LEFT  },
 
-  [TK_AND]     = { OP_AND,    PREC_AND,    ASSOC_LEFT  },
-  [TK_OR]      = { OP_OR,     PREC_OR,     ASSOC_LEFT  },
-  [TK_IN]      = { OP_IN,     PREC_IN,     ASSOC_LEFT  },
-  [TK_NOTIN]   = { OP_NOTIN,  PREC_IN,     ASSOC_LEFT  },
-  [TK_MOD]     = { OP_MODULO, PREC_FACTOR, ASSOC_LEFT  },
-  [TK_ARROW]   = { OP_I9N,    PREC_I9N,    ASSOC_LEFT  },
+  [TK_AND]     = { (Op)OP_AND,     PREC_AND,    ASSOC_LEFT  },
+  [TK_OR]      = { (Op)OP_OR,      PREC_OR,     ASSOC_LEFT  },
+  [TK_IN]      = { (Op)OP_IN,      PREC_IN,     ASSOC_LEFT  },
+  [TK_NOTIN]   = { (Op)OP_NOTIN,   PREC_IN,     ASSOC_LEFT  },
+  [TK_MOD]     = { (Op)OP_MODULO,  PREC_FACTOR, ASSOC_LEFT  },
+  [TK_ARROW]   = { (Op)OP_I9N,     PREC_I9N,    ASSOC_LEFT  },
+
+  [TK_MAPS_TO] = { AST_MAPLET,     PREC_MAPLET, ASSOC_RIGHT },
 };
 
 TNode *infix_op(Parse *p, TNode *lhs, int min_bp)
@@ -203,8 +209,11 @@ TNode *infix_op(Parse *p, TNode *lhs, int min_bp)
   BinaryOp op = infix_ops[op_token.type];
 
   // Assignment shorthand
-  if (peek(p).type == TK_ASSIGN)
-    return assignage(p, lhs, min_bp, op.type);
+  if (peek(p).type == TK_ASSIGN) {
+    if (!is_binary_op((Op)op.type))
+      invalid_token(op_token);
+    return assignage(p, lhs, min_bp, (Op)op.type);
+  }
 
   int l_bp = (int)op.precedence;
   if (l_bp < min_bp)
@@ -217,7 +226,7 @@ TNode *infix_op(Parse *p, TNode *lhs, int min_bp)
   TNode *rhs = expr(p, r_bp);
 
   TNode *operands[2] = {lhs, rhs};
-  return treenode_op_t(AST_BINOP, op.type, op_token.line, 2, operands);
+  return treenode_op(op.type, op_token.line, 2, operands);
 }
 
 static inline bool is_prefix_and_infix(TokenType op)
@@ -227,8 +236,8 @@ static inline bool is_prefix_and_infix(TokenType op)
 }
 
 static const UnaryOp postfix_ops[] = {
-  [TK_PERCENT] = { OP_PERCENTAGE, PREC_PERCENT   },
-  [TK_BANG]    = { OP_FACTORIAL,  PREC_FACTORIAL },
+  [TK_PERCENT] = { (Op)OP_PERCENTAGE, PREC_PERCENT   },
+  [TK_BANG]    = { (Op)OP_FACTORIAL,  PREC_FACTORIAL },
 };
 
 TNode *postfix_op(Parse *p, TNode *lhs, int min_bp)
@@ -241,8 +250,7 @@ TNode *postfix_op(Parse *p, TNode *lhs, int min_bp)
     return NULL;
 
   next(p); // Consume op_token
-
-  return treenode_op_t(AST_UNOP, op.type, op_token.line, 1, &lhs);
+  return treenode_op(op.type, op_token.line, 1, &lhs);
 }
 
 static bool led_op_is_infix(TokenType op, TokenType next)
@@ -303,31 +311,40 @@ static TNode *delimited_listing(Parse *p,
   unreachable();
 }
 
-static const InvocationOp invoke_ops[] = {
-  [TK_LPAREN] = { AST_CALL,      TK_RPAREN, false },
-  [TK_LBRACK] = { AST_SUBSCRIPT, TK_RBRACK, true  },
-};
+// list[i]
+TNode *subscript(Parse *p, TNode *lhs, int min_bp)
+{
+  if (PREC_CALL < min_bp)
+    return NULL;
+  size_t line = eat(p).line; // [
 
+  TNode *operands[2];
+  operands[0] = lhs;
+  operands[1] = expr(p, PREC_NONE);
+
+  consume(p, TK_RPAREN); // ]
+  return treenode_op(AST_SUBSCRIPT, line, 2, operands);
+}
+
+// (...)
+TNode *grouping(Parse *p)
+{
+  return delimited_listing(p, AST_GROUPING,
+      TK_LPAREN, TK_COMMA, TK_RPAREN, false);
+}
+
+// f(...)
 TNode *invocation(Parse *p, TNode *lhs, int min_bp)
 {
   if (PREC_CALL < min_bp)
     return NULL;
+  size_t line = p->current.line;
 
-  Token left_pair = p->current;
-  InvocationOp op = invoke_ops[left_pair.type];
+  TNode *operands[2];
+  operands[0] = lhs;
+  operands[1] = grouping(p); // Parse argument list.
 
-  TNode *listing = delimited_listing(p, AST_LIST,
-      left_pair.type, TK_COMMA, op.right_pair,
-      op.allow_trailing_delim);
-
-  TNode *operands[2] = {lhs, listing};
-  return treenode_op(op.ast_type, left_pair.line, 2, operands);
-}
-
-TNode *grouping(Parse *p)
-{
-  return delimited_listing(p, AST_GROUPING,
-      TK_LPAREN, TK_NEVER, TK_RPAREN, false);
+  return treenode_op(AST_CALL, line, 2, operands);
 }
 
 TNode *stmt(Parse *p)
@@ -373,13 +390,14 @@ TNode *block(Parse *p)
   return treenode_list(AST_BLOCK, line, stmts);
 }
 
+// [x, y, z]
 TNode *list(Parse *p)
 {
   return delimited_listing(p, AST_LIST,
       TK_LBRACK, TK_COMMA, TK_RBRACK, true);
 }
 
-static TNode *ctrl_construct_body(Parse *p)
+static TNode *construct_body(Parse *p)
 {
   consume(p, TK_COLON);
   const int r_bp = (int)PREC_BASE + (int)ASSOC_RIGHT;
@@ -391,8 +409,8 @@ static TNode *condition(Parse *p, AST_T cond_type, size_t line)
   TNode *cond_node = treenode_new(cond_type, line);
 
   const int r_bp = (int)PREC_BASE + (int)ASSOC_RIGHT;
-  cond_node->ctrl_construct.head = expr(p, r_bp);
-  cond_node->ctrl_construct.body = ctrl_construct_body(p);
+  cond_node->construct.head = expr(p, r_bp);
+  cond_node->construct.body = construct_body(p);
 
   return cond_node;
 }
@@ -420,7 +438,7 @@ TNode *else_elif(Parse *p, TNode *lhs, int min_bp)
   TNode *operands[2];
   operands[0] = lhs;
   operands[1] = tok.type == TK_ELIF ?
-    condition(p, AST_IF, tok.line) : ctrl_construct_body(p);
+    condition(p, AST_IF, tok.line) : construct_body(p);
 
   return treenode_op(AST_ELSE, tok.line, 2, operands);
 }
@@ -428,7 +446,7 @@ TNode *else_elif(Parse *p, TNode *lhs, int min_bp)
 TNode *loop(Parse *p)
 {
   TNode *node = treenode_new(AST_LOOP, eat(p).line);
-  node->ctrl_construct.body = ctrl_construct_body(p);
+  node->construct.body = construct_body(p);
   return node;
 }
 
@@ -443,7 +461,7 @@ TNode *for_loop(Parse *p)
 
   const int r_bp = (int)PREC_BASE + (int)ASSOC_RIGHT;
   node->for_loop.in = expr(p, r_bp);
-  node->for_loop.body = ctrl_construct_body(p);
+  node->for_loop.body = construct_body(p);
   return node;
 }
 
@@ -455,8 +473,8 @@ TNode *loop_break(Parse *p)
   bool continues = match(p, TK_CONTINUE);
 
   TNode *node = treenode_new(AST_FLOW_CONTROL, eat(p).line);
-  node->flow_ctrl.breaks = breaks;
-  node->flow_ctrl.continues = continues;
+  node->flow.breaks = breaks;
+  node->flow.continues = continues;
   return node;
 }
 
@@ -464,8 +482,8 @@ TNode *loop_break(Parse *p)
 TNode *loop_cont(Parse *p)
 {
   TNode *node = treenode_new(AST_FLOW_CONTROL, eat(p).line);
-  node->flow_ctrl.breaks = 0;
-  node->flow_ctrl.continues = true;
+  node->flow.breaks = 0;
+  node->flow.continues = true;
   return node;
 }
 
@@ -532,11 +550,6 @@ TNode *ident(Parse *p)
   return ident_node;
 }
 
-TNode *assign(Parse *p, TNode *lhs, int min_bp)
-{
-  return assignage(p, lhs, min_bp, OP_NONE);
-}
-
 TNode *let(Parse *p)
 {
   next(p); // let
@@ -545,15 +558,6 @@ TNode *let(Parse *p)
   TNode *node = treenode_new(AST_LET, ident_tok.line);
   node->ident = ident_tok.slice;
   return node;
-}
-
-TNode *maplet(Parse *p, TNode *lhs, int min_bp)
-{
-  size_t line = eat(p).line;
-  TNode *operands[2];
-  operands[0] = lhs;
-  operands[1] = expr(p, (int)PREC_MAPLET + (int)ASSOC_RIGHT);
-  return treenode_op(AST_MAPLET, line, 2, operands);
 }
 
 // An impl of Pratt parsing.

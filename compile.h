@@ -2,7 +2,7 @@
 #define LANG_COMPILE_H
 
 #include "astree.h"
-#include "ir.h"
+#include "pcode.h"
 #include "proc.h"
 
 Proc compile(TNode *ast);

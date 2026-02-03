@@ -1,7 +1,7 @@
 #ifndef LANG_HEART_H
 #define LANG_HEART_H
 
-#include "ir.h"
+#include "pcode.h"
 #include "val.h"
 
 /*

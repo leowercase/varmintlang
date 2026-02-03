@@ -4,7 +4,7 @@
 #include "astree.h"
 #include "varmint.h"
 #include "lex.h"
-#include "ir.h"
+#include "pcode.h"
 
 #include <stdio.h>
 

@@ -2,7 +2,7 @@
 #define LANG_PROC_H
 
 #include "val.h"
-#include "ir.h"
+#include "pcode.h"
 
 typedef struct Proc {
   GCData gc_data;

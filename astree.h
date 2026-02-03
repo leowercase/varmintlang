@@ -2,32 +2,35 @@
 #define LANG_ASTREE
 
 #include "generic/dyn_array_header.h"
-#include "ir.h"
+#include "pcode.h"
+#include "op.h"
 #include "util.h"
 #include "val.h"
 
+/*
+ * An abstract syntax tree is a representation of code's structure.
+ * https://en.wikipedia.org/wiki/Abstract_syntax_tree
+ */
+
 typedef enum {
-  AST_NONE,
-  AST_UNOP,
-  AST_BINOP,
-  AST_CONJUNCT_CMP,
+  // OP_NOT, ...
+  // OP_ADD, ...
+  AST_NONE = NATIVE_OPERATOR_COUNT,
+  AST_ASSIGN,
+  AST_COMPOUND_ASSIGN,
+  AST_MAPLET,
   AST_CONSTANT,
   AST_METASTRING,
-  AST_IDENT,
   AST_GROUPING,
-  AST_LIST,
-  AST_BLOCK,
   AST_CALL,
   AST_SUBSCRIPT,
-  AST_IF,
-  AST_ELSE,
-  AST_LOOP,
-  AST_FOR,
-  AST_WHILE,
+  AST_LIST,
+  AST_IDENT,
+  AST_BLOCK,
+  AST_IF, AST_ELSE,
+  AST_LOOP, AST_FOR, AST_WHILE,
   AST_FLOW_CONTROL,
   AST_LET,
-  AST_MAPLET,
-  AST_ASSIGN,
 } AST_T;
 
 typedef DYN_ARRAY_STRUCT(struct TNode *) NodeList;
@@ -38,7 +41,6 @@ typedef DYN_ARRAY_STRUCT(struct TNode *) NodeList;
 typedef struct TNode {
   AST_T type;
   size_t line;
-  Op op_type;
   union {
     Value constant;
     StrSlice ident;
@@ -46,18 +48,12 @@ typedef struct TNode {
     struct TNode *expr;
     NodeList list;
 
-    // https://en.wikipedia.org/wiki/Flexible_array_member
-    struct TNode *operands[];
-
-    struct {
-      struct TNode *invokee;
-      NodeList list;
-    } invocation;
+    Op compound_assign_op;
 
     struct {
       struct TNode *head;
       struct TNode *body;
-    } ctrl_construct;
+    } construct;
 
     struct {
       StrSlice ident;
@@ -68,8 +64,10 @@ typedef struct TNode {
     struct {
       int breaks;
       bool continues;
-    } flow_ctrl;
+    } flow;
   };
+  // https://en.wikipedia.org/wiki/Flexible_array_member
+  struct TNode *operands[];
 } TNode;
 
 TNode *treenode_new(AST_T type, size_t line);
@@ -78,12 +76,7 @@ TNode *treenode_constant(Value val, size_t line);
 
 TNode *treenode_op(AST_T type, size_t line,
     size_t n, TNode *operands[n]);
-TNode *treenode_op_t(AST_T type, Op op_type, size_t line,
-    size_t n, TNode *operands[n]);
 
 TNode *treenode_list(AST_T type, size_t line, NodeList list);
-
-// Prints a node like an s-expression.
-void treenode_print(TNode *node);
 
 #endif

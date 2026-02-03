@@ -63,7 +63,7 @@ static inline
 Value __heaped_value_new(ValueType type, size_t size)
 {
   RawValue raw;
-  raw.gc_data = (GCData *)malloc(size);
+  raw.gc_data = malloc(size);
   if (raw.gc_data == NULL)
     exit(EX_OSERR);
 
