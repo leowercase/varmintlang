@@ -1,7 +1,7 @@
 #ifndef LANG_VAL_H
 #define LANG_VAL_H
 
-#include "generic/dyn_array_header.h"
+#include "generic/dyn_array.h"
 #include "str.h"
 #include "util.h"
 
@@ -111,7 +111,7 @@ typedef struct ValueList {
 
 #define T Value
 #define ARR ValueList
-#include "generic/dyn_array.h"
+#include "generic/dyn_array.inc"
 
 bool values_eq(Value a, Value b);
 bool is_falsey(Value val);

@@ -1,7 +1,7 @@
 #ifndef LANG_IR_H
 #define LANG_IR_H
 
-#include "generic/dyn_array_header.h"
+#include "generic/dyn_array.h"
 #include "util.h"
 #include "val.h"
 #include "op.h"
@@ -45,7 +45,7 @@ typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
 
 #define T uint8_t
 #define ARR Instructions
-#include "generic/dyn_array.h"
+#include "generic/dyn_array.inc"
 
 // The line of text a group of bytes come from.
 typedef struct { size_t line, nbytes; } LineBytes;
@@ -54,7 +54,7 @@ typedef DYN_ARRAY_STRUCT(LineBytes) LineInfo;
 
 #define T LineBytes
 #define ARR LineInfo
-#include "generic/dyn_array.h"
+#include "generic/dyn_array.inc"
 
 /*
  * Lines are run-length encoded to save memory.
@@ -67,7 +67,7 @@ typedef DYN_ARRAY_STRUCT(Value) Constants;
 
 #define T Value
 #define ARR Constants
-#include "generic/dyn_array.h"
+#include "generic/dyn_array.inc"
 
 typedef struct {
   Constants constants;
@@ -121,7 +121,7 @@ typedef DYN_ARRAY_STRUCT(Local) Locals;
 
 #define T Local
 #define ARR Locals
-#include "generic/dyn_array.h"
+#include "generic/dyn_array.inc"
 
 // Scope of a function
 typedef struct FnScope {
@@ -135,6 +135,6 @@ typedef DYN_ARRAY_STRUCT(Value) Stack;
 
 #define T Value
 #define ARR Stack
-#include "generic/dyn_array.h"
+#include "generic/dyn_array.inc"
 
 #endif

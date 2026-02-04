@@ -1,7 +1,7 @@
 #ifndef LANG_ASTREE
 #define LANG_ASTREE
 
-#include "generic/dyn_array_header.h"
+#include "generic/dyn_array.h"
 #include "pcode.h"
 #include "op.h"
 #include "util.h"
@@ -36,7 +36,7 @@ typedef enum {
 typedef DYN_ARRAY_STRUCT(struct TNode *) NodeList;
 #define T struct TNode *
 #define ARR NodeList
-#include "generic/dyn_array.h"
+#include "generic/dyn_array.inc"
 
 typedef struct TNode {
   AST_T type;
