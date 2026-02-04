@@ -62,10 +62,10 @@ typedef enum {
 } Associativity;
 
 // Null-denoted parse; preceded by nothing (prefix)
-typedef TNode *(*NudRule)(Parse *p);
+typedef Tnode *(*NudRule)(Parse *p);
 
 // Left-denoted parse; preceded by something (infix/postfix)
-typedef TNode *(*LedRule)(Parse *p, TNode *lhs, int min_bp);
+typedef Tnode *(*LedRule)(Parse *p, Tnode *lhs, int min_bp);
 
 // Internal lookup table for the parser.
 typedef struct {
@@ -80,41 +80,41 @@ ParseRule;
  * One Op to rule them all, One Op to find them;
  * One Op to parse them all and in the darkness "bind" them.
  */
-TNode *expr(Parse *p, int min_bp);
+Tnode *expr(Parse *p, int min_bp);
 
-TNode *stmt(Parse *p);
+Tnode *stmt(Parse *p);
 
-TNode *prefix_op(Parse *p);
-TNode *grouping(Parse *p);
-TNode *block(Parse *p);
-TNode *list(Parse *p);
-TNode *cond(Parse *p);
-TNode *loop(Parse *p);
-TNode *for_loop(Parse *p);
-TNode *loop_break(Parse *p);
-TNode *loop_cont(Parse *p);
-TNode *boolean(Parse *p);
-TNode *number(Parse *p);
-TNode *metastring(Parse *p);
-TNode *string(Parse *p);
-TNode *ident(Parse *p);
-TNode *let(Parse *p);
+Tnode *prefix_op(Parse *p);
+Tnode *grouping(Parse *p);
+Tnode *block(Parse *p);
+Tnode *list(Parse *p);
+Tnode *cond(Parse *p);
+Tnode *loop(Parse *p);
+Tnode *for_loop(Parse *p);
+Tnode *loop_break(Parse *p);
+Tnode *loop_cont(Parse *p);
+Tnode *boolean(Parse *p);
+Tnode *number(Parse *p);
+Tnode *metastring(Parse *p);
+Tnode *string(Parse *p);
+Tnode *ident(Parse *p);
+Tnode *let(Parse *p);
 
 // No parse result from function.
-static inline TNode *no_op(Parse *_, TNode *__, int ___)
+static inline Tnode *no_op(Parse *_, Tnode *__, int ___)
 {
   return NULL;
 }
 
-TNode *infix_op(Parse *p, TNode *lhs, int min_bp);
-TNode *postfix_op(Parse *p, TNode *lhs, int min_bp);
-TNode *led_op(Parse *p, TNode *lhs, int min_bp);
-TNode *cmp_op(Parse *p, TNode *lhs, int min_bp);
-TNode *else_elif(Parse *p, TNode *lhs, int min_bp);
-TNode *assign(Parse *p, TNode *lhs, int min_bp);
-TNode *invocation(Parse *p, TNode *lhs, int min_bp);
-TNode *subscript(Parse *p, TNode *lhs, int min_bp);
-TNode *maplet(Parse *p, TNode *lhs, int min_bp);
+Tnode *infix_op(Parse *p, Tnode *lhs, int min_bp);
+Tnode *postfix_op(Parse *p, Tnode *lhs, int min_bp);
+Tnode *led_op(Parse *p, Tnode *lhs, int min_bp);
+Tnode *cmp_op(Parse *p, Tnode *lhs, int min_bp);
+Tnode *else_elif(Parse *p, Tnode *lhs, int min_bp);
+Tnode *assign(Parse *p, Tnode *lhs, int min_bp);
+Tnode *invocation(Parse *p, Tnode *lhs, int min_bp);
+Tnode *subscript(Parse *p, Tnode *lhs, int min_bp);
+Tnode *maplet(Parse *p, Tnode *lhs, int min_bp);
 
 // Helper function
 static inline

@@ -6,20 +6,13 @@
 
 Varmint varmint_start()
 {
-  FnScope scope;
-  scope.locals = Locals_new();
-  scope.depth = 0;
-  scope.enclosing_scope = NULL;
-
   Varmint vm;
-  vm.current_scope = scope;
   vm.stack = Stack_new();
   return vm;
 }
 
 void varmint_free(Varmint *vm)
 {
-  free(vm->current_scope.locals.data);
   free(vm->stack.data);
 }
 
@@ -44,7 +37,7 @@ Value varmint_run(Varmint *vm, char *source)
 
   Parse p = init_parse(vm, source);
 
-  TNode *ast = stmt(&p);
+  Tnode *ast = stmt(&p);
 
 #ifdef VARMINT_DEBUG
   printf("*** AST ***\n");

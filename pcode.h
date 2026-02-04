@@ -109,32 +109,4 @@ bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size);
 // Emit a code constant.
 void emit_constant(PCode *code, size_t line, Value value);
 
-// Local variable that resides on the stack
-typedef struct {
-  StrSlice name;
-  int depth;
-  bool initialized;
-  size_t stack_slot;
-} Local;
-
-typedef DYN_ARRAY_STRUCT(Local) Locals;
-
-#define T Local
-#define ARR Locals
-#include "generic/dyn_array.inc"
-
-// Scope of a function
-typedef struct FnScope {
-  Locals locals;
-  int depth;
-  struct FnScope *enclosing_scope;
-} FnScope;
-
-// Stack used for operations.
-typedef DYN_ARRAY_STRUCT(Value) Stack;
-
-#define T Value
-#define ARR Stack
-#include "generic/dyn_array.inc"
-
 #endif

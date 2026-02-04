@@ -52,7 +52,7 @@ static inline bool execute_instruction(Varmint *vm, Proc *proc)
     }
 
   switch ((int)instruction) {
-  case OP_NOT:    UNARY(value_new((int)is_falsey(operand), boolean))
+  case OP_NOT:    UNARY(value_new((int)value_is_falsey(operand), boolean))
   case OP_NEGATE: UNARY(_vm_negate(operand))
 
   case OP_FACTORIAL:  UNARY(_vm_factorial(operand))

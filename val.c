@@ -22,11 +22,13 @@ bool values_eq(Value a, Value b)
     case VAL_function:
     case VAL_program:
       return a.raw.proc == b.raw.proc;
+    case VAL_ast:
+      return a.raw.treenode == b.raw.treenode;
     }
   }
 }
 
-bool is_falsey(Value val)
+bool value_is_falsey(Value val)
 {
   if (is_type(val, boolean))
     return !val.raw.boolean;
@@ -47,6 +49,7 @@ char *value_type_cstring(ValueType type)
   case_(list)
   case_(function)
   case_(program)
+  case_(ast)
   }
 
 #undef case_
@@ -93,6 +96,8 @@ Str value_to_str(Value val)
     }
   case VAL_program:
     return str_from("<program>");
+  case VAL_ast:
+    return str_from("<ast>");
   }
 }
 
@@ -142,7 +147,8 @@ void print_value(Value val)
       break;
     }
   case VAL_program:
-    printf(ANSI_GREEN "<program>" ANSI_RESET);
-    break;
+    printf(ANSI_GREEN "<program>" ANSI_RESET); break;
+  case VAL_ast:
+    printf(ANSI_GREEN "<ast>" ANSI_RESET); break;
   }
 }

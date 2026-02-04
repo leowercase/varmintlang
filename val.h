@@ -24,7 +24,11 @@ typedef enum {
   // GC'd values
   VAL_string,
   VAL_list,
-  VAL_function, VAL_program,
+  VAL_function,
+
+  // Internal values.
+  VAL_program,
+  VAL_ast,
 } ValueType;
 
 typedef union {
@@ -36,7 +40,10 @@ typedef union {
   struct StringValue *string;
   struct ValueList *list;
 
-  struct Proc *proc, *function, *program;
+  struct Proc *proc,
+              *function, *program;
+
+  struct Tnode *treenode;
 } RawValue;
 
 typedef struct {
@@ -114,7 +121,7 @@ typedef struct ValueList {
 #include "generic/dyn_array.inc"
 
 bool values_eq(Value a, Value b);
-bool is_falsey(Value val);
+bool value_is_falsey(Value val);
 
 char *value_type_cstring(ValueType type);
 Str value_to_str(Value val);

@@ -1,6 +1,7 @@
 #ifndef LANG_OP_H
 #define LANG_OP_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /*

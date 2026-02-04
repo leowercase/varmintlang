@@ -4,11 +4,16 @@
 #include "pcode.h"
 #include "val.h"
 
+// Stack used for operations.
+typedef DYN_ARRAY_STRUCT(Value) Stack;
+#define T Value
+#define ARR Stack
+#include "generic/dyn_array.inc"
+
 /*
  * Heart of a Varmint, offspring of the C cockroach
  */
 typedef struct {
-  FnScope current_scope;
   Stack stack;
   uint8_t *ip;
   Value result;

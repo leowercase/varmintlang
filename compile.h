@@ -4,6 +4,6 @@
 #include "astree.h"
 #include "proc.h"
 
-Proc compile(TNode *ast);
+Proc compile(Tnode *ast);
 
 #endif
