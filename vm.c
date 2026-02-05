@@ -5,22 +5,22 @@
 
 static inline void push(Varmint *vm, Value value)
 {
-  Stack_push(&vm->stack, value);
+  OpStack_push(&vm->op_stack, value);
 }
 
 static inline Value pop(Varmint *vm)
 {
-  return Stack_pop(&vm->stack);
+  return OpStack_pop(&vm->op_stack);
 }
 
 static inline Value peek(Varmint *vm)
 {
-  return Stack_top(&vm->stack);
+  return OpStack_top(&vm->op_stack);
 }
 
-static inline bool execute_instruction(Varmint *vm, Proc *proc)
+static inline bool execute_instruction(Varmint *vm)
 {
-  Opcode instruction = *(vm->ip++);
+  Opcode instruction = *(vm->call_stack.ip++);
 
   // Macros really help with some of the tedium here.
 
@@ -82,7 +82,7 @@ static inline bool execute_instruction(Varmint *vm, Proc *proc)
 
   case_size_op(OP_CONST, idx,
     {
-      Value constant = proc->code.constants.data[idx];
+      Value constant = vm->scope.program->code.constants.data[idx];
       push(vm, constant);
       break;
     })
@@ -127,24 +127,24 @@ static inline bool execute_instruction(Varmint *vm, Proc *proc)
   case OP_CHAIN_BINOP:
     {
       Value rhs = peek(vm);
-      bool running = execute_instruction(vm, proc);
+      bool running = execute_instruction(vm);
       push(vm, rhs);
       return running;
     }
 
   case_size_op(OP_GET, stack_slot,
     {
-      push(vm, vm->stack.data[stack_slot]);
+      push(vm, vm->op_stack.data[stack_slot]);
       break;
     })
   case_size_op(OP_SET, stack_slot,
     {
-      vm->stack.data[stack_slot] = peek(vm);
+      vm->op_stack.data[stack_slot] = peek(vm);
       break;
     })
   case_size_op(OP_DISCARD_SET, stack_slot,
     {
-      vm->stack.data[stack_slot] = pop(vm);
+      vm->op_stack.data[stack_slot] = pop(vm);
       break;
     })
 
@@ -159,17 +159,13 @@ static inline bool execute_instruction(Varmint *vm, Proc *proc)
     break;
   case_size_op(OP_DISCARDN, n,
     {
-      for (int i = 0; i < n; i++)
-        pop(vm);
-
+      for (int i = 0; i < n; i++) pop(vm);
       break;
     })
   case_size_op(OP_RETAIN1_DISCARDN, n,
     {
       Value retained_val = pop(vm);
-
-      for (int i = 1; i < n; i++)
-        pop(vm);
+      for (int i = 1; i < n; i++) pop(vm);
 
       push(vm, retained_val);
       break;
@@ -178,7 +174,7 @@ static inline bool execute_instruction(Varmint *vm, Proc *proc)
   case OP_RETURN:
     {
       vm->result =
-        vm->stack.len == 0 ? NO_VAL : peek(vm);
+        vm->op_stack.len == 0 ? NO_VAL : peek(vm);
       return false;
     }
 
@@ -192,12 +188,14 @@ static inline bool execute_instruction(Varmint *vm, Proc *proc)
 #undef case_size_op
 }
 
-void run_proc(Varmint *vm, Proc *proc)
+void execute(Varmint *vm)
 {
-  vm->ip = proc->code.instruc.data;
+  vm->ip = vm->scope.program->code.instruc.data;
 
   bool running;
   do
-    running = execute_instruction(vm, proc);
+    running = execute_instruction(vm);
   while (running);
+
+  return pop(vm);
 }

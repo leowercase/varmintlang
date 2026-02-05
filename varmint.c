@@ -1,23 +1,30 @@
-#include "compile.h"
 #include "disassemble.h"
 #include "parse.h"
 #include "varmint.h"
 #include "vm.h"
+#include <stdio.h>
+
+static void reset_code(Varmint *vm)
+{
+
+}
 
 Varmint varmint_start()
 {
   Varmint vm;
-  vm.stack = Stack_new();
+  vm.op_stack = OpStack_new();
   return vm;
 }
 
 void varmint_free(Varmint *vm)
 {
-  free(vm->stack.data);
+  free(vm->op_stack.data);
 }
 
 Value varmint_run(Varmint *vm, char *source)
 {
+  reset_code(vm);
+
 #ifdef VARMINT_DEBUG
   {
     printf("*** TOKENS ***\n");
@@ -27,7 +34,9 @@ Value varmint_run(Varmint *vm, char *source)
     Token tok;
     do {
       tok = lex_token(&l);
-      printf("%.2li %s `%.*s`\n", tok.line, tok_cstring(tok.type),
+      printf("%.2li %s `%.*s`\n",
+          tok.line,
+          tok_cstring(tok.type),
           (int)tok.slice.len, tok.slice.s);
     } while (tok.type != TK_EOF);
 
@@ -35,20 +44,8 @@ Value varmint_run(Varmint *vm, char *source)
   }
 #endif
 
-  Parse p = init_parse(vm, source);
-
-  Tnode *ast = stmt(&p);
-
-#ifdef VARMINT_DEBUG
-  printf("*** AST ***\n");
-  //treenode_print(ast);
-  printf("\n\n");
-#endif
-
-  Proc program = compile(ast);
-
+  Proc program = parse_stmt(vm, source);
   // TODO
-  return NO_VAL;
 
 #ifdef VARMINT_DEBUG
   printf("*** INSTRUCTIONS ***\n");
@@ -56,6 +53,5 @@ Value varmint_run(Varmint *vm, char *source)
   printf("\n");
 #endif
 
-  run_proc(vm, &program);
-  return vm->result;
+  return execute(vm);
 }

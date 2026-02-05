@@ -5,6 +5,6 @@
 #include "varmint.h"
 #include "proc.h"
 
-void run_proc(Varmint *vm, Proc *proc);
+void execute(Varmint *vm);
 
 #endif

@@ -4,10 +4,15 @@
 #include "val.h"
 #include "pcode.h"
 
-// Process.
+/*
+ * Procedure - a tool of abstraction.
+ * Can be a program, can be a function in said program.
+ * https://en.wikipedia.org/wiki/Function_(computer_programming)
+ */
 typedef struct Proc {
   GCData gc_data;
   Str name;
+  int arity;
   PCode code;
 } Proc;
 

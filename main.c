@@ -91,7 +91,7 @@ int main(int argc, const char **argv)
   else if (argc == 2)
     run_file(argv[1]);
   else {
-    error_out("usage: %s [file]\n", argv[0]);
+    error_out("usage: %s [script]\n", argv[0]);
     exit(EX_USAGE);
   }
 }
