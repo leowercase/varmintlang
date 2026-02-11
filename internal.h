@@ -28,4 +28,10 @@ Value _vm_greater_than_or_eq(Value a, Value b);
 
 Value _vm_concat(Value head, Value tail);
 
+Value _vm_in(Value x, Value collection);
+Value _vm_notin(Value x, Value collection);
+
+Value _vm_get_elem(Value list, Value idx);
+Value _vm_set_elem(Value list, Value idx, Value val);
+
 #endif

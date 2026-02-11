@@ -10,10 +10,12 @@
  */
 typedef struct {
   CallStack call_stack;
+  CallFrame *frame;
   OpStack op_stack;
+  Value result;
 } Varmint;
 
-Varmint varmint_start();
+Varmint varmint_start(void);
 Value varmint_run(Varmint *vm, char *source);
 void varmint_free(Varmint *vm);
 

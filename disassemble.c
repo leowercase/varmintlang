@@ -1,6 +1,7 @@
-#include "pcode.h"
+#include "code.h"
 #include "util.h"
 #include "val.h"
+#include "proc.h"
 
 #include <stdio.h>
 
@@ -19,7 +20,7 @@ static void size(PCode *code, int s)
 // Returns the offset where the instruction ends.
 static size_t disassemble_instruction(PCode *code, size_t offset)
 {
-  Opcode instruction = code->instruc.data[offset];
+  Opcode instruction = code->instructions.data[offset];
 
 #define case_(name, stmt) \
   case OP_##name: { \
@@ -31,12 +32,12 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
 #define case_size_op(name, fn) \
   case_(name, \
     { \
-        fn(code, code->instruc.data[offset + 1]); \
+        fn(code, code->instructions.data[offset + 1]); \
         return offset + 2; \
     }) \
   case_(name##16, \
     { \
-        uint8_t *ip = code->instruc.data + offset + 1; \
+        uint8_t *ip = code->instructions.data + offset + 1; \
         fn(code, uint8_to_16(ip)); \
         return offset + 3; \
     })
@@ -63,6 +64,8 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   case_op(GT)
   case_op(LEQ)
   case_op(GEQ)
+  case_op(IN)
+  case_op(NOTIN)
   case_op(CONCAT)
   case_size_op(CONST, constant)
   case_(ONE,
@@ -79,11 +82,14 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
   case_size_op(GET, size)
   case_size_op(SET, size)
   case_size_op(DISCARD_SET, size)
+  case_op(LIST_GET)
+  case_op(LIST_SET)
   case_op(RESERVE_SLOT)
   case_op(DUPLICATE)
   case_op(DISCARD)
   case_size_op(DISCARDN, size)
   case_size_op(RETAIN1_DISCARDN, size)
+  case_size_op(CALL, size)
   case_op(RETURN)
   }
 
@@ -95,14 +101,39 @@ static size_t disassemble_instruction(PCode *code, size_t offset)
 #undef case_op
 }
 
-void disassemble(PCode *code)
+static void disassemble_code(PCode *code)
 {
   printf(ANSI_CYAN);
 
-  for (size_t offset = 0; offset < code->instruc.len;) {
+  for (size_t offset = 0; offset < code->instructions.len;) {
     offset = disassemble_instruction(code, offset);
     printf("\n");
   }
 
   printf(ANSI_RESET);
+}
+
+void disassemble(Proc *program)
+{
+  PCode *code = &program->code;
+
+  for (size_t i = 0; i < code->constants.len; i++) {
+    Value *c = &code->constants.data[i];
+
+    if (c->type == VAL_function) {
+      Proc *fn = c->raw.function;
+
+      if (fn->name.s == NULL)
+        printf("-- anonymous function [%i] --\n",
+            fn->arity);
+      else
+        printf("-- function %.*s [%i] --\n",
+            (int)fn->name.len, fn->name.s, fn->arity);
+      disassemble_code(&c->raw.function->code);
+      printf("\n");
+    }
+  }
+
+  printf("-- program --\n");
+  disassemble_code(code);
 }

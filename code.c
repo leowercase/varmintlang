@@ -1,16 +1,16 @@
-#include "pcode.h"
+#include "code.h"
 #include "util.h"
 
 void emit_byte(PCode *code, size_t line, uint8_t byte)
 {
-  Instructions_push(&code->instruc, byte);
+  Instructions_push(&code->instructions, byte);
 
   if (code->lines.data != NULL) {
-    size_t last_line = LineInfo_top(&code->lines).line;
+    LineBytes *last = LineInfo_top(&code->lines);
 
-    if (last_line == line) {
+    if (last->line == line) {
       // Increment the number of bytes in that line.
-      code->lines.data[code->lines.len - 1].nbytes++;
+      last->nbytes++;
       return;
     }
   }
@@ -23,7 +23,7 @@ void emit_byte(PCode *code, size_t line, uint8_t byte)
 uint8_t *defer_operand(PCode *code, size_t line)
 {
   emit_bytes(code, line, 2, 0xff, 0xff);
-  return code->instruc.data + code->instruc.len - 1;
+  return code->instructions.data + code->instructions.len - 1;
 }
 
 void patch_operand(PCode *code, uint8_t *ip, uint16_t operand)
@@ -51,18 +51,13 @@ bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size)
   return true;
 }
 
-static size_t make_constant(PCode *code, Value value)
+Value *emit_constant(PCode *code, size_t line, Value value)
 {
-  Constants_push(&code->constants, value);
-  return code->constants.len - 1;
-}
-
-void emit_constant(PCode *code, size_t line, Value value)
-{
-  size_t idx = make_constant(code, value);
+  Value *constant = Constants_push(&code->constants, value);
+  size_t idx = code->constants.len - 1;
 
   if (emit_size_op(code, line, OP_CONST, idx))
-    return;
+    return constant;
 
   runtime_error("Too many constants\n");
 }

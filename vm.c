@@ -5,6 +5,9 @@
 
 static inline void push(Varmint *vm, Value value)
 {
+  if (vm->op_stack.len >= OP_STACK_MAX)
+    runtime_error("stack overflow\n");
+
   OpStack_push(&vm->op_stack, value);
 }
 
@@ -13,14 +16,52 @@ static inline Value pop(Varmint *vm)
   return OpStack_pop(&vm->op_stack);
 }
 
+static inline void popn(Varmint *vm, size_t n)
+{
+  OpStack_popn(&vm->op_stack, n);
+}
+
 static inline Value peek(Varmint *vm)
 {
-  return OpStack_top(&vm->op_stack);
+  return *OpStack_top(&vm->op_stack);
+}
+
+static inline Value peeknth(Varmint *vm, size_t idx)
+{
+  return *(OpStack_top(&vm->op_stack) - idx);
+}
+
+// Call a function.
+static void call(Varmint *vm, Proc *fn, size_t argc)
+{
+  // Create new frame for function call.
+  CallFrame frame;
+  frame.procedure = fn;
+  frame.ip = fn->code.instructions.data;
+
+  Value *top_slot = vm->op_stack.len == 0
+    ? vm->op_stack.data : OpStack_push(&vm->op_stack, NO_VAL);
+
+  frame.op_stack = top_slot - argc; // `argc` slots for parameters
+
+  vm->frame = CallStack_push(&vm->call_stack, frame);
+}
+
+static void call_val(Varmint *vm, Value callee, size_t argc)
+{
+  Proc *fn = typechecked(callee, function);
+
+  if (fn->arity != argc)
+    runtime_error("expect %li parameters to %.*s but got %li\n",
+        fn->arity, argc, fn->name);
+
+  call(vm, fn, argc);
+  pop(vm); // fn
 }
 
 static inline bool execute_instruction(Varmint *vm)
 {
-  Opcode instruction = *(vm->call_stack.ip++);
+  Opcode instruction = *(vm->frame->ip++);
 
   // Macros really help with some of the tedium here.
 
@@ -40,14 +81,14 @@ static inline bool execute_instruction(Varmint *vm)
 #define case_size_op(op_name, operand_ident, stmt) \
   case op_name: \
     { \
-      uint8_t operand_ident = *vm->ip; \
-      vm->ip++; \
+      uint8_t operand_ident = *vm->frame->ip; \
+      vm->frame->ip++; \
       stmt; \
     } \
   case op_name##16: \
     { \
-      uint16_t operand_ident = uint8_to_16(vm->ip); \
-      vm->ip += 2; \
+      uint16_t operand_ident = uint8_to_16(vm->frame->ip); \
+      vm->frame->ip += 2; \
       stmt; \
     }
 
@@ -78,11 +119,14 @@ static inline bool execute_instruction(Varmint *vm)
   case OP_LEQ: BINARY(_vm_less_than_or_eq(lhs, rhs))
   case OP_GEQ: BINARY(_vm_greater_than_or_eq(lhs, rhs))
 
+  case OP_IN:     BINARY(_vm_in(lhs, rhs))
+  case OP_NOTIN:  BINARY(_vm_notin(lhs, rhs))
+
   case OP_CONCAT: BINARY(_vm_concat(lhs, rhs))
 
   case_size_op(OP_CONST, idx,
     {
-      Value constant = vm->scope.program->code.constants.data[idx];
+      Value constant = vm->frame->procedure->code.constants.data[idx];
       push(vm, constant);
       break;
     })
@@ -134,19 +178,32 @@ static inline bool execute_instruction(Varmint *vm)
 
   case_size_op(OP_GET, stack_slot,
     {
-      push(vm, vm->op_stack.data[stack_slot]);
+      push(vm, vm->frame->op_stack[stack_slot]);
       break;
     })
   case_size_op(OP_SET, stack_slot,
     {
-      vm->op_stack.data[stack_slot] = peek(vm);
+      vm->frame->op_stack[stack_slot] = peek(vm);
       break;
     })
   case_size_op(OP_DISCARD_SET, stack_slot,
     {
-      vm->op_stack.data[stack_slot] = pop(vm);
+      vm->frame->op_stack[stack_slot] = pop(vm);
       break;
     })
+
+  case OP_LIST_GET:
+    {
+      Value idx = pop(vm), list = pop(vm);
+      push(vm, _vm_get_elem(list, idx));
+      break;
+    }
+  case OP_LIST_SET:
+    {
+      Value val = pop(vm), idx = pop(vm), list = pop(vm);
+      push(vm, _vm_set_elem(list, idx, val));
+      break;
+    }
 
   case OP_RESERVE_SLOT:
     push(vm, NO_VAL);
@@ -159,23 +216,39 @@ static inline bool execute_instruction(Varmint *vm)
     break;
   case_size_op(OP_DISCARDN, n,
     {
-      for (int i = 0; i < n; i++) pop(vm);
+      popn(vm, n);
       break;
     })
   case_size_op(OP_RETAIN1_DISCARDN, n,
     {
-      Value retained_val = pop(vm);
-      for (int i = 1; i < n; i++) pop(vm);
-
+      Value retained_val = peek(vm);
+      popn(vm, n);
       push(vm, retained_val);
       break;
     })
 
+  case_size_op(OP_CALL, argc,
+    {
+      call_val(vm, peeknth(vm, argc), argc);
+      break;
+    })
+    // Return from a function.
   case OP_RETURN:
     {
-      vm->result =
-        vm->op_stack.len == 0 ? NO_VAL : peek(vm);
-      return false;
+      Value return_val = pop(vm);
+
+      CallFrame frame = CallStack_pop(&vm->call_stack);
+      popn(vm, (size_t)frame.procedure->arity); // Pop parameters
+
+      if (vm->call_stack.len == 0) {
+        // Return from program.
+        vm->result = return_val;
+        return false;
+      }
+
+      push(vm, return_val);
+      vm->frame = CallStack_top(&vm->call_stack);
+      break;
     }
 
   default: unreachable();
@@ -188,14 +261,14 @@ static inline bool execute_instruction(Varmint *vm)
 #undef case_size_op
 }
 
-void execute(Varmint *vm)
+void execute(Varmint *vm, Proc *program)
 {
-  vm->ip = vm->scope.program->code.instruc.data;
+  call(vm, program, 0L);
 
   bool running;
   do
     running = execute_instruction(vm);
   while (running);
 
-  return pop(vm);
+  assert(vm->op_stack.len == 0);
 }

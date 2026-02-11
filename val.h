@@ -40,7 +40,7 @@ typedef union {
   struct StringValue *string;
   struct ValueList *list;
 
-  struct Proc *proc,
+  struct Proc *procedure,
               *function, *program;
 
   struct Tnode *treenode;
@@ -58,7 +58,7 @@ Value __value_new(ValueType type, RawValue raw)
   return val;
 }
 #define value_new(raw, vat_t) \
-  __value_new(VAL_##vat_t, (RawValue)(raw))
+  __value_new(VAL_##vat_t, (RawValue){.vat_t = raw})
 
 // GC'd values have the same initial sequence, GCData.
 typedef struct GCData {
@@ -89,7 +89,7 @@ bool is_heaped_value(ValueType type)
 #define is_type(val, vat_t) ((val).type == VAL_##vat_t)
 
 // Helper macro.
-#define typechecked(val_ident, vat_t, ...) \
+#define typechecked(val_ident, vat_t) \
   (is_type(val_ident, vat_t) ? \
     val_ident.raw.vat_t : \
     (runtime_error("Expect type " #vat_t " for " #val_ident ", got %s\n", \

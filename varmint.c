@@ -1,30 +1,24 @@
 #include "disassemble.h"
-#include "parse.h"
+#include "compile.h"
 #include "varmint.h"
 #include "vm.h"
 #include <stdio.h>
 
-static void reset_code(Varmint *vm)
-{
-
-}
-
-Varmint varmint_start()
+Varmint varmint_start(void)
 {
   Varmint vm;
   vm.op_stack = OpStack_new();
+  vm.call_stack = CallStack_new();
   return vm;
 }
 
 void varmint_free(Varmint *vm)
 {
-  free(vm->op_stack.data);
+  free(vm->call_stack.data);
 }
 
 Value varmint_run(Varmint *vm, char *source)
 {
-  reset_code(vm);
-
 #ifdef VARMINT_DEBUG
   {
     printf("*** TOKENS ***\n");
@@ -44,14 +38,16 @@ Value varmint_run(Varmint *vm, char *source)
   }
 #endif
 
-  Proc program = parse_stmt(vm, source);
-  // TODO
+  Proc *program = compile(source);
+  if (program == NULL)
+    return NO_VAL;
 
 #ifdef VARMINT_DEBUG
   printf("*** INSTRUCTIONS ***\n");
-  disassemble(&program.code);
+  disassemble(program);
   printf("\n");
 #endif
 
-  return execute(vm);
+  execute(vm, program);
+  return vm->result;
 }

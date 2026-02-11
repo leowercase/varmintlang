@@ -2,6 +2,7 @@
 #define LANG_UTIL_H
 
 #include <assert.h>
+#include "stdarg.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -21,6 +22,9 @@
 
 // Helper function for errors.
 void error_out(const char *fmt, ...);
+void v_error_out(const char *fmt, va_list args);
+
+// TODO: Print stack trace
 #define runtime_error(...) \
   (error_out(__VA_ARGS__), exit(EX_DATAERR))
 
@@ -35,7 +39,7 @@ void error_out(const char *fmt, ...);
 #define JOIN(a, b) CONCAT(a, b)
 
 static_assert(sizeof(double) == 8 * sizeof(uint8_t), "Expect 64-bit double.");
-#define float64_t double
+typedef double float64_t;
 
 #define uint8_to_16(uints) \
   (uint16_t)(((uints)[0] << 8) | (uints)[1])

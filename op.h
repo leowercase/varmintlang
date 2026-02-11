@@ -21,11 +21,8 @@ typedef enum {
   OP_PERCENTAGE, // 100% a useful op
 } UnOp;
 
-static
-const size_t UNOP_COUNT = (int)OP_PERCENTAGE + 1;
-
 typedef enum {
-  OP_ADD = UNOP_COUNT,
+  OP_ADD = OP_PERCENTAGE + 1,
   OP_SUB,
   OP_MUL,
   OP_DIV,
@@ -57,7 +54,6 @@ bool is_binary_op(Op op)
   return OP_ADD <= op && op <= OP_CONCAT;
 }
 
-static
-const size_t NATIVE_OPERATOR_COUNT = (int)OP_CONCAT + 1;
+#define NATIVE_OPERATOR_COUNT ((int)OP_CONCAT + 1)
 
 #endif

@@ -7,14 +7,14 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
-void run(Varmint *vm, char *source)
+static void run(Varmint *vm, char *source)
 {
   Value result = varmint_run(vm, source);
   print_value(result);
   printf("\n");
 }
 
-void repl()
+static void repl(void)
 {
   Varmint vm = varmint_start();
 
@@ -37,7 +37,7 @@ void repl()
   varmint_free(&vm);
 }
 
-size_t file_size(FILE *file)
+static size_t file_size(FILE *file)
 {
   fseek(file, 0L, SEEK_END);
   size_t size = (size_t)ftell(file);
@@ -48,7 +48,7 @@ size_t file_size(FILE *file)
 }
 
 // Run a script file.
-void run_file(const char *filename)
+static void run_file(const char *filename)
 {
   FILE *file;
   file = fopen(filename, "r");

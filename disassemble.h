@@ -1,10 +1,9 @@
 #ifndef LANG_DEBUG_H
 #define LANG_DEBUG_H
 
-#include "lex.h"
-#include "pcode.h"
+#include "proc.h"
 
-// Disassemble a chunk of bytecode.
-void disassemble(PCode *code);
+// Disassemble a program.
+void disassemble(Proc *program);
 
 #endif

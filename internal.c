@@ -44,6 +44,7 @@ Value _vm_subtract(Value subtrahend, Value minuend)
 
 Value _vm_multiply(Value multiplier, Value multiplicand)
   BINOP(multiplier, *, multiplicand, number)
+    /*  Markiplier  */
 
 Value _vm_divide(Value dividend, Value divisor)
   BINOP(dividend, /, divisor, number)
@@ -99,29 +100,53 @@ Value _vm_concat(Value head, Value tail)
   return string_value_new(result);
 }
 
-Value _vm_get_elem(Value list, Value idx)
+Value _vm_in(Value x, Value collection)
+{
+  ValueList *list = typechecked(collection, list);
+
+  for (size_t i = 0; i < list->len; i++) {
+    Value elem = list->data[i];
+
+    if (values_eq(x, elem))
+      return value_new(true, boolean);
+  }
+
+  return value_new(false, boolean);
+}
+
+Value _vm_notin(Value x, Value collection)
+{
+  return value_new(
+      value_is_falsey(_vm_in(x, collection)), boolean);
+}
+
+static Value *list_idx(Value list, Value idx)
 {
   ValueList *_list = typechecked(list, list);
-  size_t _idx = (size_t)typechecked(idx, number);
+  signed long _idx = (signed long)typechecked(idx, number);
 
-  if (_idx >= _list->len)
+  bool index_from_top = _idx < 0;
+  size_t idx_magnitude = (size_t)(index_from_top ? -_idx - 1 : _idx);
+
+  if (idx_magnitude >= _list->len)
     runtime_error(
         "List index [%li] out of range (list length %li)\n",
         _idx, _list->len);
 
-  return _list->data[_idx];
+  if (index_from_top)
+    return ValueList_top(_list) - idx_magnitude;
+  else
+    return _list->data + _idx;
+}
+
+Value _vm_get_elem(Value list, Value idx)
+{
+  return *list_idx(list, idx);
 }
 
 Value _vm_set_elem(Value list, Value idx, Value val)
 {
-  ValueList *_list = typechecked(list, list);
-  size_t _idx = (size_t)typechecked(idx, number);
-
-  if (_idx >= _list->len)
-    runtime_error(
-        "List assignment index [%li] out of range (list length %li)\n",
-        _idx, _list->len);
-
-  _list->data[_idx] = val;
-  return val;
+  Value *elem = list_idx(list, idx);
+  *elem = val;
+  return *elem;
 }

@@ -2,10 +2,10 @@
 #define LANG_PROC_H
 
 #include "val.h"
-#include "pcode.h"
+#include "code.h"
 
 /*
- * Procedure - a tool of abstraction.
+ * Procedure - a tool for abstraction.
  * Can be a program, can be a function in said program.
  * https://en.wikipedia.org/wiki/Function_(computer_programming)
  */
@@ -17,14 +17,15 @@ typedef struct Proc {
 } Proc;
 
 static inline
-Proc *proc_new()
+Proc *proc_new(int arity)
 {
-  Proc *proc = malloc(sizeof(Proc));
-  if (proc == NULL) exit(EX_OSERR);
+  Proc *procedure = malloc(sizeof(Proc));
+  if (procedure == NULL) exit(EX_OSERR);
 
-  proc->name = NULL_STR;
-  proc->code = new_p_code();
-  return proc;
+  procedure->name = NULL_STR;
+  procedure->code = new_p_code();
+  procedure->arity = arity;
+  return procedure;
 }
 
 #endif

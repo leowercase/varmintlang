@@ -47,6 +47,15 @@ typedef enum {
 static const TokenType TK_NEVER = (TokenType)-1;
 
 static inline
+bool is_binary_op_tok(TokenType t)
+{
+  return (TK_PLUS <= t && t <= TK_PERCENT)
+    || (TK_2PIPE <= t && t <= TK_GEQ)
+    || (TK_AND <= t && t <= TK_MOD)
+    || t == TK_ARROW;
+}
+
+static inline
 bool is_ident_beginning(char c)
 {
   return isalpha(c) || c == '_';

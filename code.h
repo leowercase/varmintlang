@@ -1,5 +1,5 @@
-#ifndef LANG_IR_H
-#define LANG_IR_H
+#ifndef LANG_CODE_H
+#define LANG_CODE_H
 
 #include "generic/dyn_array.h"
 #include "util.h"
@@ -29,6 +29,8 @@ typedef enum {
   OP_SET16,
   OP_DISCARD_SET,
   OP_DISCARD_SET16,
+  OP_LIST_GET,
+  OP_LIST_SET,
   OP_RESERVE_SLOT,
   OP_DUPLICATE,
   OP_DISCARD,
@@ -36,13 +38,14 @@ typedef enum {
   OP_DISCARDN16,
   OP_RETAIN1_DISCARDN,
   OP_RETAIN1_DISCARDN16,
+  OP_CALL,
+  OP_CALL16,
   OP_RETURN,
 } Opcode;
 
 static_assert(OP_RETURN <= UINT8_MAX, "Oops! Too many opcodes.");
 
 typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
-
 #define T uint8_t
 #define ARR Instructions
 #include "generic/dyn_array.inc"
@@ -71,16 +74,15 @@ typedef DYN_ARRAY_STRUCT(Value) Constants;
 
 typedef struct {
   Constants constants;
-  Instructions instruc;
+  Instructions instructions;
   LineInfo lines;
-  size_t variable_count;
 } PCode;
 
-static inline PCode new_p_code()
+static inline PCode new_p_code(void)
 {
   PCode p_code;
   p_code.constants = Constants_new();
-  p_code.instruc = Instructions_new();
+  p_code.instructions = Instructions_new();
   p_code.lines = LineInfo_new();
   return p_code;
 }
@@ -107,6 +109,6 @@ static const size_t MAX_OPERAND_SIZE = UINT16_MAX;
 bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size);
 
 // Emit a code constant.
-void emit_constant(PCode *code, size_t line, Value value);
+Value *emit_constant(PCode *code, size_t line, Value value);
 
 #endif

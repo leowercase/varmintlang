@@ -21,7 +21,7 @@ bool values_eq(Value a, Value b)
       }
     case VAL_function:
     case VAL_program:
-      return a.raw.proc == b.raw.proc;
+      return a.raw.procedure == b.raw.procedure;
     case VAL_ast:
       return a.raw.treenode == b.raw.treenode;
     }
