@@ -20,10 +20,6 @@ bool values_eq(Value a, Value b)
         abort();
       }
     case VAL_function:
-    case VAL_program:
-      return a.raw.procedure == b.raw.procedure;
-    case VAL_ast:
-      return a.raw.treenode == b.raw.treenode;
     }
   }
 }
@@ -49,7 +45,6 @@ char *value_type_cstring(ValueType type)
   case_(list)
   case_(function)
   case_(program)
-  case_(ast)
   }
 
 #undef case_
@@ -96,8 +91,6 @@ Str value_to_str(Value val)
     }
   case VAL_program:
     return str_from("<program>");
-  case VAL_ast:
-    return str_from("<ast>");
   }
 }
 
@@ -148,7 +141,5 @@ void print_value(Value val)
     }
   case VAL_program:
     printf(ANSI_GREEN "<program>" ANSI_RESET); break;
-  case VAL_ast:
-    printf(ANSI_GREEN "<ast>" ANSI_RESET); break;
   }
 }

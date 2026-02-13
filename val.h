@@ -8,7 +8,7 @@
 #include <assert.h>
 
 /*
- * The language has values of type number, boolean, string and list.
+ * The language has values of type number, boolean, string, list and function.
  * It is dynamically typed; values are checked during runtime, not compiletime
  */
 
@@ -28,7 +28,6 @@ typedef enum {
 
   // Internal values.
   VAL_program,
-  VAL_ast,
 } ValueType;
 
 typedef union {
@@ -39,11 +38,9 @@ typedef union {
 
   struct StringValue *string;
   struct ValueList *list;
+  struct Proc *function;
 
-  struct Proc *procedure,
-              *function, *program;
-
-  struct Tnode *treenode;
+  struct Proc *program;
 } RawValue;
 
 typedef struct {
