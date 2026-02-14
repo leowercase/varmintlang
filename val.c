@@ -1,5 +1,6 @@
 #include "val.h"
 #include "proc.h"
+#include "state.h"
 
 #include <stdio.h>
 
@@ -13,13 +14,18 @@ bool values_eq(Value a, Value b)
       return a.raw.number == b.raw.number;
     case VAL_boolean:
       return a.raw.boolean == b.raw.boolean;
+    case VAL_native:
+      return a.raw.native->fn == b.raw.native->fn;
     case VAL_string:
+      return strs_eq(a.raw.string->str, b.raw.string->str);
     case VAL_list:
+    case VAL_function:
       {
         error_out("TODO!\n");
         abort();
       }
-    case VAL_function:
+    case VAL_program:
+      unreachable();
     }
   }
 }
@@ -41,6 +47,7 @@ char *value_type_cstring(ValueType type)
     return "no value";
   case_(number)
   case_(boolean)
+  case_(native)
   case_(string)
   case_(list)
   case_(function)
@@ -89,6 +96,8 @@ Str value_to_str(Value val)
       else
         return str_from("<fn>");
     }
+  case VAL_native:
+    return str_from("<native fn>");
   case VAL_program:
     return str_from("<program>");
   }
@@ -139,6 +148,8 @@ void print_value(Value val)
       printf(ANSI_RESET);
       break;
     }
+  case VAL_native:
+    printf(ANSI_GREEN "<native fn>" ANSI_RESET); break;
   case VAL_program:
     printf(ANSI_GREEN "<program>" ANSI_RESET); break;
   }

@@ -21,7 +21,7 @@ const Str str_new(const char *s, const size_t len)
   return str;
 }
 
-// Create Str from string literal.
+// Create a Str from a string literal.
 #define str_from(s) (str_new(s, sizeof(s) / sizeof(char) - 1))
 
 static const Str NULL_STR = {NULL, 0};
@@ -29,7 +29,7 @@ static const Str NULL_STR = {NULL, 0};
 uint64_t str_hash(Str str);
 Str str_fmt(const char *fmt, ...);
 Str str_concat(Str head, Str tail);
-Str str_from_slice(StrSlice slice);
+Str str_copy(Str str);
 bool strs_eq(Str a, Str b);
 
 #endif

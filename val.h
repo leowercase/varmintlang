@@ -21,6 +21,8 @@ typedef enum {
   VAL_number,
   VAL_boolean,
 
+  VAL_native,
+
   // GC'd values
   VAL_string,
   VAL_list,
@@ -33,6 +35,8 @@ typedef enum {
 typedef union {
   float64_t number;
   int boolean;
+
+  struct NativeFn *native;
 
   struct GCData *gc_data; // Accessed by the garbage collector.
 
@@ -112,7 +116,6 @@ typedef struct ValueList {
   GCData gc_data;
   DYN_ARRAY(Value)
 } ValueList;
-
 #define T Value
 #define ARR ValueList
 #include "generic/dyn_array.inc"

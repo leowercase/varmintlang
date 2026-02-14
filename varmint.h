@@ -12,8 +12,12 @@ typedef struct {
   CallStack call_stack;
   CallFrame *frame;
   OpStack op_stack;
+  NativesTable natives;
   Value result;
 } Varmint;
+
+#define add_native_fn(vm, name, fn, arity) \
+  NativesTable_set(&(vm)->natives, str_from(name), native_fn(fn, arity))
 
 Varmint varmint_start(void);
 Value varmint_run(Varmint *vm, char *source);

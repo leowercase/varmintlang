@@ -66,14 +66,14 @@ Str str_concat(Str head, Str tail)
   return catted;
 }
 
-Str str_from_slice(StrSlice slice)
+Str str_copy(Str str)
 {
-  char *cstring = malloc(slice.len * sizeof(char) + sizeof('\0'));
+  char *cstring = malloc(str.len * sizeof(char) + sizeof('\0'));
 
-  memcpy(cstring, slice.s, slice.len);
-  cstring[slice.len] = '\0';
+  memcpy(cstring, str.s, str.len);
+  cstring[str.len] = '\0';
 
-  return str_new(cstring, slice.len);
+  return str_new(cstring, str.len);
 }
 
 // Compare strings.

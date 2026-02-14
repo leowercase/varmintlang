@@ -27,8 +27,6 @@ typedef enum {
   OP_GET16,
   OP_SET,
   OP_SET16,
-  OP_DISCARD_SET,
-  OP_DISCARD_SET16,
   OP_LIST_GET,
   OP_LIST_SET,
   OP_RESERVE_SLOT,
@@ -38,6 +36,8 @@ typedef enum {
   OP_DISCARDN16,
   OP_RETAIN1_DISCARDN,
   OP_RETAIN1_DISCARDN16,
+  OP_JMP,
+  OP_JMP_IFFEN,
   OP_CALL,
   OP_CALL16,
   OP_RETURN,
@@ -98,9 +98,9 @@ void emit_byte(PCode *code, size_t line, uint8_t byte);
 } while (false)
 
 // Returns an instruction pointer to the (16-bit) operand.
-uint8_t *defer_operand(PCode *code, size_t line);
-// Inserts operand of defer_operand into the code
-void patch_operand(PCode *code, uint8_t *ip, uint16_t operand);
+uint8_t *defer_op(PCode *code, size_t line, Opcode op);
+// Inserts operand of defer_op into code
+void patch_op(PCode *code, uint8_t *ip, uint16_t operand);
 
 // Maximum size of variable sized operands
 static const size_t MAX_OPERAND_SIZE = UINT16_MAX;

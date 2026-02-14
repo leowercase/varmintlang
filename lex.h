@@ -1,8 +1,9 @@
 #ifndef LANG_LEX_H
 #define LANG_LEX_H
 
+#include "generic/dyn_array.h"
+#include "str.h"
 #include "util.h"
-#include "val.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -32,6 +33,7 @@ typedef enum {
   TK_IF, TK_ELSE, TK_ELIF,
   TK_LOOP, TK_FOR, TK_WHILE,
   TK_BREAK, TK_CONTINUE,
+  TK_USING,
   TK_TRUE, TK_FALSE,
   TK_ARROW,
   TK_MAPS_TO,
@@ -86,6 +88,7 @@ TokenType is_keyword(Str str)
     [TK_WHILE]    = str_from("while"),
     [TK_BREAK]    = str_from("break"),
     [TK_CONTINUE] = str_from("continue"),
+    [TK_USING]    = str_from("using"),
     [TK_TRUE]     = str_from("True"),
     [TK_FALSE]    = str_from("False"),
   };
@@ -103,13 +106,32 @@ typedef struct {
 } Token;
 
 typedef struct {
+  int parens, curlies;
+} UnmatchedBrackets;
+
+typedef DYN_ARRAY_STRUCT(UnmatchedBrackets) TemplateNesting;
+#define T UnmatchedBrackets
+#define ARR TemplateNesting
+#include "generic/dyn_array.inc"
+
+static inline
+TemplateNesting template_nesting_init(void)
+{
+  TemplateNesting nesting = TemplateNesting_new();
+
+  UnmatchedBrackets initial_unmatched = {0, 0};
+  TemplateNesting_push(&nesting, initial_unmatched);
+
+  return nesting;
+}
+
+typedef struct {
   char *start;
   char *current;
   size_t line;
 
   bool escaping_string;
-  int template_nesting;
-  int unmatched_parens, unmatched_curlies;
+  TemplateNesting template_nesting;
 } Lex;
 
 static inline
@@ -120,8 +142,7 @@ Lex lex_new(char *source)
   lex.line = 1;
 
   lex.escaping_string = false;
-  lex.template_nesting = 0;
-  lex.unmatched_parens = lex.unmatched_curlies = 0;
+  lex.template_nesting = template_nesting_init();
 
   return lex;
 }

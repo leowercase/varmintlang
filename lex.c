@@ -3,6 +3,27 @@
 #include <ctype.h>
 #include <string.h>
 
+static inline void descend_template_nesting(Lex *lex)
+{
+  UnmatchedBrackets new_unmatched = {0, 0};
+  TemplateNesting_push(&lex->template_nesting, new_unmatched);
+}
+
+static inline void ascend_template_nesting(Lex *lex)
+{
+  TemplateNesting_pop(&lex->template_nesting);
+}
+
+static inline UnmatchedBrackets *current_unmatched(Lex *lex)
+{
+  return TemplateNesting_top(&lex->template_nesting);
+}
+
+static inline size_t current_template_nesting(Lex *lex)
+{
+  return lex->template_nesting.len - 1;
+}
+
 // 1 character of lookahead.
 static inline char peek(Lex *lex)
 {
@@ -68,8 +89,8 @@ static Token metastring(Lex *lex)
       lex->current--;
       break;
     case '\\':
-        lex->escaping_string = true;
-        return token(lex, TK_STRCONT);
+      lex->escaping_string = true;
+      return token(lex, TK_STRCONT);
     case '\0':
       return error_token(lex, "unterminated string");
     case '\n':
@@ -117,14 +138,14 @@ static Token escape_sequence(Lex *lex)
     lex->start = lex->current;
     next(lex);
     lex->escaping_string = false;
-    lex->template_nesting++;
+    descend_template_nesting(lex);
     return token(lex, TK_LPAREN);
     // \{...}
   case '{':
     lex->start = lex->current;
     next(lex);
     lex->escaping_string = false;
-    lex->template_nesting++;
+    descend_template_nesting(lex);
     return token(lex, TK_LCURLY);
 
   case '\0':
@@ -223,31 +244,33 @@ Token lex_token(Lex *lex)
     }
 
   case '(':
-    lex->unmatched_parens++;
+    current_unmatched(lex)->parens++;
     return token(lex, TK_LPAREN);
 
   case ')':
-    if (lex->template_nesting > 0 && lex->unmatched_parens == 0) {
+    if (current_template_nesting(lex) > 0
+        && current_unmatched(lex)->parens == 0) {
       // We're ending \(...)
-      lex->template_nesting--;
+      ascend_template_nesting(lex);
       lex->escaping_string = true;
     }
     else
-      lex->unmatched_parens--;
+      current_unmatched(lex)->parens--;
     return token(lex, TK_RPAREN);
 
   case '{':
-    lex->unmatched_curlies++;
+    current_unmatched(lex)->curlies++;
     return token(lex, TK_LCURLY);
 
   case '}':
-    if (lex->template_nesting > 0 && lex->unmatched_curlies == 0) {
-      // Ending \{...}.
-      lex->template_nesting--;
+    if (current_template_nesting(lex) > 0
+        && current_unmatched(lex)->curlies == 0) {
+      // We're ending \(...)
+      ascend_template_nesting(lex);
       lex->escaping_string = true;
     }
     else
-      lex->unmatched_curlies--;
+      current_unmatched(lex)->curlies--;
     return token(lex, TK_RCURLY);
 
   case '+': return token(lex, TK_PLUS);
@@ -314,6 +337,7 @@ const char *tok_cstring(const TokenType type)
   case_(IF) case_(ELSE) case_(ELIF)
   case_(LOOP) case_(FOR) case_(WHILE)
   case_(BREAK) case_(CONTINUE)
+  case_(USING)
   case_(TRUE) case_(FALSE)
   case_(ARROW)
   case_(MAPS_TO)

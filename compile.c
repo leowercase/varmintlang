@@ -47,7 +47,7 @@ static void patch_local(Parse *p, Local *local)
 {
   // Because variables are declared in a stack-like manner,
   // we can predict the op stack slot they will occupy
-  local->stack_slot = p->c->locals.len - 1;
+  local->stack_slot = p->c->stack_slot_count;
 }
 
 static void emit_local(Parse *p, Local *local)
@@ -70,6 +70,7 @@ static void init_compiler(Parse *p, Locals args)
   c->depth = 0;
   c->procedure = proc_new((int)args.len);
   c->locals = args;
+  c->stack_slot_count = args.len;
 
   // Switch compilers.
   // We're one function nesting level deeper.
@@ -82,11 +83,6 @@ static Proc *return_compiler(Parse *p)
 {
   Proc *procedure = p->c->procedure;
 
-  // Pop parameters
-  if (procedure->arity > 0)
-    emit_size_op(code(p), p->current.line,
-        OP_RETAIN1_DISCARDN, (size_t)procedure->arity);
-
   // Return from procedure.
   emit_byte(code(p), p->current.line, OP_RETURN);
 
@@ -96,10 +92,10 @@ static Proc *return_compiler(Parse *p)
   return procedure;
 }
 
-static Parse init_parse(char *source)
+static Parse init_parse(Varmint *vm, char *source)
 {
   Parse p;
-  p.c = NULL;
+  p.vm = vm;
 
   Lex lex = lex_new(source);
   p.current = lex_token(&lex);
@@ -110,6 +106,7 @@ static Parse init_parse(char *source)
 
   p.semantic = SemanticData_new();
 
+  p.c = NULL;
   init_compiler(&p, Locals_new());
   return p;
 }
@@ -373,10 +370,9 @@ static void subscript(Parse *p, int min_bp)
     emit_byte(code(p), line, OP_LIST_GET);
 
   else if (semantic(p)->assign_fn == NULL)
-    parse_error(p, line, "invalid list assign");
+    parse_error(p, line, "invalid list assign\n");
 
   semantic(p)->assign_fn = assign_list;
-
 }
 
 static bool consume_arg_list_start(Parse *p)
@@ -492,7 +488,7 @@ static size_t delimited_listing(Parse *p,
       return len;
   } while (match(p, delim)); // ,
 
-  invalid_token(p, p->current, "expect %s in listing", tok_cstring(delim));
+  invalid_token(p, p->current, "expect %s in listing\n", tok_cstring(delim));
   next(p);
   consume(p, end);
   return 0;
@@ -550,9 +546,11 @@ static void else_elif(Parse *p, int min_bp)
 
 static void loop(Parse *p)
 {
-  // TODO
-  abort();
+  size_t line = eat(p).line; // loop
+  uint8_t *ip = defer_op(code(p), line, OP_JMP);
+
   construct_body(p);
+
 }
 
 static void for_loop(Parse *p)
@@ -587,6 +585,42 @@ static void loop_cont(Parse *p)
   abort();
 }
 
+// using f, g, h: ...
+static void using(Parse *p)
+{
+  size_t line = eat(p).line;
+  p->c->depth++;
+
+  size_t native_count = 0;
+  do {
+    Token ident_tok = consume(p, TK_WORD);
+    StrSlice name = ident_tok.slice;
+
+    Local *local = create_local_var(p, name);
+    local->initialized = true;
+
+    NativeFn *native_fn =
+      NativesTable_get(&p->vm->natives, name);
+
+    if (native_fn == NULL)
+      parse_error(p, ident_tok.line,
+          "no native function named %.*s\n", (int)name.len, name.s);
+
+    emit_constant(code(p), ident_tok.line, value_new(native_fn, native));
+    patch_local(p, local);
+
+    // Native fn locals occupy space too, you know.
+    native_count++;
+    p->c->stack_slot_count++;
+  } while (match(p, TK_COMMA));
+
+  construct_body(p);
+
+  clear_local_scope(p);
+  emit_size_op(code(p), line, OP_RETAIN1_DISCARDN, native_count + 1);
+  p->c->depth--;
+}
+
 static void boolean(Parse *p)
 {
   Token booltok = eat(p);
@@ -599,7 +633,7 @@ static void number(Parse *p)
   Token ntok = eat(p);
 
   // Copying the slice to NUL-terminated so strtod doesn't parse anything extra
-  Str nstr = str_from_slice(ntok.slice);
+  Str nstr = str_copy(ntok.slice);
   float64_t n = strtod(nstr.s, NULL);
   free((void *)nstr.s);
 
@@ -609,7 +643,7 @@ static void number(Parse *p)
 static void string(Parse *p)
 {
   Token strtok = eat(p);
-  Str str = str_from_slice(strtok.slice);
+  Str str = str_copy(strtok.slice);
 
   emit_constant(code(p), strtok.line, string_value_new(str));
 }
@@ -743,12 +777,15 @@ static void block(Parse *p)
   if (!stmt(p))
     runtime_error("illegal empty block, expect statement");
   size_t stmts = 1;
+  p->c->stack_slot_count++;
 
   // Consume statements ...;
-  for (; match(p, TK_SEMICOLON); stmts++) {
+  for (; match(p, TK_SEMICOLON); stmts++, p->c->stack_slot_count++) {
     if (p->current.type == TK_RCURLY) {
       // Trailing semicolon, no value from block expr.
       emit_byte(code(p), line, OP_RESERVE_SLOT);
+      stmts++;
+      p->c->stack_slot_count++;
       break;
     }
     if (!stmt(p))
@@ -757,6 +794,7 @@ static void block(Parse *p)
 
   clear_local_scope(p);
   p->c->depth--;
+
   line = consume(p, TK_RCURLY).line; // }
   emit_size_op(code(p), line, OP_RETAIN1_DISCARDN, stmts);
 }
@@ -846,6 +884,8 @@ static const ParseRule parse_rules[] =
     [TK_BREAK]     = { loop_break, NULL       },
     [TK_CONTINUE]  = { loop_cont,  NULL       },
 
+    [TK_USING]     = { using,      NULL       },
+
     [TK_TRUE]      = { boolean,    NULL       },
     [TK_FALSE]     = { boolean,    NULL       },
 
@@ -878,9 +918,15 @@ static const ParseRule *parse_rule(TokenType type)
   return &parse_rules[type];
 }
 
-Proc *compile(char *source)
+Proc *compile(Varmint *vm, char *source)
 {
-  Parse p = init_parse(source);
+  Parse p = init_parse(vm, source);
+
+  if (p.current.type == TK_EOF) {
+    parse_error(&p, 0, "empty file\n");
+    return NULL;
+  }
+
   expr(&p, PREC_NONE);
 
   Proc *procedure = return_compiler(&p);

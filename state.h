@@ -2,6 +2,7 @@
 #define LANG_STATE_H
 
 #include "generic/dyn_array.h"
+#include "generic/table.h"
 #include "proc.h"
 #include "val.h"
 
@@ -36,5 +37,27 @@ typedef DYN_ARRAY_STRUCT(CallFrame) CallStack;
 #define T CallFrame
 #define ARR CallStack
 #include "generic/dyn_array.inc"
+
+typedef struct NativeFn {
+  int arity;
+  Value (*fn)(Value *args);
+} NativeFn;
+
+static inline
+NativeFn native_fn(Value (*fn)(Value *args), int arity)
+{
+  NativeFn native_fn = {arity, fn};
+  return native_fn;
+}
+
+typedef TABLE_ENTRY_STRUCT(Str, NativeFn) NativesTableEntry;
+typedef TABLE_STRUCT(NativesTableEntry) NativesTable;
+#define K Str
+#define V NativeFn
+#define KEYS_EQ(a, b) strs_eq(a, b)
+#define HASH(key) str_hash(key)
+#define TBL_ENTRY NativesTableEntry
+#define TBL NativesTable
+#include "generic/table.inc"
 
 #endif

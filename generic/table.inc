@@ -4,7 +4,7 @@
 
 /*
  * This header file declares a hash table of keys, values of type K, V.
- * 
+ *
  * Impl uses open addressing; entries reside directly in the buckets array.
  * This dynamic array approach is friends with CPU cache locality.
  *
@@ -46,7 +46,7 @@
 
 // Lazily initialize a new hash table
 static inline
-TBL METHOD(_new)()
+TBL METHOD(_new)(void)
 {
   TBL table;
   table.entry_count = table.cap = 0;
@@ -135,7 +135,7 @@ V *METHOD(_get)(TBL *table, Str key)
 static inline
 bool METHOD(_set)(TBL *table, Str key, V value)
 {
-  if (table->entry_count >= table->cap * MAX_LOAD_FACTOR)
+  if ((double)table->entry_count >= (double)table->cap * MAX_LOAD_FACTOR)
     // α >= α_max or table is empty, should resize.
     METHOD(_resize)(table);
 

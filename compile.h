@@ -4,6 +4,7 @@
 #include "generic/dyn_array.h"
 #include "lex.h"
 #include "proc.h"
+#include "varmint.h"
 
 /*
  * Single-pass compilation is parsing&compiling in a single step.
@@ -52,12 +53,14 @@ struct Parse {
   bool had_error, panic;
   SemanticData semantic;
   struct Compiler *c;
+  Varmint *vm;
 };
 
 // Compiler for a procedure
 typedef struct Compiler {
   struct Compiler *enclosing;
   Locals locals;
+  size_t stack_slot_count;
   int depth; // Current block depth { { ... } }
   Proc *procedure;
 } Compiler;
@@ -110,6 +113,6 @@ typedef struct {
   LedRule led;
 } ParseRule;
 
-Proc *compile(char *source);
+Proc *compile(Varmint *vm, char *source);
 
 #endif

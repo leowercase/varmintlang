@@ -31,32 +31,65 @@ static inline Value peeknth(Varmint *vm, size_t idx)
   return *(OpStack_top(&vm->op_stack) - idx);
 }
 
-// Call a function.
-static void call(Varmint *vm, Proc *fn, size_t argc)
+// Call a procedure.
+static void call(Varmint *vm, Proc *procedure, size_t argc)
 {
-  // Create new frame for function call.
+  // Create new frame for procedure call.
   CallFrame frame;
-  frame.procedure = fn;
-  frame.ip = fn->code.instructions.data;
+  frame.procedure = procedure;
+  frame.ip = procedure->code.instructions.data;
 
-  Value *top_slot = vm->op_stack.len == 0
-    ? vm->op_stack.data : OpStack_push(&vm->op_stack, NO_VAL);
-
-  frame.op_stack = top_slot - argc; // `argc` slots for parameters
+  if (vm->op_stack.len > 0)
+    frame.op_stack = &vm->op_stack.data[vm->op_stack.len - argc];
+  else                                          // `argc` slots for parameters
+    frame.op_stack = &vm->op_stack.data[0];
 
   vm->frame = CallStack_push(&vm->call_stack, frame);
 }
 
+static void call_native(Varmint *vm, NativeFn *native)
+{
+  Value *params = allocate(NULL, (size_t)native->arity * sizeof(Value));
+  // Get parameters
+  for (int i = native->arity - 1; i >= 0; i--)
+    params[i] = pop(vm);
+
+  // Call native function.
+  Value result = native->fn(params);
+
+  free(params);
+  pop(vm); // Pop native function value off the op stack
+  push(vm, result);
+}
+
+static void check_fn_argc(int arity, Str name, size_t argc)
+{
+  if (name.len == 0)
+    name = str_from("function");
+
+  if (arity != argc)
+    runtime_error("expect %li parameters to %.*s but got %li\n",
+        arity, (int)name.len, name.s, argc);
+}
+
 static void call_val(Varmint *vm, Value callee, size_t argc)
 {
-  Proc *fn = typechecked(callee, function);
+  if (callee.type == VAL_function) {
+    Proc *fn = callee.raw.function;
+    check_fn_argc(fn->arity, fn->name, argc);
 
-  if (fn->arity != argc)
-    runtime_error("expect %li parameters to %.*s but got %li\n",
-        fn->arity, argc, fn->name);
+    call(vm, fn, argc);
+  }
 
-  call(vm, fn, argc);
-  pop(vm); // fn
+  else if (callee.type == VAL_native) {
+    NativeFn *fn = callee.raw.native;
+    check_fn_argc(fn->arity, NULL_STR, argc);
+
+    call_native(vm, fn);
+  }
+
+  else runtime_error("cannot call value of type %s\n",
+      value_type_cstring(callee.type));
 }
 
 static inline bool execute_instruction(Varmint *vm)
@@ -183,24 +216,31 @@ static inline bool execute_instruction(Varmint *vm)
     })
   case_size_op(OP_SET, stack_slot,
     {
-      vm->frame->op_stack[stack_slot] = peek(vm);
-      break;
-    })
-  case_size_op(OP_DISCARD_SET, stack_slot,
-    {
-      vm->frame->op_stack[stack_slot] = pop(vm);
+      Value val  = peek(vm);
+
+      if (val.type == VAL_no)
+        runtime_error("invalid assign to expression without value\n");
+
+      vm->frame->op_stack[stack_slot] = val;
       break;
     })
 
   case OP_LIST_GET:
     {
-      Value idx = pop(vm), list = pop(vm);
+      Value idx = pop(vm),
+            list = pop(vm);
       push(vm, _vm_get_elem(list, idx));
       break;
     }
   case OP_LIST_SET:
     {
-      Value val = pop(vm), idx = pop(vm), list = pop(vm);
+      Value val = pop(vm),
+            idx = pop(vm),
+            list = pop(vm);
+
+      if (val.type == VAL_no)
+        runtime_error("invalid list assign to expression without value\n");
+
       push(vm, _vm_set_elem(list, idx, val));
       break;
     }
@@ -227,6 +267,17 @@ static inline bool execute_instruction(Varmint *vm)
       break;
     })
 
+  case OP_JMP:
+    {
+      ;
+      break;
+    }
+  case OP_JMP_IFFEN:
+    {
+      ;
+      break;
+    }
+
   case_size_op(OP_CALL, argc,
     {
       call_val(vm, peeknth(vm, argc), argc);
@@ -236,9 +287,7 @@ static inline bool execute_instruction(Varmint *vm)
   case OP_RETURN:
     {
       Value return_val = pop(vm);
-
       CallFrame frame = CallStack_pop(&vm->call_stack);
-      popn(vm, (size_t)frame.procedure->arity); // Pop parameters
 
       if (vm->call_stack.len == 0) {
         // Return from program.
@@ -246,7 +295,16 @@ static inline bool execute_instruction(Varmint *vm)
         return false;
       }
 
+      // Pop function parameters
+      popn(vm, (size_t)frame.procedure->arity);
+      // Pop the function itself off the stack.
+      pop(vm);
+      // Push return value
       push(vm, return_val);
+
+      // Ensure balanced stack after the call
+      assert(vm->op_stack.data + vm->op_stack.len == frame.op_stack);
+
       vm->frame = CallStack_top(&vm->call_stack);
       break;
     }
@@ -269,6 +327,4 @@ void execute(Varmint *vm, Proc *program)
   do
     running = execute_instruction(vm);
   while (running);
-
-  assert(vm->op_stack.len == 0);
 }
