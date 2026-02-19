@@ -1,3 +1,4 @@
+#include "error.h"
 #include "val.h"
 #include "proc.h"
 #include "state.h"
@@ -32,7 +33,7 @@ bool values_eq(Value a, Value b)
 
 bool value_is_falsey(Value val)
 {
-  if (is_type(val, boolean))
+  if (val.type == VAL_boolean)
     return !val.raw.boolean;
   else
     return false;

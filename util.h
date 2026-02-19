@@ -20,14 +20,6 @@
 #define ANSI_WHITE   "\x1b[37m"
 #define ANSI_RESET   "\x1b[0m"
 
-// Helper function for errors.
-void error_out(const char *fmt, ...);
-void v_error_out(const char *fmt, va_list args);
-
-// TODO: Print stack trace
-#define runtime_error(...) \
-  (error_out(__VA_ARGS__), exit(EX_DATAERR))
-
 // C11 shim.
 // https://en.cppreference.com/w/c/program/unreachable
 #if __STDC_VERSION__ < 202311L

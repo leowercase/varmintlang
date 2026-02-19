@@ -1,3 +1,4 @@
+#include "mem.h"
 #include "str.h"
 
 #include <stdarg.h>
@@ -30,9 +31,7 @@ Str str_fmt(const char *fmt, ...)
     return NULL_STR;
 
   size_t len = (size_t)n;
-  char *s = malloc(len * sizeof(char) + sizeof('\0'));
-  if (s == NULL)
-    return NULL_STR;
+  char *s = allocate(NULL, len * sizeof(char) + sizeof('\0'));
 
   // Actually do the thing™
   va_start(args, fmt);
@@ -52,12 +51,7 @@ Str str_fmt(const char *fmt, ...)
 Str str_concat(Str head, Str tail)
 {
   size_t len = head.len + tail.len;
-  char *s = malloc(len * sizeof(char) + sizeof('\0'));
-
-  if (s == NULL) {
-    error_out("Out of memory\n");
-    exit(EX_OSERR);
-  }
+  char *s = allocate(NULL, len * sizeof(char) + sizeof('\0'));
 
   memcpy(s, head.s, head.len);
   memcpy(s + head.len, tail.s, tail.len + 1);
@@ -68,7 +62,7 @@ Str str_concat(Str head, Str tail)
 
 Str str_copy(Str str)
 {
-  char *cstring = malloc(str.len * sizeof(char) + sizeof('\0'));
+  char *cstring = allocate(NULL, str.len * sizeof(char) + sizeof('\0'));
 
   memcpy(cstring, str.s, str.len);
   cstring[str.len] = '\0';

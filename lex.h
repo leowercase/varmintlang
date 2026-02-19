@@ -117,7 +117,7 @@ typedef DYN_ARRAY_STRUCT(UnmatchedBrackets) TemplateNesting;
 static inline
 TemplateNesting template_nesting_init(void)
 {
-  TemplateNesting nesting = TemplateNesting_new();
+  TemplateNesting nesting = TemplateNesting_with_cap(1);
 
   UnmatchedBrackets initial_unmatched = {0, 0};
   TemplateNesting_push(&nesting, initial_unmatched);

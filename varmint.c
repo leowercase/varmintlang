@@ -1,3 +1,4 @@
+#include "error.h"
 #include "disassemble.h"
 #include "compile.h"
 #include "varmint.h"
@@ -7,7 +8,7 @@
 #include <readline/readline.h>
 
 // typeof(val) -> string
-static Value _typeof(Value *args)
+static Value _typeof(Varmint *vm, Value *args)
 {
   Value val = args[0];
   char *type = value_type_cstring(val.type);
@@ -16,7 +17,7 @@ static Value _typeof(Value *args)
 }
 
 // lenof(collection) -> number
-static Value _lenof(Value *args)
+static Value _lenof(Varmint *vm, Value *args)
 {
   Value collection = args[0];
 
@@ -26,17 +27,18 @@ static Value _lenof(Value *args)
   case VAL_list:
     return value_new((float64_t)collection.raw.list->len, number);
   default:
-    runtime_error("expect type string or list for collection, got %s",
+    runtime_error(vm, "expect type string or list for collection, got %s",
         value_type_cstring(collection.type));
+    return NO_VAL;
   }
 }
 
 // put(output_string: string)
-static Value _put(Value *args)
+static Value _put(Varmint *vm, Value *args)
 {
   Value output_string = args[0];
 
-  Str str = typechecked(output_string, string)->str;
+  Str str = typechecked(vm, output_string, string)->str;
 
   printf("%.*s", (int)str.len, str.s);
 
@@ -44,7 +46,7 @@ static Value _put(Value *args)
 }
 
 // input() -> string
-static Value _input(Value *args)
+static Value _input(Varmint *vm, Value *args)
 {
   char *input_line = readline(NULL);
 
@@ -53,13 +55,13 @@ static Value _input(Value *args)
 }
 
 // rot(text: string, shift: number) -> string
-static Value _rot(Value *args)
+static Value _rot(Varmint *vm, Value *args)
 {
   Value shift = args[0],
         text = args[1];
 
-  int shift_n = (int)typechecked(shift, number);
-  Str str = typechecked(text, string)->str;
+  int shift_n = (int)typechecked(vm, shift, number);
+  Str str = typechecked(vm, text, string)->str;
 
   char *ciphertext = allocate(NULL, sizeof(str) + sizeof('\0'));
   ciphertext[str.len] = '\0';
@@ -108,6 +110,8 @@ void varmint_free(Varmint *vm)
 
 Value varmint_run(Varmint *vm, char *source)
 {
+  vm->source = source;
+
 #ifdef VARMINT_DEBUG
   {
     printf("*** TOKENS ***\n");

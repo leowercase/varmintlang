@@ -5,15 +5,16 @@
 #include "state.h"
 
 /*
- * Heart of a Varmint, offspring of the C cockroach.
+ * Heart of a Varmint, that vile fiend, offspring of the C cockroach.
  * Contains all common state.
  */
-typedef struct {
+typedef struct Varmint {
   CallStack call_stack;
   CallFrame *frame;
   OpStack op_stack;
   NativesTable natives;
   Value result;
+  char *source;
 } Varmint;
 
 #define add_native_fn(vm, name, fn, arity) \

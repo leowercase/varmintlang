@@ -1,3 +1,4 @@
+#include "error.h"
 #include "varmint.h"
 
 #include <sysexits.h>

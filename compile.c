@@ -1,3 +1,4 @@
+#include "error.h"
 #include "lex.h"
 #include "compile.h"
 #include "val.h"
@@ -5,14 +6,88 @@
 
 #include <stdio.h>
 
+static inline PCode *code(Parse *p)
+{
+  return &p->c->procedure->code;
+}
+
 static inline SemanticDatum *semantic(Parse *p)
 {
   return SemanticData_top(&p->semantic);
 }
 
-static inline PCode *code(Parse *p)
+static inline SemanticDatum *new_semantic_scope(Parse *p)
 {
-  return &p->c->procedure->code;
+  SemanticDatum sem;
+  sem.assign_fn = semantic(p)->assign_fn;
+  sem.led_fail = false;
+  sem.panic = false;
+
+  return SemanticData_push(&p->semantic, sem);
+}
+
+static inline SemanticDatum end_semantic_scope(Parse *p)
+{
+  return SemanticData_pop(&p->semantic);
+}
+
+static void init_compiler(Parse *p, Locals args)
+{
+  Compiler *c = allocate(NULL, sizeof(Compiler));
+  c->depth = 0;
+  c->procedure = proc_new((int)args.len);
+  c->locals = args;
+  c->stack_slot_count = args.len;
+
+  // Switch compilers.
+  // We're one function nesting level deeper.
+  c->enclosing = p->c;
+  p->c = c;
+}
+
+// Return from compiler.
+static Proc *return_compiler(Parse *p)
+{
+  Proc *procedure = p->c->procedure;
+
+  // Return from procedure.
+  emit_byte(code(p), p->current.line, OP_RETURN);
+
+  free(p->c->locals.data);
+
+  p->c = p->c->enclosing;
+  return procedure;
+}
+
+// Issue a parsing error and enter panic mode in the imminent semantic scope.
+static void parse_error(Parse *p, Token offending_tok, const char *msg, ...)
+{
+  if (semantic(p)->panic) return;
+
+  error_out("[line %li] ", offending_tok.line);
+
+  va_list args;
+  va_start(args, msg);
+  v_error_out(msg, args);
+  va_end(args);
+  error_out(":\n");
+
+  error_line_snip(p->vm->source, offending_tok.line,
+                         (char *)offending_tok.slice.s);
+  p->had_error = true;
+  semantic(p)->panic = true;
+}
+
+// Emit a code constant.
+static Value *emit_constant(Parse *p, size_t line, Value value)
+{
+  Value *constant = Constants_push(&code(p)->constants, value);
+  size_t idx = code(p)->constants.len - 1;
+
+  if (!emit_size_op(code(p), line, OP_CONST, idx))
+    parse_error(p, p->current, "too many constants");
+
+  return constant;
 }
 
 // Local lookup.
@@ -50,85 +125,16 @@ static void patch_local(Parse *p, Local *local)
   local->stack_slot = p->c->stack_slot_count;
 }
 
-static void emit_local(Parse *p, Local *local)
-{
-  emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
-  patch_local(p, local);
-}
-
 static void clear_local_scope(Parse *p)
 {
+  if (p->c->locals.len == 0)
+    return;
+
   for (Local *local = Locals_top(&p->c->locals);
       local >= p->c->locals.data && local->depth == p->c->depth;
       local--)
     Locals_pop(&p->c->locals);
 }
-
-static void init_compiler(Parse *p, Locals args)
-{
-  Compiler *c = allocate(NULL, sizeof(Compiler));
-  c->depth = 0;
-  c->procedure = proc_new((int)args.len);
-  c->locals = args;
-  c->stack_slot_count = args.len;
-
-  // Switch compilers.
-  // We're one function nesting level deeper.
-  c->enclosing = p->c;
-  p->c = c;
-}
-
-// Return from compiler.
-static Proc *return_compiler(Parse *p)
-{
-  Proc *procedure = p->c->procedure;
-
-  // Return from procedure.
-  emit_byte(code(p), p->current.line, OP_RETURN);
-
-  free(p->c->locals.data);
-
-  p->c = p->c->enclosing;
-  return procedure;
-}
-
-static Parse init_parse(Varmint *vm, char *source)
-{
-  Parse p;
-  p.vm = vm;
-
-  Lex lex = lex_new(source);
-  p.current = lex_token(&lex);
-  p.lookahead = lex_token(&lex);
-  p.lex = lex;
-
-  p.had_error = p.panic = false;
-
-  p.semantic = SemanticData_new();
-
-  p.c = NULL;
-  init_compiler(&p, Locals_new());
-  return p;
-}
-
-static void parse_error(Parse *p, size_t line, const char *msg, ...)
-{
-  if (p->panic) return;
-
-  error_out("[line %li] ", line);
-  va_list args;
-  va_start(args, msg);
-  v_error_out(msg, args);
-  va_end(args);
-
-  p->had_error = true;
-  p->panic = true;
-}
-
-#define invalid_token(p, tok, msg, ...) \
-  parse_error(p, tok.line, "invalid token %s `%.*s`, " msg, \
-      tok_cstring(tok.type), (int)tok.slice.len, tok.slice.s, \
-      __VA_ARGS__)
 
 static inline Token peek(Parse *p)
 {
@@ -144,7 +150,7 @@ static Token next(Parse *p)
 
     // Catch as many consecutive error tokens as possible.
     if (t.type != TK_ERR) break;
-    parse_error(p, t.line, "%.*s", (int)t.slice.len, t.slice.s);
+    parse_error(p, t, "%.*s", (int)t.slice.len, t.slice.s);
   }
   return next_tok;
 }
@@ -166,11 +172,11 @@ static bool match(Parse *p, TokenType expected)
   else return false;
 }
 
-static Token consume(Parse *p, TokenType expected)
+static Token consume(Parse *p, TokenType expected, const char *msg)
 {
   Token tok = p->current;
   if (!match(p, expected))
-    invalid_token(p, p->current, "expected %s\n", tok_cstring(expected));
+    parse_error(p, p->current, msg);
   return tok;
 }
 
@@ -211,9 +217,6 @@ static inline void assignage(Parse *p, int min_bp, Op op_shorthand)
     return;
   }
 
-  if (semantic(p)->assign_fn == NULL)
-    parse_error(p, p->current.line, "lhs is not assignable\n");
-
   size_t line = eat(p).line; // op
   bool compound = op_shorthand != OP_NONE;
 
@@ -229,7 +232,10 @@ static inline void assignage(Parse *p, int min_bp, Op op_shorthand)
     emit_byte(code(p), line, (uint8_t)op_shorthand);
 
   // Emit assigning instruction.
-  semantic(p)->assign_fn(p);
+  if (semantic(p)->assign_fn != NULL)
+    semantic(p)->assign_fn(p);
+  else
+    parse_error(p, p->current, "lhs is not assignable");
 }
 
 static void assign(Parse *p, int min_bp)
@@ -241,7 +247,7 @@ static const BinaryOp infix_ops[] = {
   [TK_PLUS]    = { OP_ADD,     PREC_TERM,   ASSOC_LEFT  },
   [TK_MINUS]   = { OP_SUB,     PREC_TERM,   ASSOC_LEFT  },
   [TK_STAR]    = { OP_MUL,     PREC_FACTOR, ASSOC_LEFT  },
-  [TK_SLASH]   = { OP_MUL,     PREC_FACTOR, ASSOC_LEFT  },
+  [TK_SLASH]   = { OP_DIV,     PREC_FACTOR, ASSOC_LEFT  },
   [TK_CARET]   = { OP_POW,     PREC_POWER,  ASSOC_RIGHT },
   [TK_PERCENT] = { OP_MODULO,  PREC_FACTOR, ASSOC_LEFT  },
   [TK_2PIPE]   = { OP_CONCAT,  PREC_CONCAT, ASSOC_LEFT  },
@@ -361,23 +367,23 @@ static void subscript(Parse *p, int min_bp)
     return;
   }
 
-  size_t line = eat(p).line; // [
+  Token brack_tok = eat(p); // [
   expr(p, PREC_NONE);
-  consume(p, TK_RBRACK); // ]
+  consume(p, TK_RBRACK, "unterminated subscript"); // ]
 
   if (p->current.type != TK_ASSIGN)
     // Access.
-    emit_byte(code(p), line, OP_LIST_GET);
+    emit_byte(code(p), brack_tok.line, OP_LIST_GET);
 
   else if (semantic(p)->assign_fn == NULL)
-    parse_error(p, line, "invalid list assign\n");
+    parse_error(p, brack_tok, "invalid list assign");
 
   semantic(p)->assign_fn = assign_list;
 }
 
 static bool consume_arg_list_start(Parse *p)
 {
-  consume(p, TK_LPAREN);
+  consume(p, TK_LPAREN, "expect grouping start");
   TokenType current = p->current.type,
             next = peek(p).type;
 
@@ -389,6 +395,7 @@ static bool consume_arg_list_start(Parse *p)
 static Locals consume_arg_list(Parse *p)
 {
   Locals args = Locals_new();
+
   // Parameters take up the first few stack slots of the frame.
   while (p->current.type == TK_WORD
       && (peek(p).type == TK_RPAREN || peek(p).type == TK_COMMA)) {
@@ -399,13 +406,14 @@ static Locals consume_arg_list(Parse *p)
 
     if (!match(p, TK_COMMA)) break;
   }
+
   return args;
 }
 
 // Parses a function body and creates a new fn.
 static void function(Parse *p, size_t line, StrSlice name, Locals args)
 {
-  Value *fn_constant = emit_constant(code(p), line, NO_VAL);
+  Value *fn_constant = emit_constant(p, line, NO_VAL);
 
   init_compiler(p, args);
   expr(p, PREC_NONE);
@@ -416,7 +424,7 @@ static void function(Parse *p, size_t line, StrSlice name, Locals args)
   *fn_constant = value_new(procedure, function);
 }
 
-static void ident_str(Parse *p, size_t line, StrSlice ident);
+static void ident_str(Parse *p, Token ident_tok);
 
 // (x, y) => ...
 // https://en.wikipedia.org/wiki/Maps_to
@@ -432,22 +440,25 @@ static void maplet(Parse *p)
       // Need to parse expr inside grouping.
       expr(p, PREC_NONE);
 
-    else if (args.len == 1)
+    else if (args.len == 1) {
       // Consumed a single identifier in paretheses - that needs to be emitted.
       // We already pushed it into locals in consume_arg_list
-      ident_str(p, p->current.line, Locals_pop(&args).name);
+      Token ident_tok = {.line = p->current.line,
+                         .slice = Locals_pop(&args).name};
+      ident_str(p, ident_tok);
+    }
 
     else
       // Something is wrong in the user's code.
-      parse_error(p, p->current.line,
-          "expect maplet arrow after argument list\n");
+      parse_error(p, p->current,
+          "expect maplet arrow after argument list");
 
     free(args.data);
-    consume(p, TK_RPAREN);
+    consume(p, TK_RPAREN, "expect grouping end");
     return;
   }
 
-  consume(p, TK_RPAREN);
+  consume(p, TK_RPAREN, "expect argument list end");
   next(p); // =>
   function(p, line, NULL_STR, args);
 }
@@ -460,7 +471,7 @@ static void grouping(Parse *p)
 
   else {
     expr(p, PREC_NONE);
-    consume(p, TK_RPAREN); // )
+    consume(p, TK_RPAREN, "expect grouping end"); // )
   }
 }
 
@@ -469,7 +480,7 @@ static size_t delimited_listing(Parse *p,
     const TokenType start, const TokenType delim, const TokenType end,
     bool allow_trailing_delim)
 {
-  consume(p, start); // [
+  consume(p, start, "expect listing start"); // [
   size_t len = 0;
 
   // Consume listing elements
@@ -478,7 +489,8 @@ static size_t delimited_listing(Parse *p,
       if (len == 0 || allow_trailing_delim)
         return len;
       else
-        runtime_error("Invalid trailing %s in listing\n", tok_cstring(delim));
+        parse_error(p, p->current,
+            "invalid trailing %s in listing", tok_cstring(delim));
     }
 
     expr(p, PREC_NONE);
@@ -488,9 +500,10 @@ static size_t delimited_listing(Parse *p,
       return len;
   } while (match(p, delim)); // ,
 
-  invalid_token(p, p->current, "expect %s in listing\n", tok_cstring(delim));
+  parse_error(p, p->current,
+      "expect %s in listing", tok_cstring(delim));
   next(p);
-  consume(p, end);
+  consume(p, end, "expect listing end");
   return 0;
 }
 
@@ -519,7 +532,7 @@ static void list(Parse *p)
 
 static void construct_body(Parse *p)
 {
-  consume(p, TK_COLON);
+  consume(p, TK_COLON, "expect `:`");
   const int r_bp = (int)PREC_BASE + (int)ASSOC_RIGHT;
   expr(p, r_bp);
 }
@@ -557,7 +570,7 @@ static void for_loop(Parse *p)
 {
   //Token for_tok = eat(p),
         //ident_tok = consume(p, TK_WORD);
-  consume(p, TK_IN);
+  //consume(p, TK_IN);
 
   // TODO
   abort();
@@ -593,7 +606,8 @@ static void using(Parse *p)
 
   size_t native_count = 0;
   do {
-    Token ident_tok = consume(p, TK_WORD);
+    Token ident_tok = consume(p, TK_WORD,
+        "expect native function name after `using`");
     StrSlice name = ident_tok.slice;
 
     Local *local = create_local_var(p, name);
@@ -603,10 +617,10 @@ static void using(Parse *p)
       NativesTable_get(&p->vm->natives, name);
 
     if (native_fn == NULL)
-      parse_error(p, ident_tok.line,
-          "no native function named %.*s\n", (int)name.len, name.s);
+      parse_error(p, ident_tok,
+          "no native function named %.*s", (int)name.len, name.s);
 
-    emit_constant(code(p), ident_tok.line, value_new(native_fn, native));
+    emit_constant(p, ident_tok.line, value_new(native_fn, native));
     patch_local(p, local);
 
     // Native fn locals occupy space too, you know.
@@ -625,7 +639,7 @@ static void boolean(Parse *p)
 {
   Token booltok = eat(p);
   int P = booltok.type == TK_TRUE;
-  emit_constant(code(p), booltok.line, value_new(P, boolean));
+  emit_constant(p, booltok.line, value_new(P, boolean));
 }
 
 static void number(Parse *p)
@@ -637,7 +651,7 @@ static void number(Parse *p)
   float64_t n = strtod(nstr.s, NULL);
   free((void *)nstr.s);
 
-  emit_constant(code(p), ntok.line, value_new(n, number));
+  emit_constant(p, ntok.line, value_new(n, number));
 }
 
 static void string(Parse *p)
@@ -645,7 +659,7 @@ static void string(Parse *p)
   Token strtok = eat(p);
   Str str = str_copy(strtok.slice);
 
-  emit_constant(code(p), strtok.line, string_value_new(str));
+  emit_constant(p, strtok.line, string_value_new(str));
 }
 
 static void metastring(Parse *p)
@@ -680,11 +694,13 @@ static void assign_local(Parse *p)
 }
 
 // Emit p-code based on an identifier occurrence.
-static void ident_str(Parse *p, size_t line, StrSlice ident)
+static void ident_str(Parse *p, Token ident_tok)
 {
+  StrSlice ident = ident_tok.slice;
+
   Local *local = resolve_local(p, ident);
   if (!local) {
-    parse_error(p, line, "use of undeclared variable %.*s\n",
+    parse_error(p, ident_tok, "use of undeclared variable %.*s",
         (int)ident.len, ident.s);
     return;
   }
@@ -695,9 +711,9 @@ static void ident_str(Parse *p, size_t line, StrSlice ident)
   if (p->current.type != TK_ASSIGN) {
     // Access.
     if (local->initialized)
-      emit_size_op(code(p), line, OP_GET, local->stack_slot);
+      emit_size_op(code(p), ident_tok.line, OP_GET, local->stack_slot);
     else
-      parse_error(p, line, "variable %.*s has not been initialized\n",
+      parse_error(p, ident_tok, "variable %.*s has not been initialized",
           (int)ident.len, ident.s);
   }
 }
@@ -705,8 +721,7 @@ static void ident_str(Parse *p, size_t line, StrSlice ident)
 // x
 static void ident(Parse *p)
 {
-  Token ident_tok = eat(p);
-  ident_str(p, ident_tok.line, ident_tok.slice);
+  ident_str(p, eat(p));
 }
 
 // Function declaration.
@@ -714,13 +729,13 @@ static void ident(Parse *p)
 static void fn_decl(Parse *p, Token ident_tok)
 {
   if (!consume_arg_list_start(p))
-    parse_error(p, p->current.line, "expect argument list\n");
+    parse_error(p, p->current, "expect argument list");
 
   StrSlice name = ident_tok.slice;
   Locals args = consume_arg_list(p);
-  consume(p, TK_RPAREN);
+  consume(p, TK_RPAREN, "expect argument list end");
 
-  consume(p, TK_ASSIGN);
+  consume(p, TK_ASSIGN, "function requires a body");
 
   Local *fn_local = create_local_var(p, name);
   fn_local->initialized = true;
@@ -732,8 +747,11 @@ static void fn_decl(Parse *p, Token ident_tok)
 // let ...
 static void let(Parse *p)
 {
+  new_semantic_scope(p);
+
   next(p); // let token
-  Token ident_tok = consume(p, TK_WORD);
+  Token ident_tok = consume(p, TK_WORD,
+      "expect identifier after `let`");
 
   if (p->current.type == TK_LPAREN) {
     // Argument list for function definition.
@@ -751,100 +769,116 @@ static void let(Parse *p)
 
     local->initialized = true;
   }
-  else emit_local(p, local);
+  else {
+    emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
+    patch_local(p, local);
+  }
+
+  end_semantic_scope(p);
 }
 
-static bool stmt(Parse *p)
+static void stmt(Parse *p)
 {
   if (p->current.type == TK_LET)
     // let is a statement, as it requires stack semantics.
     let(p);
-  else if (parse_rule(p->current.type)->nud == NULL)
-    return false;
   else
     expr(p, PREC_NONE);
-
-  return true;
 }
 
 // A block is a series of statements.
 static void block(Parse *p)
 {
-  size_t line = eat(p).line; // {
+  Token curly_tok = eat(p); // {
+
+  if (p->current.type == TK_RCURLY) {
+    parse_error(p, eat(p), "illegal empty block");
+    return;
+  }
+
+  new_semantic_scope(p);
   p->c->depth++;
 
   // Consume first statement
-  if (!stmt(p))
-    runtime_error("illegal empty block, expect statement");
+  stmt(p);
   size_t stmts = 1;
   p->c->stack_slot_count++;
 
   // Consume statements ...;
-  for (; match(p, TK_SEMICOLON); stmts++, p->c->stack_slot_count++) {
-    if (p->current.type == TK_RCURLY) {
+  for (; !match(p, TK_RCURLY); stmts++, p->c->stack_slot_count++) {
+    // Consume tokens until a semicolon is found.
+    while (!match(p, TK_SEMICOLON))
+      parse_error(p, eat(p), "expect semicolon");
+
+    semantic(p)->panic = false; // Synchronize error state between statements.
+
+    if (match(p, TK_RCURLY)) {
       // Trailing semicolon, no value from block expr.
-      emit_byte(code(p), line, OP_RESERVE_SLOT);
+      emit_byte(code(p), curly_tok.line, OP_RESERVE_SLOT);
       stmts++;
       p->c->stack_slot_count++;
       break;
     }
-    if (!stmt(p))
-      break;
+
+    if (match(p, TK_RCURLY)) break;
+
+    stmt(p);
   }
 
   clear_local_scope(p);
-  p->c->depth--;
+  emit_size_op(code(p), p->current.line, OP_RETAIN1_DISCARDN, stmts);
 
-  line = consume(p, TK_RCURLY).line; // }
-  emit_size_op(code(p), line, OP_RETAIN1_DISCARDN, stmts);
+  p->c->depth--;
+  end_semantic_scope(p);
 }
 
 // An impl of Pratt parsing.
 // Handles prefix, infix, postfix and mixfix expressions
 static void expr(Parse *p, int min_bp)
 {
-  SemanticDatum sem;
-  sem.assign_fn = NULL;
-  sem.led_fail = false;
-
-  SemanticData_push(&p->semantic, sem);
+  new_semantic_scope(p);
 
   Token lhs_token = p->current;
   NudRule lhs_rule = parse_rule(lhs_token.type)->nud;
 
   if (lhs_rule == NULL)
-    parse_error(p, lhs_token.line, "expect expression, got `%.*s`\n",
+    parse_error(p, lhs_token, "expect expression, got `%.*s`",
         (int)lhs_token.slice.len, lhs_token.slice.s);
-
-  lhs_rule(p);
+  else
+    lhs_rule(p);
 
   for (;;) {
     Token op_token = p->current;
     LedRule op_rule = parse_rule(op_token.type)->led;
 
-    if (op_rule == NULL)
-      parse_error(p, op_token.line, "expect operator, got `%.*s`\n",
+    if (op_rule == NULL) {
+      parse_error(p, op_token, "expect operator, got `%.*s`",
           (int)op_token.slice.len, op_token.slice.s);
 
+      next(p); continue; // Consume tokens until a valid operator is found.
+    }
+
+    semantic(p)->panic = false; // Synchronize error state after lhs
     op_rule(p, min_bp);
 
     if (semantic(p)->led_fail)
       break; // Precedence too small or op_token otherwise cannot be a LED
   }
 
-  SemanticData_pop(&p->semantic);
+  end_semantic_scope(p);
 }
 
-// Skips LED parsing.
-static void no_op(Parse *p, int _)
+// Token denoting the end of a surrounding.
+static void led_end(Parse *p, int _)
 {
+  // Skip further LED parsing at this depth.
   semantic(p)->led_fail = true;
 }
 
 static const ParseRule parse_rules[] =
   {
 /*  token type         NUD         LED        */
-    [TK_EOF]       = { NULL,       no_op      },
+    [TK_EOF]       = { NULL,       led_end    },
     [TK_ERR]       = { NULL,       NULL       },
 
     [TK_PLUS]      = { prefix_op,  infix_op   },
@@ -893,22 +927,22 @@ static const ParseRule parse_rules[] =
     [TK_MAPS_TO]   = { NULL,       NULL       },
 
     [TK_LPAREN]    = { grouping,   invocation },
-    [TK_RPAREN]    = { NULL,       no_op      },
+    [TK_RPAREN]    = { NULL,       led_end    },
 
     [TK_LCURLY]    = { block,      NULL       },
-    [TK_RCURLY]    = { NULL,       no_op      },
+    [TK_RCURLY]    = { NULL,       led_end    },
 
     [TK_LBRACK]    = { list,       subscript  },
-    [TK_RBRACK]    = { NULL,       no_op      },
+    [TK_RBRACK]    = { NULL,       led_end    },
 
-    [TK_COLON]     = { NULL,       no_op      },
-    [TK_SEMICOLON] = { NULL,       no_op      },
-    [TK_COMMA]     = { NULL,       no_op      },
+    [TK_COLON]     = { NULL,       led_end    },
+    [TK_SEMICOLON] = { NULL,       led_end    },
+    [TK_COMMA]     = { NULL,       led_end    },
 
     [TK_NUMERAL]   = { number,     NULL       },
 
-    [TK_STRCONT]   = { metastring, no_op      },
-    [TK_STREND]    = { string,     no_op      },
+    [TK_STRCONT]   = { metastring, led_end    },
+    [TK_STREND]    = { string,     led_end    },
 
     [TK_WORD]      = { ident,      NULL       },
  };
@@ -918,16 +952,40 @@ static const ParseRule *parse_rule(TokenType type)
   return &parse_rules[type];
 }
 
+static Parse init_parse(Varmint *vm, char *source)
+{
+  Parse p;
+  p.vm = vm;
+
+  p.lex = lex_new(source);
+  next(&p); next(&p);
+
+  p.had_error = false;
+  p.semantic = SemanticData_new();
+
+  p.c = NULL;
+  init_compiler(&p, Locals_new());
+  return p;
+}
+
 Proc *compile(Varmint *vm, char *source)
 {
   Parse p = init_parse(vm, source);
 
   if (p.current.type == TK_EOF) {
-    parse_error(&p, 0, "empty file\n");
+    error_out("empty file\n");
     return NULL;
   }
 
+  SemanticDatum sem;
+  sem.assign_fn = NULL;
+  sem.led_fail = false;
+  sem.panic = false;
+  SemanticData_push(&p.semantic, sem);
+
   expr(&p, PREC_NONE);
+
+  end_semantic_scope(&p);
 
   Proc *procedure = return_compiler(&p);
   return p.had_error ? NULL : procedure;

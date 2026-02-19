@@ -51,17 +51,6 @@ bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size)
   return true;
 }
 
-Value *emit_constant(PCode *code, size_t line, Value value)
-{
-  Value *constant = Constants_push(&code->constants, value);
-  size_t idx = code->constants.len - 1;
-
-  if (emit_size_op(code, line, OP_CONST, idx))
-    return constant;
-
-  runtime_error("Too many constants\n");
-}
-
 size_t get_line(LineInfo *lines, size_t offset)
 {
   for (size_t i = 0; i < lines->len; i++) {

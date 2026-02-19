@@ -39,7 +39,14 @@ typedef DYN_ARRAY_STRUCT(Local) Locals;
 typedef struct {
   void (*assign_fn)(Parse *p); // Assignment function for left hand side
   Local *assignable_local;
-  bool led_fail; // Whether the latest left-denoted parse failed.
+
+  // Whether the latest left-denoted parse failed.
+  bool led_fail;
+
+  // When an error is reached, we ignore any further ones until we
+  // hit a synchronization point.
+  // https://www.geeksforgeeks.org/compiler-design/error-recovery-strategies-in-compiler-design/
+  bool panic;
 } SemanticDatum;
 
 typedef DYN_ARRAY_STRUCT(SemanticDatum) SemanticData;
@@ -50,7 +57,7 @@ typedef DYN_ARRAY_STRUCT(SemanticDatum) SemanticData;
 struct Parse {
   Lex lex;
   Token current, lookahead;
-  bool had_error, panic;
+  bool had_error;
   SemanticData semantic;
   struct Compiler *c;
   Varmint *vm;

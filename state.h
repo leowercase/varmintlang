@@ -38,19 +38,15 @@ typedef DYN_ARRAY_STRUCT(CallFrame) CallStack;
 #define ARR CallStack
 #include "generic/dyn_array.inc"
 
+// Forward declaration.
+struct Varmint;
+
 typedef struct NativeFn {
   int arity;
-  Value (*fn)(Value *args);
+  Value (*fn)(struct Varmint *vm, Value *args);
 } NativeFn;
 
-static inline
-NativeFn native_fn(Value (*fn)(Value *args), int arity)
-{
-  NativeFn native_fn = {arity, fn};
-  return native_fn;
-}
-
-typedef TABLE_ENTRY_STRUCT(Str, NativeFn) NativesTableEntry;
+typedef struct { TABLE_ENTRY(Str, NativeFn) } NativesTableEntry;
 typedef TABLE_STRUCT(NativesTableEntry) NativesTable;
 #define K Str
 #define V NativeFn
@@ -59,5 +55,12 @@ typedef TABLE_STRUCT(NativesTableEntry) NativesTable;
 #define TBL_ENTRY NativesTableEntry
 #define TBL NativesTable
 #include "generic/table.inc"
+
+static inline
+NativeFn native_fn(Value (*fn)(struct Varmint *vm, Value *args), int arity)
+{
+  NativeFn native_fn = {arity, fn};
+  return native_fn;
+}
 
 #endif

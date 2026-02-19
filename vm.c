@@ -1,3 +1,4 @@
+#include "error.h"
 #include "internal.h"
 #include "util.h"
 #include "val.h"
@@ -6,7 +7,7 @@
 static inline void push(Varmint *vm, Value value)
 {
   if (vm->op_stack.len >= OP_STACK_MAX)
-    runtime_error("stack overflow\n");
+    runtime_error(vm, "stack overflow\n");
 
   OpStack_push(&vm->op_stack, value);
 }
@@ -55,20 +56,20 @@ static void call_native(Varmint *vm, NativeFn *native)
     params[i] = pop(vm);
 
   // Call native function.
-  Value result = native->fn(params);
+  Value result = native->fn(vm, params);
 
   free(params);
   pop(vm); // Pop native function value off the op stack
   push(vm, result);
 }
 
-static void check_fn_argc(int arity, Str name, size_t argc)
+static void check_fn_argc(Varmint *vm, int arity, Str name, size_t argc)
 {
   if (name.len == 0)
     name = str_from("function");
 
   if (arity != argc)
-    runtime_error("expect %li parameters to %.*s but got %li\n",
+    runtime_error(vm, "expect %li parameters to %.*s but got %li\n",
         arity, (int)name.len, name.s, argc);
 }
 
@@ -76,19 +77,19 @@ static void call_val(Varmint *vm, Value callee, size_t argc)
 {
   if (callee.type == VAL_function) {
     Proc *fn = callee.raw.function;
-    check_fn_argc(fn->arity, fn->name, argc);
+    check_fn_argc(vm, fn->arity, fn->name, argc);
 
     call(vm, fn, argc);
   }
 
   else if (callee.type == VAL_native) {
     NativeFn *fn = callee.raw.native;
-    check_fn_argc(fn->arity, NULL_STR, argc);
+    check_fn_argc(vm, fn->arity, NULL_STR, argc);
 
     call_native(vm, fn);
   }
 
-  else runtime_error("cannot call value of type %s\n",
+  else runtime_error(vm, "cannot call value of type %s\n",
       value_type_cstring(callee.type));
 }
 
@@ -127,35 +128,35 @@ static inline bool execute_instruction(Varmint *vm)
 
   switch ((int)instruction) {
   case OP_NOT:    UNARY(value_new((int)value_is_falsey(operand), boolean))
-  case OP_NEGATE: UNARY(_vm_negate(operand))
+  case OP_NEGATE: UNARY(_vm_negate(vm, operand))
 
-  case OP_FACTORIAL:  UNARY(_vm_factorial(operand))
-  case OP_PERCENTAGE: UNARY(_vm_percentage(operand))
+  case OP_FACTORIAL:  UNARY(_vm_factorial(vm, operand))
+  case OP_PERCENTAGE: UNARY(_vm_percentage(vm, operand))
 
-  case OP_ADD: BINARY(_vm_add(lhs, rhs))
-  case OP_SUB: BINARY(_vm_subtract(lhs, rhs))
-  case OP_MUL: BINARY(_vm_multiply(lhs, rhs))
-  case OP_DIV: BINARY(_vm_divide(lhs, rhs))
+  case OP_ADD: BINARY(_vm_add(vm, lhs, rhs))
+  case OP_SUB: BINARY(_vm_subtract(vm, lhs, rhs))
+  case OP_MUL: BINARY(_vm_multiply(vm, lhs, rhs))
+  case OP_DIV: BINARY(_vm_divide(vm, lhs, rhs))
 
-  case OP_POW:    BINARY(_vm_pow(lhs, rhs))
-  case OP_MODULO: BINARY(_vm_modulo(lhs, rhs))
+  case OP_POW:    BINARY(_vm_pow(vm, lhs, rhs))
+  case OP_MODULO: BINARY(_vm_modulo(vm, lhs, rhs))
 
-  case OP_AND: BINARY(_vm_and(lhs, rhs))
-  case OP_OR:  BINARY(_vm_or(lhs, rhs))
-  case OP_I9N: BINARY(_vm_implies(lhs, rhs))
+  case OP_AND: BINARY(_vm_and(vm, lhs, rhs))
+  case OP_OR:  BINARY(_vm_or(vm, lhs, rhs))
+  case OP_I9N: BINARY(_vm_implies(vm, lhs, rhs))
 
   case OP_EQ:  BINARY(value_new((int)values_eq(lhs, rhs), boolean))
   case OP_NEQ: BINARY(value_new((int)!values_eq(lhs, rhs), boolean))
 
-  case OP_LT:  BINARY(_vm_less_than(lhs, rhs))
-  case OP_GT:  BINARY(_vm_greater_than(lhs, rhs))
-  case OP_LEQ: BINARY(_vm_less_than_or_eq(lhs, rhs))
-  case OP_GEQ: BINARY(_vm_greater_than_or_eq(lhs, rhs))
+  case OP_LT:  BINARY(_vm_less_than(vm, lhs, rhs))
+  case OP_GT:  BINARY(_vm_greater_than(vm, lhs, rhs))
+  case OP_LEQ: BINARY(_vm_less_than_or_eq(vm, lhs, rhs))
+  case OP_GEQ: BINARY(_vm_greater_than_or_eq(vm, lhs, rhs))
 
-  case OP_IN:     BINARY(_vm_in(lhs, rhs))
-  case OP_NOTIN:  BINARY(_vm_notin(lhs, rhs))
+  case OP_IN:     BINARY(_vm_in(vm, lhs, rhs))
+  case OP_NOTIN:  BINARY(_vm_notin(vm, lhs, rhs))
 
-  case OP_CONCAT: BINARY(_vm_concat(lhs, rhs))
+  case OP_CONCAT: BINARY(_vm_concat(vm, lhs, rhs))
 
   case_size_op(OP_CONST, idx,
     {
@@ -219,7 +220,7 @@ static inline bool execute_instruction(Varmint *vm)
       Value val  = peek(vm);
 
       if (val.type == VAL_no)
-        runtime_error("invalid assign to expression without value\n");
+        runtime_error(vm, "invalid assign to expression without value\n");
 
       vm->frame->op_stack[stack_slot] = val;
       break;
@@ -229,7 +230,7 @@ static inline bool execute_instruction(Varmint *vm)
     {
       Value idx = pop(vm),
             list = pop(vm);
-      push(vm, _vm_get_elem(list, idx));
+      push(vm, _vm_get_elem(vm, list, idx));
       break;
     }
   case OP_LIST_SET:
@@ -239,9 +240,9 @@ static inline bool execute_instruction(Varmint *vm)
             list = pop(vm);
 
       if (val.type == VAL_no)
-        runtime_error("invalid list assign to expression without value\n");
+        runtime_error(vm, "invalid list assign to expression without value\n");
 
-      push(vm, _vm_set_elem(list, idx, val));
+      push(vm, _vm_set_elem(vm, list, idx, val));
       break;
     }
 

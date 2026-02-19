@@ -87,15 +87,6 @@ bool is_heaped_value(ValueType type)
   return type >= VAL_string;
 }
 
-#define is_type(val, vat_t) ((val).type == VAL_##vat_t)
-
-// Helper macro.
-#define typechecked(val_ident, vat_t) \
-  (is_type(val_ident, vat_t) ? \
-    val_ident.raw.vat_t : \
-    (runtime_error("Expect type " #vat_t " for " #val_ident ", got %s\n", \
-                   value_type_cstring(val_ident.type)), EMPTY_RAW_VAL.vat_t))
-
 static const RawValue EMPTY_RAW_VAL = {0};
 static const Value NO_VAL = {VAL_no, EMPTY_RAW_VAL};
 

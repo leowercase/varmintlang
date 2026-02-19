@@ -1,5 +1,5 @@
+#include "error.h"
 #include "mem.h"
-#include "util.h"
 
 void *allocate(void *ptr, size_t size)
 {

@@ -108,7 +108,4 @@ static const size_t MAX_OPERAND_SIZE = UINT16_MAX;
 // Emit an operation that has a variable sized size operand
 bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size);
 
-// Emit a code constant.
-Value *emit_constant(PCode *code, size_t line, Value value);
-
 #endif
