@@ -24,6 +24,11 @@ static inline size_t current_template_nesting(Lex *lex)
   return lex->template_nesting.len - 1;
 }
 
+static inline void end_lex(Lex *lex)
+{
+  free(lex->template_nesting.data);
+}
+
 // 1 character of lookahead.
 static inline char peek(Lex *lex)
 {
@@ -149,6 +154,7 @@ static Token escape_sequence(Lex *lex)
     return token(lex, TK_LCURLY);
 
   case '\0':
+    end_lex(lex);
     return error_token(lex, "unterminated string");
   default:
     return error_token(lex, "invalid escape sequence");
@@ -237,11 +243,8 @@ Token lex_token(Lex *lex)
   next(lex);
   switch (c) {
   case '\0':
-    {
-      Token eof = token(lex, TK_EOF);
-      lex->current--; // Don't go past EOF
-      return eof;
-    }
+    end_lex(lex);
+    return token(lex, TK_EOF);
 
   case '(':
     current_unmatched(lex)->parens++;
@@ -315,7 +318,7 @@ Token lex_token(Lex *lex)
   return error_token(lex, "illegal token");
 }
 
-const char *tok_cstring(const TokenType type)
+const char *token_cstring(const TokenType type)
 {
 #define case_(name) case TK_##name: return #name;
 
