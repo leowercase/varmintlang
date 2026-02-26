@@ -41,9 +41,11 @@ typedef enum {
   OP_CALL,
   OP_CALL16,
   OP_RETURN,
+  // Special instruction for GC
+  OP_GC,
 } Opcode;
 
-static_assert(OP_RETURN <= UINT8_MAX, "Oops! Too many opcodes.");
+static_assert(OP_GC <= UINT8_MAX, "Oops! Too many opcodes.");
 
 typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
 #define T uint8_t
@@ -78,13 +80,22 @@ typedef struct {
   LineInfo lines;
 } PCode;
 
-static inline PCode new_p_code(void)
+static inline
+PCode new_p_code(void)
 {
-  PCode p_code;
-  p_code.constants = Constants_new();
-  p_code.instructions = Instructions_new();
-  p_code.lines = LineInfo_new();
-  return p_code;
+  PCode code;
+  code.constants = Constants_init();
+  code.instructions = Instructions_init();
+  code.lines = LineInfo_init();
+  return code;
+}
+
+static inline
+void free_p_code(PCode *code)
+{
+  free(code->constants.data);
+  free(code->instructions.data);
+  free(code->lines.data);
 }
 
 // Record a byte into code.

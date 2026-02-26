@@ -13,12 +13,10 @@
  *
  * Behold, a generic stack structure!
  *
- * T                element type (required)
- * ARR              dynamic array struct (required)
- * CAP              static maximum capacity, assume .data a finite array
- * ALLOC(ptr, size) custom allocator
- * ALLOC_ARGS       custom arguments for functions that invoke ALLOC()
- * ALLOC_PARAMS     custom parameter names (required if ALLOC_ARGS is defined)
+ * T      element type (required)
+ * ARR    dynamic array struct (required)
+ * CAP    static maximum capacity, assume .data a finite array
+ * USE_GC whether to use GC for allocation
  */
 
 #ifndef T
@@ -29,39 +27,33 @@
 #error Oops! Must define the array structure ARR.
 #endif
 
-#if (defined(ALLOC) || defined(ALLOC_ARGS)) && defined(CAP)
-#error Oops! Cannot both specify ALLOC and have a static CAP.
-#endif
-
-#ifndef ALLOC
-#define ALLOC(ptr, size) allocate(ptr, size)
-#endif
-
-#ifndef ALLOC_ARGS
+#ifndef USE_GC
 #define ALLOCS(...) (__VA_ARGS__)
-#else
-#define ALLOCS(...) (ALLOC_ARGS, __VA_ARGS__)
-#endif
-
-#if (defined(ALLOC_ARGS) && !defined(ALLOC_PARAMS)) || (!defined(ALLOC_ARGS) && defined(ALLOC_PARAMS))
-#error Oops! Must define parameter names matching ALLOC_ARGS, ALLOC_PARAMS
-#endif
-
-#ifndef ALLOC_PARAMS
 #define CALLS_ALLOC(...) (__VA_ARGS__)
 #else
-#define CALLS_ALLOC(...) (ALLOC_PARAMS, __VA_ARGS__)
+struct Varmint;
+#define ALLOCS(...) (struct Varmint *vm, __VA_ARGS__)
+#define CALLS_ALLOC(...) (vm, __VA_ARGS__)
+// Forward declaration.
+void *gc_alloc(struct Varmint *vm, void *ptr, size_t old_size, size_t new_size);
 #endif
 
 #define METHOD(name) JOIN(ARR, name)
 
 #ifndef CAP
+static inline
 void METHOD(_adjust_cap)ALLOCS(ARR *dyn_array, size_t required_cap)
 {
   if (dyn_array->cap < required_cap) {
     size_t new_cap = grow_cap(dyn_array->cap);
 
-    dyn_array->data = ALLOC(dyn_array->data, new_cap * sizeof(T));
+    dyn_array->data =
+#ifndef USE_GC
+      allocate(dyn_array->data, new_cap * sizeof(T));
+#else
+      gc_alloc(vm, dyn_array->data,
+        dyn_array->cap * sizeof(T), new_cap * sizeof(T));
+#endif
     dyn_array->cap = new_cap;
   }
 }
@@ -151,9 +143,7 @@ ARR METHOD(_concat)ALLOCS(ARR *head, ARR *tail)
 #undef METHOD
 #undef CALLS_ALLOC
 #undef ALLOCS
-#undef ALLOC_PARAMS
-#undef ALLOC_ARGS
-#undef ALLOC
+#undef USE_GC
 #undef CAP
 #undef ARR
 #undef T

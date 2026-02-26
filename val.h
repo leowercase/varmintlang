@@ -7,115 +7,100 @@
 
 #include <assert.h>
 
-/*
- * The language has values of type number, boolean, string, list and function.
- * It is dynamically typed; values are checked during runtime, not compiletime
- */
-
+// Dynamic typing; values carry a typetag during runtime.
 typedef enum {
   // Internal value type, null equivalent.
   // No runtime values are allowed to have the this type though.
-  VAL_no,
+  V_no,
 
   // Simple values
-  VAL_number,
-  VAL_boolean,
-
-  VAL_native,
+  V_number,
+  V_boolean,
+  V_native,
 
   // GC'd values
-  VAL_string,
-  VAL_list,
-  VAL_function,
+  V_string,
+  V_list,
+  V_procedure,
+} Typetag;
 
-  // Internal values.
-  VAL_program,
-} ValueType;
-
+// Union of Varmint values.
 typedef union {
   float64_t number;
   int boolean;
-
-  struct NativeFn *native;
+  size_t native;
 
   struct GCData *gc_data; // Accessed by the garbage collector.
-
-  struct StringValue *string;
-  struct ValueList *list;
-  struct Proc *function;
-
-  struct Proc *program;
-} RawValue;
+  struct String *string;
+  struct List *list;
+  struct Procedure *procedure;
+} Valueu;
 
 typedef struct {
-  ValueType type;
-  RawValue raw;
+  Typetag type;
+  Valueu as;
 } Value;
 
 static inline
-Value __value_new(ValueType type, RawValue raw)
+Value __value_new(Valueu raw, Typetag tag)
 {
-  Value val = {type, raw};
+  Value val = {tag, raw};
   return val;
 }
-#define value_new(raw, vat_t) \
-  __value_new(VAL_##vat_t, (RawValue){.vat_t = raw})
+#define value_new(raw, t) \
+  __value_new((Valueu){.t = raw}, V_##t)
+
+static const Value NO_VALUE = {V_no, {0}};
 
 // GC'd values have the same initial sequence, GCData.
 typedef struct GCData {
   Value *next;
-  bool marked;
+  bool is_safe;
 } GCData;
 
 static inline
-Value __heaped_value_new(ValueType type, size_t size)
+bool is_heaped_value(Typetag type)
 {
-  RawValue raw;
-  raw.gc_data = malloc(size);
-  if (raw.gc_data == NULL)
-    exit(EX_OSERR);
-
-  Value val = {type, raw};
-  return val;
-}
-#define heaped_value_new(type, vat_t) \
-  __heaped_value_new(VAL_##vat_t, sizeof(type))
-
-static inline
-bool is_heaped_value(ValueType type)
-{
-  return type >= VAL_string;
+  return type >= V_string;
 }
 
-static const RawValue EMPTY_RAW_VAL = {0};
-static const Value NO_VAL = {VAL_no, EMPTY_RAW_VAL};
-
-typedef struct StringValue {
+typedef struct String {
   GCData gc_data;
-  Str str;
-} StringValue;
+  char *s;
+  size_t len;
+} String;
 
-static inline
-Value string_value_new(Str str)
-{
-  Value val = heaped_value_new(StringValue, string);
-  val.raw.string->str = str;
-  return val;
-}
-
-typedef struct ValueList {
+typedef struct List {
   GCData gc_data;
   DYN_ARRAY(Value)
-} ValueList;
+} List;
 #define T Value
-#define ARR ValueList
+#define ARR List
+#define USE_GC
 #include "generic/dyn_array.inc"
+
+struct Varmint;
+
+Value *List_create(struct Varmint *vm, size_t cap);
+
+Value *String_create(struct Varmint *vm, const char *s, size_t len);
+Value *String_from(struct Varmint *vm, const char *cstring);
+Value *String_own(struct Varmint *vm, char *allocated_cstring);
+Value *String_copy(struct Varmint *vm, Value *string_val);
+Value *String_fmt(struct Varmint *vm, const char *fmt, ...);
+Value *String_concat(struct Varmint *vm, Value *head, Value *tail);
+Str String_as_str(Value *val);
+
+Value *Procedure_create(struct Varmint *vm, size_t arity);
 
 bool values_eq(Value a, Value b);
 bool value_is_falsey(Value val);
 
-char *value_type_cstring(ValueType type);
-Str value_to_str(Value val);
+const char *value_type_cstring(Typetag type);
+Value *value_to_string(struct Varmint *vm, Value val);
 void print_value(Value val);
+
+// Obtain the 64-bit hash of a value.
+uint64_t hash_value(Value val);
 
 #endif

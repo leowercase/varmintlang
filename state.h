@@ -28,39 +28,41 @@ typedef CAPPED_DYN_ARRAY_STRUCT(Value, OP_STACK_MAX) OpStack;
  * https://www.youtube.com/watch?v=aCPkszeKRa4
  */
 typedef struct {
-  uint8_t *ip; // Instruction Ptr
-  Proc *procedure;
-  Value *op_stack; // a handle to the call frame's own memory on the stack
+  const uint8_t *ip; // Instruction Ptr
+  Procedure *procedure;
+  Value *op_stack; // A handle to the call frame's own memory on the stack
 } CallFrame;
+
+// Maximum call depth for functions.
+#define CALL_STACK_MAX 1234
 
 typedef DYN_ARRAY_STRUCT(CallFrame) CallStack;
 #define T CallFrame
 #define ARR CallStack
 #include "generic/dyn_array.inc"
 
-// Forward declaration.
-struct Varmint;
+typedef Value (*NativeFn)(struct Varmint *vm, Value *args);
 
-typedef struct NativeFn {
-  int arity;
-  Value (*fn)(struct Varmint *vm, Value *args);
-} NativeFn;
+// Native function.
+typedef struct Native {
+  size_t arity;
+  NativeFn fn;
+} Native;
 
-typedef struct { TABLE_ENTRY(Str, NativeFn) } NativesTableEntry;
+typedef DYN_ARRAY_STRUCT(Native) Natives;
+#define T Native
+#define ARR Natives
+#include "generic/dyn_array.inc"
+
+// Maps function names to indices of the natives array.
+typedef struct { TABLE_ENTRY(Str, size_t) } NativesTableEntry;
 typedef TABLE_STRUCT(NativesTableEntry) NativesTable;
 #define K Str
-#define V NativeFn
+#define V size_t
 #define KEYS_EQ(a, b) strs_eq(a, b)
 #define HASH(key) str_hash(key)
 #define TBL_ENTRY NativesTableEntry
 #define TBL NativesTable
 #include "generic/table.inc"
-
-static inline
-NativeFn native_fn(Value (*fn)(struct Varmint *vm, Value *args), int arity)
-{
-  NativeFn native_fn = {arity, fn};
-  return native_fn;
-}
 
 #endif

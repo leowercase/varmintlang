@@ -20,6 +20,17 @@ void error_out(const char *fmt, ...)
   va_end(args);
 }
 
+void info_out(const char *fmt, ...)
+{
+  va_list args;
+
+  va_start(args, fmt);
+  fprintf(stderr, ANSI_YELLOW);
+  vfprintf(stderr, fmt, args);
+  fprintf(stderr, ANSI_RESET);
+  va_end(args);
+}
+
 // Print line snippet, optionally with a pointer ^
 void error_line_snip(char *source, size_t line, char *pointer_pos)
 {
@@ -41,7 +52,7 @@ void error_line_snip(char *source, size_t line, char *pointer_pos)
 
   if (pointer_pos != NULL) {
     int column = (int)(pointer_pos - s);
-    error_out("\t%*s^", column, "");
+    info_out("\t%*s^", column, "");
   }
   error_out("\n");
 }
@@ -56,16 +67,15 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
 
   for (CallFrame *frame = CallStack_top(&vm->call_stack);
       frame >= vm->call_stack.data; frame--) {
-    Proc *procedure = frame->procedure;
+    Procedure *proc = frame->procedure;
 
-    size_t offset = (size_t)(frame->ip - procedure->code.instructions.data),
-           line = get_line(&procedure->code.lines, offset);
+    size_t offset = (size_t)(frame->ip - proc->code.instructions.data),
+           line = get_line(&proc->code.lines, offset);
 
     error_out("[line %li] in ", line);
 
-    if (procedure->name.len > 0)
-      error_out("%.*s:\n",
-          (int)procedure->name.len, procedure->name.s);
+    if (proc->name.len > 0)
+      error_out("%.*s:\n", (int)proc->name.len, proc->name.s);
     else if (frame == vm->call_stack.data)
       error_out("program:\n");
     else

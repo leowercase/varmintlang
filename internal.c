@@ -94,16 +94,15 @@ Value _vm_greater_than_or_eq(Varmint *vm, Value a, Value b)
 
 Value _vm_concat(Varmint *vm, Value head, Value tail)
 {
-  StringValue *_head = typechecked(vm, head, string),
-              *_tail = typechecked(vm, tail, string);
+  if (head.type != V_string || tail.type != V_string)
+    runtime_error(vm, "invalid operand types to concatenation\n");
 
-  Str result = str_concat(_head->str, _tail->str);
-  return string_value_new(result);
+  return *String_concat(vm, &head, &tail);
 }
 
 Value _vm_in(Varmint *vm, Value x, Value collection)
 {
-  ValueList *list = typechecked(vm, collection, list);
+  List *list = typechecked(vm, collection, list);
 
   for (size_t i = 0; i < list->len; i++) {
     Value elem = list->data[i];
@@ -123,7 +122,7 @@ Value _vm_notin(Varmint *vm, Value x, Value collection)
 
 static Value *index_list(Varmint *vm, Value list, Value idx)
 {
-  ValueList *_list = typechecked(vm, list, list);
+  List *_list = typechecked(vm, list, list);
   signed long _idx = (signed long)typechecked(vm, idx, number);
 
   bool index_from_top = _idx < 0;
@@ -135,7 +134,7 @@ static Value *index_list(Varmint *vm, Value list, Value idx)
         _idx, _list->len);
 
   if (index_from_top)
-    return ValueList_top(_list) - idx_magnitude;
+    return List_top(_list) - idx_magnitude;
   else
     return _list->data + _idx;
 }

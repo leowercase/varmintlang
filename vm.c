@@ -22,19 +22,17 @@ static inline void popn(Varmint *vm, size_t n)
   OpStack_popn(&vm->op_stack, n);
 }
 
-static inline Value peek(Varmint *vm)
-{
-  return *OpStack_top(&vm->op_stack);
-}
-
-static inline Value peeknth(Varmint *vm, size_t idx)
+static inline Value peek(Varmint *vm, size_t idx)
 {
   return *(OpStack_top(&vm->op_stack) - idx);
 }
 
 // Call a procedure.
-static void call(Varmint *vm, Proc *procedure, size_t argc)
+static void call(Varmint *vm, Procedure *procedure, size_t argc)
 {
+  if (vm->call_stack.len >= CALL_STACK_MAX)
+    runtime_error(vm, "maximum call depth exceeded.\n");
+
   // Create new frame for procedure call.
   CallFrame frame;
   frame.procedure = procedure;
@@ -48,12 +46,12 @@ static void call(Varmint *vm, Proc *procedure, size_t argc)
   vm->frame = CallStack_push(&vm->call_stack, frame);
 }
 
-static void call_native(Varmint *vm, NativeFn *native)
+static void call_native(Varmint *vm, Native *native)
 {
   Value *params = allocate(NULL, (size_t)native->arity * sizeof(Value));
   // Get parameters
-  for (int i = native->arity - 1; i >= 0; i--)
-    params[i] = pop(vm);
+  for (size_t i = 1; i <= native->arity; i++)
+    params[native->arity - i] = pop(vm);
 
   // Call native function.
   Value result = native->fn(vm, params);
@@ -63,7 +61,7 @@ static void call_native(Varmint *vm, NativeFn *native)
   push(vm, result);
 }
 
-static void check_fn_argc(Varmint *vm, int arity, Str name, size_t argc)
+static void check_fn_argc(Varmint *vm, size_t arity, Str name, size_t argc)
 {
   if (name.len == 0)
     name = str_from("function");
@@ -75,15 +73,15 @@ static void check_fn_argc(Varmint *vm, int arity, Str name, size_t argc)
 
 static void call_val(Varmint *vm, Value callee, size_t argc)
 {
-  if (callee.type == VAL_function) {
-    Proc *fn = callee.raw.function;
+  if (callee.type == V_procedure) {
+    Procedure *fn = callee.as.procedure;
     check_fn_argc(vm, fn->arity, fn->name, argc);
 
     call(vm, fn, argc);
   }
 
-  else if (callee.type == VAL_native) {
-    NativeFn *fn = callee.raw.native;
+  else if (callee.type == V_native) {
+    Native *fn = &vm->natives.data[callee.as.native];
     check_fn_argc(vm, fn->arity, NULL_STR, argc);
 
     call_native(vm, fn);
@@ -175,28 +173,28 @@ static inline bool execute_instruction(Varmint *vm)
     // Weaves a list.
   case_size_op(OP_BUILD_LIST, len,
     {
-      ValueList list = ValueList_with_cap(len);
-      list.len = len;
+      Value *list_val = List_create(vm, len);
+      list_val->as.list->len = len;
 
       for (int i = len - 1; i >= 0; i--)
-        list.data[i] = pop(vm);
+        list_val->as.list->data[i] = pop(vm);
 
-      Value val = heaped_value_new(ValueList, list);
-      *val.raw.list = list;
-
-      push(vm, val);
+      push(vm, *list_val);
       break;
     })
 
     // Stitches together the metastrings emitted by the compiler.
-  case_size_op(OP_BUILD_STR, metastrs,
+  case_size_op(OP_BUILD_STR, metas,
     {
-      Str str = value_to_str(pop(vm));
+      Value *string_val = value_to_string(vm, peek(vm, 0));
 
-      for (int i = 1; i < metastrs; i++)
-        str = str_concat(value_to_str(pop(vm)), str);
+      for (size_t i = 1; i < metas; i++)
+        string_val = String_concat(vm,
+            value_to_string(vm, peek(vm, i)),
+            string_val);
 
-      push(vm, string_value_new(str));
+      popn(vm, metas);
+      push(vm, *string_val);
       break;
     })
 
@@ -204,7 +202,7 @@ static inline bool execute_instruction(Varmint *vm)
     // The good ol' switcheroo.
   case OP_CHAIN_BINOP:
     {
-      Value rhs = peek(vm);
+      Value rhs = peek(vm, 0);
       bool running = execute_instruction(vm);
       push(vm, rhs);
       return running;
@@ -217,9 +215,9 @@ static inline bool execute_instruction(Varmint *vm)
     })
   case_size_op(OP_SET, stack_slot,
     {
-      Value val  = peek(vm);
+      Value val  = peek(vm, 0);
 
-      if (val.type == VAL_no)
+      if (val.type == V_no)
         runtime_error(vm, "invalid assign to expression without value\n");
 
       vm->frame->op_stack[stack_slot] = val;
@@ -239,7 +237,7 @@ static inline bool execute_instruction(Varmint *vm)
             idx = pop(vm),
             list = pop(vm);
 
-      if (val.type == VAL_no)
+      if (val.type == V_no)
         runtime_error(vm, "invalid list assign to expression without value\n");
 
       push(vm, _vm_set_elem(vm, list, idx, val));
@@ -247,10 +245,10 @@ static inline bool execute_instruction(Varmint *vm)
     }
 
   case OP_RESERVE_SLOT:
-    push(vm, NO_VAL);
+    push(vm, NO_VALUE);
     break;
   case OP_DUPLICATE:
-    push(vm, peek(vm));
+    push(vm, peek(vm, 0));
     break;
   case OP_DISCARD:
     pop(vm);
@@ -262,7 +260,7 @@ static inline bool execute_instruction(Varmint *vm)
     })
   case_size_op(OP_RETAIN1_DISCARDN, n,
     {
-      Value retained_val = peek(vm);
+      Value retained_val = peek(vm, 0);
       popn(vm, n);
       push(vm, retained_val);
       break;
@@ -281,7 +279,7 @@ static inline bool execute_instruction(Varmint *vm)
 
   case_size_op(OP_CALL, argc,
     {
-      call_val(vm, peeknth(vm, argc), argc);
+      call_val(vm, peek(vm, argc), argc);
       break;
     })
     // Return from a function.
@@ -310,7 +308,14 @@ static inline bool execute_instruction(Varmint *vm)
       break;
     }
 
-  default: unreachable();
+  case OP_GC:
+    vm->frame->ip--; // NB: Backstep to the GC instruction.
+    gcollect(vm);
+    vm->frame->ip = vm->gc_resume_ip; // Pick up where we left off.
+    break;
+
+  default:
+    unreachable();
   }
 
   return true;
@@ -320,9 +325,10 @@ static inline bool execute_instruction(Varmint *vm)
 #undef case_size_op
 }
 
-void execute(Varmint *vm, Proc *program)
+void execute(Varmint *vm, Procedure *program)
 {
-  call(vm, program, 0L);
+  OpStack_push(&vm->op_stack, value_new(program, procedure));
+  call(vm, program, 0);
 
   bool running;
   do

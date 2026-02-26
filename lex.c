@@ -54,7 +54,7 @@ static bool match(Lex *lex, const char expected)
 
 static Token token(Lex *lex, TokenType type)
 {
-  StrSlice slice;
+  Str slice;
   slice.s = lex->start;
   slice.len = (size_t)(lex->current - lex->start);
 
@@ -239,13 +239,14 @@ Token lex_token(Lex *lex)
   if (c == '"')
     return string(lex);
 
+  if (c == '\0') {
+    end_lex(lex);
+    return token(lex, TK_EOF);
+  }
+
   // One or two character tokens
   next(lex);
   switch (c) {
-  case '\0':
-    end_lex(lex);
-    return token(lex, TK_EOF);
-
   case '(':
     current_unmatched(lex)->parens++;
     return token(lex, TK_LPAREN);
@@ -268,7 +269,7 @@ Token lex_token(Lex *lex)
   case '}':
     if (current_template_nesting(lex) > 0
         && current_unmatched(lex)->curlies == 0) {
-      // We're ending \(...)
+      // We're ending \{...}
       ascend_template_nesting(lex);
       lex->escaping_string = true;
     }
@@ -318,7 +319,7 @@ Token lex_token(Lex *lex)
   return error_token(lex, "illegal token");
 }
 
-const char *token_cstring(const TokenType type)
+char *const token_cstring(const TokenType type)
 {
 #define case_(name) case TK_##name: return #name;
 

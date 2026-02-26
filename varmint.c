@@ -11,9 +11,9 @@
 static Value _typeof(Varmint *vm, Value *args)
 {
   Value val = args[0];
-  char *type = value_type_cstring(val.type);
+  const char *type_string = value_type_cstring(val.type);
 
-  return string_value_new(str_new(type, strlen(type)));
+  return *String_create(vm, type_string, strlen(type_string));
 }
 
 // lenof(collection) -> number
@@ -22,14 +22,14 @@ static Value _lenof(Varmint *vm, Value *args)
   Value collection = args[0];
 
   switch (collection.type) {
-  case VAL_string:
-    return value_new((float64_t)collection.raw.string->str.len, number);
-  case VAL_list:
-    return value_new((float64_t)collection.raw.list->len, number);
+  case V_string:
+    return value_new((float64_t)collection.as.string->len, number);
+  case V_list:
+    return value_new((float64_t)collection.as.list->len, number);
   default:
     runtime_error(vm, "expect type string or list for collection, got %s",
         value_type_cstring(collection.type));
-    return NO_VAL;
+    return NO_VALUE;
   }
 }
 
@@ -38,20 +38,28 @@ static Value _put(Varmint *vm, Value *args)
 {
   Value output_string = args[0];
 
-  Str str = typechecked(vm, output_string, string)->str;
+  String *s = typechecked(vm, output_string, string);
+  printf("%.*s", (int)s->len, s->s);
 
-  printf("%.*s", (int)str.len, str.s);
+  return NO_VALUE;
+}
 
-  return NO_VAL;
+// putln(output_string: string)
+static Value _putln(Varmint *vm, Value *args)
+{
+  Value output_string = args[0];
+
+  String *s = typechecked(vm, output_string, string);
+  printf("%.*s\n", (int)s->len, s->s);
+
+  return NO_VALUE;
 }
 
 // input() -> string
 static Value _input(Varmint *vm, Value *args)
 {
   char *input_line = readline(NULL);
-
-  Str str = str_new(input_line, strlen(input_line));
-  return string_value_new(str);
+  return *String_own(vm, input_line);
 }
 
 // rot(text: string, shift: number) -> string
@@ -61,51 +69,68 @@ static Value _rot(Varmint *vm, Value *args)
         text = args[1];
 
   int shift_n = (int)typechecked(vm, shift, number);
-  Str str = typechecked(vm, text, string)->str;
+  String *s = typechecked(vm, text, string);
 
-  char *ciphertext = allocate(NULL, sizeof(str) + sizeof('\0'));
-  ciphertext[str.len] = '\0';
+  Value *ciphertext = String_create(vm, s->s, s->len);
 
   // https://en.wikipedia.org/wiki/Caesar_cipher
-  for (size_t i = 0; i < str.len; i++) {
-    const char c = str.s[i];
+  for (size_t i = 0; i < s->len; i++) {
+    const char c = s->s[i];
 
     if (!isalpha(c))
-      ciphertext[i] = c;
+      ciphertext->as.string->s[i] = c;
 
     else {
       char ciphered_c = (((toupper(c) - 'A') + shift_n) % 26) + 'A';
       if (islower(c))
         ciphered_c = (char)tolower(ciphered_c);
 
-      ciphertext[i] = ciphered_c;
+      ciphertext->as.string->s[i] = ciphered_c;
     }
   }
 
-  return string_value_new(str_new(ciphertext, str.len));
+  return *ciphertext;
+}
+
+void varmint_add_native(Varmint *vm,
+    char *const name, NativeFn fn, size_t arity)
+{
+  Native native = {arity, fn};
+  Natives_push(&vm->natives, native);
+
+  size_t idx = vm->natives.len - 1;
+  NativesTable_set(&vm->natives_table, str_new(name, strlen(name)), idx);
 }
 
 Varmint varmint_start(void)
 {
   Varmint vm;
 
-  vm.op_stack = OpStack_new();
-  vm.call_stack = CallStack_new();
+  vm.op_stack = OpStack_init();
+  vm.call_stack = CallStack_init();
 
-  vm.natives = NativesTable_new();
+  vm.natives = Natives_init();
+  vm.natives_table = NativesTable_init();
   // Initialize native functions.
-  add_native_fn(&vm, "typeof", _typeof, 1);
-  add_native_fn(&vm, "lenof", _lenof, 1);
-  add_native_fn(&vm, "put", _put, 1);
-  add_native_fn(&vm, "input", _input, 0);
-  add_native_fn(&vm, "rot", _rot, 2);
+  varmint_add_native(&vm, "typeof", _typeof, 1);
+  varmint_add_native(&vm, "lenof", _lenof, 1);
+  varmint_add_native(&vm, "put", _put, 1);
+  varmint_add_native(&vm, "putln", _putln, 1);
+  varmint_add_native(&vm, "input", _input, 0);
+  varmint_add_native(&vm, "rot", _rot, 2);
+
+  gc_init(&vm);
 
   return vm;
 }
 
 void varmint_free(Varmint *vm)
 {
+  gc_end(vm);
   free(vm->call_stack.data);
+  // NB! Don't free op stack, it isn't dynamically allocated.
+  free(vm->natives.data);
+  free(vm->natives_table.entries);
 }
 
 Value varmint_run(Varmint *vm, char *source)
@@ -123,7 +148,7 @@ Value varmint_run(Varmint *vm, char *source)
       tok = lex_token(&l);
       printf("%.2li %s `%.*s`\n",
           tok.line,
-          tok_cstring(tok.type),
+          token_cstring(tok.type),
           (int)tok.slice.len, tok.slice.s);
     } while (tok.type != TK_EOF);
 
@@ -131,9 +156,9 @@ Value varmint_run(Varmint *vm, char *source)
   }
 #endif
 
-  Proc *program = compile(vm, source);
+  Procedure *program = compile(vm, source);
   if (program == NULL)
-    return NO_VAL;
+    return NO_VALUE;
 
 #ifdef VARMINT_DEBUG
   printf("*** INSTRUCTIONS ***\n");

@@ -18,7 +18,7 @@ static void size(PCode *code, int s)
 }
 
 // Returns the offset where the instruction ends.
-static size_t disassemble_instruction(PCode *code, size_t offset)
+size_t disassemble_instruction(PCode *code, size_t offset)
 {
   Opcode instruction = code->instructions.data[offset];
 
@@ -112,23 +112,23 @@ static void disassemble_code(PCode *code)
   printf(ANSI_RESET);
 }
 
-void disassemble(Proc *program)
+void disassemble(Procedure *program)
 {
   PCode *code = &program->code;
 
   for (size_t i = 0; i < code->constants.len; i++) {
     Value *c = &code->constants.data[i];
 
-    if (c->type == VAL_function) {
-      Proc *fn = c->raw.function;
+    if (c->type == V_procedure) {
+      Procedure *fn = c->as.procedure;
 
       if (fn->name.s == NULL)
-        printf("-- anonymous function [%i] --\n",
+        printf("-- anonymous function [%li] --\n",
             fn->arity);
       else
-        printf("-- function %.*s [%i] --\n",
+        printf("-- function %.*s [%li] --\n",
             (int)fn->name.len, fn->name.s, fn->arity);
-      disassemble_code(&c->raw.function->code);
+      disassemble_code(&c->as.procedure->code);
       printf("\n");
     }
   }

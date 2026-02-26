@@ -11,15 +11,13 @@
  * https://en.wikipedia.org/wiki/Hash_table
  * https://en.wikipedia.org/wiki/Lazy_deletion
  *
- * K                key type (required)
- * V                value type (required)
- * TBL_ENTRY        entry struct of K, V (required)
- * TBL              hash table struct (required)
- * HASH(key)        hasher (required)
- * KEYS_EQ(a, b)    test equality for two keys, defaults to primitive equality ==
- * ALLOC(ptr, size) custom allocator
- * ALLOC_ARGS       custom arguments for functions that invoke ALLOC()
- * ALLOC_PARAMS     custom parameter names (required if ALLOC_ARGS is defined)
+ * K             key type (required)
+ * V             value type (required)
+ * TBL_ENTRY     entry struct of K, V (required)
+ * TBL           hash table struct (required)
+ * HASH(key)     hasher (required)
+ * KEYS_EQ(a, b) test equality for two keys, defaults to primitive equality ==
+ * USE_GC        whether to use GC for allocation
  */
 
 #ifndef K
@@ -46,24 +44,15 @@
 #define KEYS_EQ(a, b) (a == b)
 #endif
 
-#ifndef ALLOC
-#define ALLOC(ptr, size) allocate(ptr, size)
-#endif
-
-#ifndef ALLOC_ARGS
+#ifndef USE_GC
 #define ALLOCS(...) (__VA_ARGS__)
-#else
-#define ALLOCS(...) (ALLOC_ARGS, __VA_ARGS__)
-#endif
-
-#if (defined(ALLOC_ARGS) && !defined(ALLOC_PARAMS)) || (!defined(ALLOC_ARGS) && defined(ALLOC_PARAMS))
-#error Oops! Must define parameter names matching ALLOC_ARGS, ALLOC_PARAMS
-#endif
-
-#ifndef ALLOC_PARAMS
 #define CALLS_ALLOC(...) (__VA_ARGS__)
 #else
-#define CALLS_ALLOC(...) (ALLOC_PARAMS, __VA_ARGS__)
+struct Varmint;
+#define ALLOCS(...) (struct Varmint *vm, __VA_ARGS__)
+#define CALLS_ALLOC(...) (vm, __VA_ARGS__)
+// Forward declaration.
+void *gc_alloc(struct Varmint *vm, void *ptr, size_t old_size, size_t new_size);
 #endif
 
 #define METHOD(name) JOIN(TBL, name)
@@ -117,7 +106,14 @@ static inline
 void METHOD(_resize)ALLOCS(TBL *table)
 {
   size_t new_cap = grow_cap(table->cap);
-  TBL_ENTRY *new_entries = ALLOC(NULL, new_cap * sizeof(TBL_ENTRY));
+
+  TBL_ENTRY *new_entries =
+#ifndef USE_GC
+    allocate(NULL, new_cap * sizeof(TBL_ENTRY));
+#else
+    gc_alloc(vm, NULL,
+      table->cap * sizeof(TBL_ENTRY), new_cap * sizeof(TBL_ENTRY));
+#endif
 
   // Zero out entries
   for (size_t i = 0; i < new_cap; i++) {

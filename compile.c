@@ -35,7 +35,12 @@ static void init_compiler(Parse *p, Locals args)
 {
   Compiler *c = allocate(NULL, sizeof(Compiler));
   c->depth = 0;
-  c->procedure = proc_new((int)args.len);
+
+  Value *proc_val = Procedure_create(p->vm, args.len);
+  GCList_push(&p->vm->compiler_roots, *proc_val);
+
+  c->procedure = proc_val->as.procedure;
+
   c->locals = args;
   c->stack_slot_count = args.len;
 
@@ -46,21 +51,24 @@ static void init_compiler(Parse *p, Locals args)
 }
 
 // Return from compiler.
-static Proc *return_compiler(Parse *p)
+static Procedure *return_compiler(Parse *p)
 {
-  Proc *procedure = p->c->procedure;
+  Procedure *procedure = p->c->procedure;
+  GCList_pop(&p->vm->compiler_roots);
 
   // Return from procedure.
   emit_byte(code(p), p->current.line, OP_RETURN);
 
+  Compiler *enclosing = p->c->enclosing;
   free(p->c->locals.data);
+  free(p->c);
+  p->c = enclosing;
 
-  p->c = p->c->enclosing;
   return procedure;
 }
 
 // Issue a parsing error and enter panic mode in the imminent semantic scope.
-static void parse_error(Parse *p, Token offending_tok, const char *msg, ...)
+static void parse_error(Parse *p, Token offending_tok, char *const msg, ...)
 {
   if (semantic(p)->panic) return;
 
@@ -91,7 +99,7 @@ static Value *emit_constant(Parse *p, size_t line, Value value)
 }
 
 // Local lookup.
-static Local *resolve_local(Parse *p, StrSlice name)
+static Local *resolve_local(Parse *p, Str name)
 {
   if (p->c->locals.len == 0)
     return NULL;
@@ -106,13 +114,13 @@ static Local *resolve_local(Parse *p, StrSlice name)
 }
 
 static Local *create_local(Locals *locals,
-    StrSlice name, int depth, bool initialized)
+    Str name, int depth, bool initialized)
 {
   Local local = {name, depth, initialized, 0};
   return Locals_push(locals, local);
 }
 
-static Local *create_local_var(Parse *p, StrSlice name)
+static Local *create_local_var(Parse *p, Str name)
 {
   return create_local(&p->c->locals,
                       name, p->c->depth, false);
@@ -146,6 +154,7 @@ static Token next(Parse *p)
   Token next_tok = p->lookahead;
   p->current = next_tok;
   for (;;) {
+    if (p->lookahead.type == TK_EOF) break;
     Token t = p->lookahead = lex_token(&p->lex);
 
     // Catch as many consecutive error tokens as possible.
@@ -172,7 +181,7 @@ static bool match(Parse *p, TokenType expected)
   else return false;
 }
 
-static Token consume(Parse *p, TokenType expected, const char *msg)
+static Token consume(Parse *p, TokenType expected, char *const msg)
 {
   Token tok = p->current;
   if (!match(p, expected))
@@ -394,7 +403,7 @@ static bool consume_arg_list_start(Parse *p)
 // Returns argument locals
 static Locals consume_arg_list(Parse *p)
 {
-  Locals args = Locals_new();
+  Locals args = Locals_init();
 
   // Parameters take up the first few stack slots of the frame.
   while (p->current.type == TK_WORD
@@ -411,17 +420,17 @@ static Locals consume_arg_list(Parse *p)
 }
 
 // Parses a function body and creates a new fn.
-static void function(Parse *p, size_t line, StrSlice name, Locals args)
+static void function(Parse *p, size_t line, Str name, Locals args)
 {
-  Value *fn_constant = emit_constant(p, line, NO_VAL);
+  Value *fn_constant = emit_constant(p, line, NO_VALUE);
 
   init_compiler(p, args);
   expr(p, PREC_NONE);
 
-  Proc *procedure = return_compiler(p);
-  procedure->name = name;
+  Procedure *proc = return_compiler(p);
+  proc->name = name;
   // Functions are values, too!
-  *fn_constant = value_new(procedure, function);
+  *fn_constant = value_new(proc, procedure);
 }
 
 static void ident_str(Parse *p, Token ident_tok);
@@ -490,7 +499,7 @@ static size_t delimited_listing(Parse *p,
         return len;
       else
         parse_error(p, p->current,
-            "invalid trailing %s in listing", tok_cstring(delim));
+            "invalid trailing %s in listing", token_cstring(delim));
     }
 
     expr(p, PREC_NONE);
@@ -501,7 +510,7 @@ static size_t delimited_listing(Parse *p,
   } while (match(p, delim)); // ,
 
   parse_error(p, p->current,
-      "expect %s in listing", tok_cstring(delim));
+      "expect %s in listing", token_cstring(delim));
   next(p);
   consume(p, end, "expect listing end");
   return 0;
@@ -607,23 +616,24 @@ static void using(Parse *p)
   size_t native_count = 0;
   do {
     Token ident_tok = consume(p, TK_WORD,
-        "expect native function name after `using`");
-    StrSlice name = ident_tok.slice;
+        "expect native function name in `using`");
+    Str name = ident_tok.slice;
 
     Local *local = create_local_var(p, name);
     local->initialized = true;
 
-    NativeFn *native_fn =
-      NativesTable_get(&p->vm->natives, name);
+    size_t *native_idx =
+      NativesTable_get(&p->vm->natives_table, name);
 
-    if (native_fn == NULL)
+    if (native_idx == NULL)
       parse_error(p, ident_tok,
           "no native function named %.*s", (int)name.len, name.s);
+    else
+      emit_constant(p, ident_tok.line, value_new(*native_idx, native));
 
-    emit_constant(p, ident_tok.line, value_new(native_fn, native));
     patch_local(p, local);
 
-    // Native fn locals occupy space too, you know.
+    // Native function values occupy space too.
     native_count++;
     p->c->stack_slot_count++;
   } while (match(p, TK_COMMA));
@@ -647,9 +657,9 @@ static void number(Parse *p)
   Token ntok = eat(p);
 
   // Copying the slice to NUL-terminated so strtod doesn't parse anything extra
-  Str nstr = str_copy(ntok.slice);
-  float64_t n = strtod(nstr.s, NULL);
-  free((void *)nstr.s);
+  String *nstring = String_create(p->vm,
+      ntok.slice.s, ntok.slice.len)->as.string;
+  float64_t n = strtod(nstring->s, NULL);
 
   emit_constant(p, ntok.line, value_new(n, number));
 }
@@ -657,9 +667,9 @@ static void number(Parse *p)
 static void string(Parse *p)
 {
   Token strtok = eat(p);
-  Str str = str_copy(strtok.slice);
 
-  emit_constant(p, strtok.line, string_value_new(str));
+  emit_constant(p, strtok.line,
+      *String_create(p->vm, strtok.slice.s, strtok.slice.len));
 }
 
 static void metastring(Parse *p)
@@ -696,7 +706,7 @@ static void assign_local(Parse *p)
 // Emit p-code based on an identifier occurrence.
 static void ident_str(Parse *p, Token ident_tok)
 {
-  StrSlice ident = ident_tok.slice;
+  Str ident = ident_tok.slice;
 
   Local *local = resolve_local(p, ident);
   if (!local) {
@@ -731,7 +741,7 @@ static void fn_decl(Parse *p, Token ident_tok)
   if (!consume_arg_list_start(p))
     parse_error(p, p->current, "expect argument list");
 
-  StrSlice name = ident_tok.slice;
+  Str name = ident_tok.slice;
   Locals args = consume_arg_list(p);
   consume(p, TK_RPAREN, "expect argument list end");
 
@@ -760,6 +770,9 @@ static void let(Parse *p)
   }
 
   Local *local = create_local_var(p, ident_tok.slice);
+
+  if (p->current.type == TK_EQ)
+    parse_error(p, p->current, "did you mean `:=`?");
 
   if (match(p, TK_ASSIGN)) {
     const int assign_r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
@@ -961,14 +974,14 @@ static Parse init_parse(Varmint *vm, char *source)
   next(&p); next(&p);
 
   p.had_error = false;
-  p.semantic = SemanticData_new();
+  p.semantic = SemanticData_init();
 
   p.c = NULL;
-  init_compiler(&p, Locals_new());
+  init_compiler(&p, Locals_init());
   return p;
 }
 
-Proc *compile(Varmint *vm, char *source)
+Procedure *compile(Varmint *vm, char *source)
 {
   Parse p = init_parse(vm, source);
 
@@ -986,7 +999,8 @@ Proc *compile(Varmint *vm, char *source)
   expr(&p, PREC_NONE);
 
   end_semantic_scope(&p);
+  free(p.semantic.data);
 
-  Proc *procedure = return_compiler(&p);
-  return p.had_error ? NULL : procedure;
+  Procedure *proc = return_compiler(&p);
+  return p.had_error ? NULL : proc;
 }

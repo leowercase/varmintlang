@@ -21,7 +21,7 @@ typedef struct Parse Parse;
 // Local variable that resides on the operation stack.
 // Local going out of scope gets its value pushed off the stack.
 typedef struct Local {
-  StrSlice name;
+  Str name;
   int depth;
   bool initialized;
   size_t stack_slot;
@@ -69,7 +69,7 @@ typedef struct Compiler {
   Locals locals;
   size_t stack_slot_count;
   int depth; // Current block depth { { ... } }
-  Proc *procedure;
+  Procedure *procedure;
 } Compiler;
 
 typedef enum {
@@ -120,6 +120,6 @@ typedef struct {
   LedRule led;
 } ParseRule;
 
-Proc *compile(Varmint *vm, char *source);
+Procedure *compile(Varmint *vm, char *source);
 
 #endif

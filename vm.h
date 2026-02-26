@@ -5,6 +5,6 @@
 #include "proc.h"
 
 // Execute a procedure
-void execute(Varmint *vm, Proc *program);
+void execute(Varmint *vm, Procedure *program);
 
 #endif

@@ -90,7 +90,7 @@ TokenType is_keyword(Str str)
 
 typedef struct {
   TokenType type;
-  StrSlice slice; // Not a C string!
+  Str slice;
   size_t line;
 } Token;
 
@@ -138,6 +138,6 @@ Lex lex_new(char *source)
 
 Token lex_token(Lex *lex);
 
-const char *tok_cstring(const TokenType type);
+char *const token_cstring(const TokenType type);
 
 #endif
