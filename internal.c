@@ -120,33 +120,65 @@ Value _vm_notin(Varmint *vm, Value x, Value collection)
       value_is_falsey(_vm_in(vm, x, collection)), boolean);
 }
 
-static Value *index_list(Varmint *vm, Value list, Value idx)
+static size_t index_into(Varmint *vm, size_t len, Value idx)
+{
+  float64_t _idx = typechecked(vm, idx, number);
+
+  size_t actual_idx;
+  if (_idx < 0)
+    // Index from top.
+    actual_idx = (size_t)((float64_t)len + _idx);
+  else
+    actual_idx = (size_t)_idx;
+
+  if (actual_idx >= len)
+    runtime_error(vm, "list index [%li] out of range (length %li)\n",
+        _idx, len);
+
+  return actual_idx;
+}
+
+static inline Value *index_list(Varmint *vm, Value list, Value idx)
 {
   List *_list = typechecked(vm, list, list);
-  signed long _idx = (signed long)typechecked(vm, idx, number);
-
-  bool index_from_top = _idx < 0;
-  size_t idx_magnitude = (size_t)(index_from_top ? -_idx - 1 : _idx);
-
-  if (idx_magnitude >= _list->len)
-    runtime_error(vm,
-        "List index [%li] out of range (list length %li)\n",
-        _idx, _list->len);
-
-  if (index_from_top)
-    return List_top(_list) - idx_magnitude;
-  else
-    return _list->data + _idx;
+  return &_list->data[index_into(vm, _list->len, idx)];
 }
 
-Value _vm_get_elem(Varmint *vm, Value list, Value idx)
+Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
 {
-  return *index_list(vm, list, idx);
+  switch (collection.type) {
+  case V_string:
+    {
+      String *string = collection.as.string;
+      char c = string->s[index_into(vm, string->len, idx)];
+      return *String_create(vm, &c, 1);
+    }
+  case V_list:
+    return *index_list(vm, collection, idx);
+  default:
+    runtime_error(vm, "cannot index into %s\n",
+        value_type_cstring(collection.type));
+    return NO_VALUE;
+  }
 }
 
-Value _vm_set_elem(Varmint *vm, Value list, Value idx, Value val)
+static Value set_string_idx(Varmint *vm, String *string, Value idx, Value val)
 {
-  Value *elem = index_list(vm, list, idx);
-  *elem = val;
-  return *elem;
+  if (val.type != V_string || val.as.string->len - 1 != 1)
+    runtime_error(vm, "string index assignment must be a single character\n");
+
+  string->s[index_into(vm, string->len, idx)] = val.as.string->s[0];
+  return val;
+}
+
+Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
+{
+  if (collection.type == V_string)
+    return set_string_idx(vm, collection.as.string, idx, val);
+
+  else {
+    Value *elem = index_list(vm, collection, idx);
+    *elem = val;
+    return *elem;
+  }
 }
