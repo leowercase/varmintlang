@@ -13,8 +13,7 @@
 #define GC_DBG_FMT_MSG(_, ...)
 #endif
 
-//const size_t INITIAL_NEXT_GC = 16384;
-const size_t INITIAL_NEXT_GC = 64;
+const size_t INITIAL_NEXT_GC = 16384;
 const float64_t GC_GROWTH_FACTOR = 2.0;
 
 void gc_init(Varmint *vm)
