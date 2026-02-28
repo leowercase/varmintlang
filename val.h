@@ -6,6 +6,7 @@
 #include "util.h"
 
 #include <assert.h>
+#include <stdio.h>
 
 // Dynamic typing; values carry a typetag during runtime.
 typedef enum {
@@ -98,7 +99,7 @@ bool value_is_falsey(Value val);
 
 const char *value_type_cstring(Typetag type);
 Value *value_to_string(struct Varmint *vm, Value val);
-void print_value(Value val);
+void print_value(FILE *restrict stream, Value val);
 
 // Obtain the 64-bit hash of a value.
 uint64_t hash_value(Value val);

@@ -171,6 +171,14 @@ const char *value_type_cstring(Typetag type)
 #undef case_
 }
 
+static Value *fn_to_string(Varmint *vm, const char *moniker, Str name)
+{
+  if (name.s != NULL)
+    return String_fmt(vm, "<%s %.*s>", moniker, (int)name.len, name.s);
+  else
+    return String_fmt(vm, "<%s>", moniker);
+}
+
 Value *value_to_string(Varmint *vm, Value val)
 {
   switch (val.type) {
@@ -185,58 +193,52 @@ Value *value_to_string(Varmint *vm, Value val)
   case V_list:
     return String_from(vm, "<list>");
   case V_procedure:
-    {
-      Str name = val.as.procedure->name;
-      if (name.s != NULL)
-        return String_fmt(vm, "<fn %.*s>", (int)name.len, name.s);
-      else
-        return String_from(vm, "<fn>");
-    }
+    return fn_to_string(vm, "fn", val.as.procedure->name);
   case V_native:
-    return String_from(vm, "<native fn>");
+    return fn_to_string(vm, "native fn", vm->natives.data[val.as.native].name);
   }
 }
 
-void print_value(Value val)
+void print_value(FILE *restrict stream, Value val)
 {
   switch (val.type) {
   case V_no:
-    printf(ANSI_WHITE "no value" ANSI_RESET);
+    fprintf(stream, ANSI_WHITE "no value" ANSI_RESET);
     break;
   case V_number:
-    printf(ANSI_RED "%g" ANSI_RESET, val.as.number);
+    fprintf(stream, ANSI_RED "%g" ANSI_RESET, val.as.number);
     break;
   case V_boolean:
-    printf(ANSI_BLUE "%s" ANSI_RESET,
+    fprintf(stream, ANSI_BLUE "%s" ANSI_RESET,
         val.as.boolean ? "True" : "False");
     break;
   case V_native:
-    printf(ANSI_GREEN "<native fn>" ANSI_RESET); break;
+    fprintf(stream, ANSI_GREEN "<native fn>" ANSI_RESET); break;
   case V_string:
-    printf(ANSI_YELLOW "\"%s\"" ANSI_RESET "(%li)",
+    fprintf(stream, ANSI_YELLOW "\"%s\"" ANSI_RESET "(%li)",
         val.as.string->s, val.as.string->len);
     break;
   case V_list:
     {
       List *list = val.as.list;
-      printf(ANSI_MAGENTA "[");
+      fprintf(stream, ANSI_MAGENTA "[");
       for (size_t i = 0; i < list->len; i++) {
-        print_value(list->data[i]);
+        print_value(stream, list->data[i]);
         if (i < list->len - 1)
-          printf(", ");
+          fprintf(stream, ", ");
       }
-      printf(ANSI_MAGENTA "]" ANSI_RESET);
+      fprintf(stream, ANSI_MAGENTA "]" ANSI_RESET);
       break;
     }
   case V_procedure:
     {
       Str name = val.as.procedure->name;
-      printf(ANSI_GREEN);
+      fprintf(stream, ANSI_GREEN);
       if (name.s != NULL)
-        printf("<fn %.*s>", (int)name.len, name.s);
+        fprintf(stream, "<fn %.*s>", (int)name.len, name.s);
       else
-        printf("<fn>");
-      printf(ANSI_RESET);
+        fprintf(stream, "<fn>");
+      fprintf(stream, ANSI_RESET);
       break;
     }
   }

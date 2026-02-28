@@ -8,7 +8,7 @@
 static void constant(PCode *code, int idx)
 {
   printf("  [%i] = ", idx);
-  print_value(code->constants.data[idx]);
+  print_value(stdout, code->constants.data[idx]);
   printf(ANSI_CYAN);
 }
 
@@ -72,7 +72,7 @@ size_t disassemble_instruction(PCode *code, size_t offset)
     {
       const Value one = value_new(1.0, number);
       printf(" ");
-      print_value(one);
+      print_value(stdout, one);
       printf(ANSI_CYAN);
       return offset + 1;
     })

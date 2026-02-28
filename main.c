@@ -11,7 +11,7 @@
 static void run(Varmint *vm, char *source)
 {
   Value result = varmint_run(vm, source);
-  print_value(result);
+  print_value(stdout, result);
   printf("\n");
 }
 

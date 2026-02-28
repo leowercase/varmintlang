@@ -38,7 +38,7 @@ void varmint_free(Varmint *vm);
 
 // Add a native function.
 void varmint_add_native(Varmint *vm,
-    char *const name, NativeFn fn, size_t arity);
+    const char *name, NativeFn fn, size_t arity);
 
 // Controls debug output.
 //#define VARMINT_DEBUG

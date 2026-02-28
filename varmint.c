@@ -62,6 +62,37 @@ static Value _input(Varmint *vm, Value *args)
   return *String_own(vm, input_line);
 }
 
+// strton(string: string) -> number
+static Value _strton(Varmint *vm, Value *args)
+{
+  Value string = args[0];
+  String *s = typechecked(vm, string, string);
+
+  char c = s->s[0];
+  // man 3 strtod
+  if (!isdigit(c)) switch (c) {
+  case '+': case '-': // Optional sign
+  case 'I': case 'i': // INFINITY
+  case 'N': case 'n': // NAN
+    break;
+  default:
+    // Invalid string!
+    goto error;
+  }
+
+  char *endptr;
+  float64_t n = strtod(s->s, &endptr);
+
+  if (*endptr != '\0')
+    // Invalid tailing characters!
+    goto error;
+
+  return value_new(n, number);
+error:
+  runtime_error(vm, "invalid string parameter to `strton`\n");
+  return NO_VALUE;
+}
+
 // rot(text: string, shift: number) -> string
 static Value _rot(Varmint *vm, Value *args)
 {
@@ -93,13 +124,15 @@ static Value _rot(Varmint *vm, Value *args)
 }
 
 void varmint_add_native(Varmint *vm,
-    char *const name, NativeFn fn, size_t arity)
+    const char *name, NativeFn fn, size_t arity)
 {
-  Native native = {arity, fn};
+  Str name_str = str_new(name, strlen(name));
+
+  Native native = {arity, fn, name_str};
   Natives_push(&vm->natives, native);
 
   size_t idx = vm->natives.len - 1;
-  NativesTable_set(&vm->natives_table, str_new(name, strlen(name)), idx);
+  NativesTable_set(&vm->natives_table, name_str, idx);
 }
 
 Varmint varmint_start(void)
@@ -117,6 +150,7 @@ Varmint varmint_start(void)
   varmint_add_native(&vm, "put", _put, 1);
   varmint_add_native(&vm, "putln", _putln, 1);
   varmint_add_native(&vm, "input", _input, 0);
+  varmint_add_native(&vm, "strton", _strton, 1);
   varmint_add_native(&vm, "rot", _rot, 2);
 
   gc_init(&vm);
