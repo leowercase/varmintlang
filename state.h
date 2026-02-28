@@ -47,6 +47,7 @@ typedef Value (*NativeFn)(struct Varmint *vm, Value *args);
 typedef struct Native {
   size_t arity;
   NativeFn fn;
+  Str name;
 } Native;
 
 typedef DYN_ARRAY_STRUCT(Native) Natives;
@@ -59,8 +60,10 @@ typedef struct { TABLE_ENTRY(Str, size_t) } NativesTableEntry;
 typedef TABLE_STRUCT(NativesTableEntry) NativesTable;
 #define K Str
 #define V size_t
-#define KEYS_EQ(a, b) strs_eq(a, b)
 #define HASH(key) str_hash(key)
+#define IS_EMPTY_KEY(key) (key.s == NULL)
+#define EMPTY_KEY NULL_STR
+#define KEYS_EQ(a, b) strs_eq(a, b)
 #define TBL_ENTRY NativesTableEntry
 #define TBL NativesTable
 #include "generic/table.inc"

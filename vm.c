@@ -82,7 +82,7 @@ static void call_val(Varmint *vm, Value callee, size_t argc)
 
   else if (callee.type == V_native) {
     Native *fn = &vm->natives.data[callee.as.native];
-    check_fn_argc(vm, fn->arity, NULL_STR, argc);
+    check_fn_argc(vm, fn->arity, fn->name, argc);
 
     call_native(vm, fn);
   }

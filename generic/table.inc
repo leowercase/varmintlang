@@ -11,13 +11,15 @@
  * https://en.wikipedia.org/wiki/Hash_table
  * https://en.wikipedia.org/wiki/Lazy_deletion
  *
- * K             key type (required)
- * V             value type (required)
- * TBL_ENTRY     entry struct of K, V (required)
- * TBL           hash table struct (required)
- * HASH(key)     hasher (required)
- * KEYS_EQ(a, b) test equality for two keys, defaults to primitive equality ==
- * USE_GC        whether to use GC for allocation
+ * K                 key type (required)
+ * V                 value type (required)
+ * TBL_ENTRY         entry struct of K, V (required)
+ * TBL               hash table struct (required)
+ * HASH(key)         hasher (required)
+ * IS_EMPTY_KEY(key) whether a key is considered unused (required)
+ * EMPTY_KEY         empty value of key type K (required)
+ * KEYS_EQ(a, b)     test equality of two keys, defaults to primitive equality ==
+ * USE_GC            whether to use GC for allocation
  */
 
 #ifndef K
@@ -40,6 +42,14 @@
 #error Oops! Must define the hashing function HASH.
 #endif
 
+#ifndef IS_EMPTY_KEY
+#error Oops! Must define a function IS_EMPTY_KEY that determines an empty key.
+#endif
+
+#ifndef EMPTY_KEY
+#error Oops! Must define an empty value EMPTY_KEY, of type K.
+#endif
+
 #ifndef KEYS_EQ
 #define KEYS_EQ(a, b) (a == b)
 #endif
@@ -48,10 +58,10 @@
 #define ALLOCS(...) (__VA_ARGS__)
 #define CALLS_ALLOC(...) (__VA_ARGS__)
 #else
-struct Varmint;
 #define ALLOCS(...) (struct Varmint *vm, __VA_ARGS__)
 #define CALLS_ALLOC(...) (vm, __VA_ARGS__)
 // Forward declaration.
+struct Varmint;
 void *gc_alloc(struct Varmint *vm, void *ptr, size_t old_size, size_t new_size);
 #endif
 
@@ -81,7 +91,8 @@ TBL_ENTRY *METHOD(_probe_entry)(TBL *table, K key)
   uint64_t hash = HASH(key);
 
   TBL_ENTRY *tomb = NULL;
-  // Crucial to keep α < α_max and α_max < 1, otherwise we loop forever!
+  // Find the matching entry.
+  // Crucial to keep α < α_max and α_max < 1, otherwise we go on forever!
   for (size_t i = mod_2(hash, table->cap);; i = mod_2(i + 1, table->cap)) {
     TBL_ENTRY *entry = &table->entries[i];
 
@@ -89,7 +100,7 @@ TBL_ENTRY *METHOD(_probe_entry)(TBL *table, K key)
       // Mark the first tomb crossed
       tomb = entry;
 
-    else if (entry->key.s == NULL)
+    else if (IS_EMPTY_KEY(entry->key))
       // Found an empty entry!
       // Couldn't find the maching entry, so we return an empty one.
       // Tomb recyclage takes top priority, though.
@@ -105,40 +116,43 @@ TBL_ENTRY *METHOD(_probe_entry)(TBL *table, K key)
 static inline
 void METHOD(_resize)ALLOCS(TBL *table)
 {
-  size_t new_cap = grow_cap(table->cap);
+  size_t old_cap = table->cap;
+  table->cap = grow_cap(table->cap);
 
-  TBL_ENTRY *new_entries =
+  TBL_ENTRY *old_entries = table->entries;
+  table->entries =
 #ifndef USE_GC
-    allocate(NULL, new_cap * sizeof(TBL_ENTRY));
+    allocate(NULL, table->cap * sizeof(TBL_ENTRY));
 #else
     gc_alloc(vm, NULL,
-      table->cap * sizeof(TBL_ENTRY), new_cap * sizeof(TBL_ENTRY));
+      table->cap * sizeof(TBL_ENTRY), table->cap * sizeof(TBL_ENTRY));
 #endif
 
-  // Zero out entries
-  for (size_t i = 0; i < new_cap; i++) {
-    new_entries[i].key.s = NULL;
-    new_entries[i].is_tomb = false;
+  // Zero out new entries
+  for (size_t i = 0; i < table->cap; i++) {
+    table->entries[i].key = EMPTY_KEY;
+    table->entries[i].is_tomb = false;
   }
 
-  // Copy entries over.
-  for (size_t i = 0; i < table->cap; i++) {
-    TBL_ENTRY *entry = &table->entries[i];
+  // Copy old entries over.
+  for (size_t i = 0; i < old_cap; i++) {
+    TBL_ENTRY *entry = &old_entries[i];
 
     if (entry->is_tomb) {
-      // Don't include tombstones in the new table.
+      // Don't include old tombstones in the new table.
       // They can easily inflate entry count
       table->entry_count--;
       continue;
     }
-    else if (entry->key.s == NULL)
+    else if (IS_EMPTY_KEY(entry->key))
       continue;
 
-    new_entries[i] = *entry;
+    *METHOD(_probe_entry)(table, entry->key) = *entry;
   }
 
-  table->cap = new_cap;
-  table->entries = new_entries;
+#ifndef USE_GC
+  free(old_entries);
+#endif
 }
 
 // Get table value.
@@ -150,7 +164,7 @@ V *METHOD(_get)(TBL *table, K key)
 
   TBL_ENTRY *entry = METHOD(_probe_entry)(table, key);
 
-  if (entry->key.s == NULL || entry->is_tomb)
+  if (IS_EMPTY_KEY(entry->key) || entry->is_tomb)
     return NULL;
   else
     return &entry->value;
@@ -166,7 +180,7 @@ bool METHOD(_set)ALLOCS(TBL *table, K key, V value)
     METHOD(_resize)CALLS_ALLOC(table);
 
   TBL_ENTRY *entry = METHOD(_probe_entry)(table, key);
-  bool is_new_entry = entry->key.s == NULL;
+  bool is_new_entry = IS_EMPTY_KEY(entry->key);
 
   if (is_new_entry && !entry->is_tomb)
     table->entry_count++;
@@ -193,9 +207,11 @@ V METHOD(_delete)(TBL *table, K key)
 #undef ALLOC_PARAMS
 #undef ALLOC_ARGS
 #undef ALLOC
-#undef TBL
 #undef KEYS_EQ
+#undef EMPTY_KEY
+#undef IS_EMPTY_KEY
 #undef HASH
+#undef TBL
 #undef TBL_ENTRY
 #undef V
 #undef K

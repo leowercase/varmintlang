@@ -15,7 +15,7 @@
  *
  * T      element type (required)
  * ARR    dynamic array struct (required)
- * CAP    static maximum capacity, assume .data a finite array
+ * CAP    static maximum capacity; assume .data a finite array
  * USE_GC whether to use GC for allocation
  */
 
@@ -31,10 +31,10 @@
 #define ALLOCS(...) (__VA_ARGS__)
 #define CALLS_ALLOC(...) (__VA_ARGS__)
 #else
-struct Varmint;
 #define ALLOCS(...) (struct Varmint *vm, __VA_ARGS__)
 #define CALLS_ALLOC(...) (vm, __VA_ARGS__)
 // Forward declaration.
+struct Varmint;
 void *gc_alloc(struct Varmint *vm, void *ptr, size_t old_size, size_t new_size);
 #endif
 
