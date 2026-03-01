@@ -20,6 +20,7 @@ typedef enum {
   V_native,
 
   // GC'd values
+  V_maybe,
   V_string,
   V_list,
   V_procedure,
@@ -32,6 +33,7 @@ typedef union {
   size_t native;
 
   struct GCData *gc_data; // Accessed by the garbage collector.
+  struct Maybe *maybe;
   struct String *string;
   struct List *list;
   struct Procedure *procedure;
@@ -62,8 +64,14 @@ typedef struct GCData {
 static inline
 bool is_heaped_value(Typetag type)
 {
-  return type >= V_string;
+  return type >= V_maybe;
 }
+
+typedef struct Maybe {
+  GCData gc_data;
+  bool is_some;
+  Value raw;
+} Maybe;
 
 typedef struct String {
   GCData gc_data;
@@ -81,6 +89,9 @@ typedef struct List {
 #include "generic/dyn_array.inc"
 
 struct Varmint;
+
+Value *Maybe_some(struct Varmint *vm, Value value);
+Value *Maybe_none(struct Varmint *vm);
 
 Value *List_create(struct Varmint *vm, size_t cap);
 

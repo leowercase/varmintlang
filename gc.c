@@ -109,6 +109,13 @@ static void mark_obj(Varmint *vm, Value obj)
   case V_boolean:
   case V_native:
     unreachable();
+  case V_maybe:
+    {
+      Maybe *maybe = obj.as.maybe;
+      if (maybe->is_some && is_heaped_value(maybe->raw.type))
+        mark_obj(vm, maybe->raw);
+      break;
+    }
   case V_string:
     break;
   case V_list:
@@ -161,6 +168,14 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
   case V_boolean:
   case V_native:
     unreachable();
+  case V_maybe:
+    {
+      if (((Maybe *)data)->is_some)
+        FREE(Maybe);
+      else
+        gc_free(vm, data, sizeof(Maybe) - sizeof(Value));
+      break;
+    }
   case V_string:
     {
       String *string = (String *)data;

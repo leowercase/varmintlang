@@ -7,6 +7,24 @@
 // https://github.com/Cyan4973/xxHash
 #include <xxhash.h>
 
+Value *Maybe_some(Varmint *vm, Value raw)
+{
+  Value *val = create_gc_obj(vm, V_maybe, sizeof(Maybe));
+  val->as.maybe->is_some = true;
+  val->as.maybe->raw = raw;
+  return val;
+}
+
+Value *Maybe_none(Varmint *vm)
+{
+  // Don't even allocate space for the empty raw field; it is extraneous
+  const size_t none_size = sizeof(Maybe) - sizeof(Value);
+
+  Value *val = create_gc_obj(vm, V_maybe, none_size);
+  val->as.maybe->is_some = false;
+  return val;
+}
+
 Value *List_create(Varmint *vm, size_t cap)
 {
   Value *val = create_gc_obj(vm, V_list, sizeof(List));
@@ -134,6 +152,10 @@ bool values_eq(Value a, Value b)
       return a.as.boolean == b.as.boolean;
     case V_native:
       return a.as.native == b.as.native;
+    case V_maybe:
+      return a.as.maybe->is_some == b.as.maybe->is_some
+        && (!a.as.maybe->is_some
+            || values_eq(a.as.maybe->raw, b.as.maybe->raw));
     case V_string:
       return strs_eq(String_as_str(&a), String_as_str(&b));
     case V_list:
@@ -163,6 +185,7 @@ const char *value_type_cstring(Typetag type)
   case_(number)
   case_(boolean)
   case_(native)
+  case_(maybe)
   case_(string)
   case_(list)
   case_(procedure)
@@ -188,6 +211,14 @@ Value *value_to_string(Varmint *vm, Value val)
     return String_fmt(vm, "%g", val.as.number);
   case V_boolean:
     return val.as.boolean ? String_from(vm, "True") : String_from(vm, "False");
+  case V_maybe:
+    if (val.as.maybe->is_some) {
+      String *some = value_to_string(vm, val.as.maybe->raw)->as.string;
+      return
+        String_fmt(vm, "Some(%.*s)", (int)some->len, some->s);
+    }
+    else
+      return String_from(vm, "None");
   case V_string:
     return String_copy(vm, &val);
   case V_list:
@@ -214,6 +245,15 @@ void print_value(FILE *restrict stream, Value val)
     break;
   case V_native:
     fprintf(stream, ANSI_GREEN "<native fn>" ANSI_RESET); break;
+  case V_maybe:
+    if (val.as.maybe->is_some) {
+      fprintf(stream, ANSI_BLUE "Some" ANSI_RESET "(");
+      print_value(stream, val.as.maybe->raw);
+      fprintf(stream, ")");
+    }
+    else
+      fprintf(stream, ANSI_BLUE "None" ANSI_RESET);
+    break;
   case V_string:
     fprintf(stream, ANSI_YELLOW "\"%s\"" ANSI_RESET "(%li)",
         val.as.string->s, val.as.string->len);
@@ -255,6 +295,8 @@ uint64_t hash_value(Value val)
     return XXH3_64bits(&val.as.boolean, sizeof(int));
   case V_native:
     return XXH3_64bits(&val.as.native, sizeof(size_t));
+  case V_maybe:
+    return val.as.maybe->is_some ? hash_value(val.as.maybe->raw) : 0;
   case V_string:
     return XXH3_64bits(val.as.string->s, val.as.string->len);
   case V_list:

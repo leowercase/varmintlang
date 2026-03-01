@@ -62,7 +62,7 @@ static Value _input(Varmint *vm, Value *args)
   return *String_own(vm, input_line);
 }
 
-// strton(string: string) -> number
+// strton(string: string) -> maybe(number)
 static Value _strton(Varmint *vm, Value *args)
 {
   Value string = args[0];
@@ -87,10 +87,9 @@ static Value _strton(Varmint *vm, Value *args)
     // Invalid tailing characters!
     goto error;
 
-  return value_new(n, number);
+  return *Maybe_some(vm, value_new(n, number));
 error:
-  runtime_error(vm, "invalid string parameter to `strton`\n");
-  return NO_VALUE;
+  return *Maybe_none(vm);
 }
 
 // rot(text: string, shift: number) -> string
