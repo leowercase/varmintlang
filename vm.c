@@ -46,6 +46,7 @@ static void call(Varmint *vm, Procedure *procedure, size_t argc)
   vm->frame = CallStack_push(&vm->call_stack, frame);
 }
 
+// Call a native function.
 static void call_native(Varmint *vm, Native *native)
 {
   Value *params = allocate(NULL, (size_t)native->arity * sizeof(Value));
@@ -109,7 +110,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
   break; \
 }
 
-  // Opcode with variable sized operand (8/16-bit)
+  // Opcode with a variable sized operand (8/16-bit)
 #define case_size_op(op_name, operand_ident, stmt) \
   case op_name: \
     { \
@@ -156,6 +157,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
 
   case OP_CONCAT: BINARY(_vm_concat(vm, lhs, rhs))
 
+    // Load a constant value.
   case_size_op(OP_CONST, idx,
     {
       Value constant = vm->frame->procedure->code.constants.data[idx];
@@ -168,6 +170,16 @@ static inline bool execute_instruction(Varmint *restrict vm)
       const Value one = value_new(1.0, number);
       push(vm, one);
       break;
+    }
+
+    // Chains the right hand side of an op to be the left hand of another.
+    // The good ol' switcheroo.
+  case OP_CHAIN_BINOP:
+    {
+      Value rhs = peek(vm, 0);
+      bool running = execute_instruction(vm);
+      push(vm, rhs);
+      return running;
     }
 
     // Weaves a list.
@@ -186,36 +198,43 @@ static inline bool execute_instruction(Varmint *restrict vm)
     // Stitches together the metastrings emitted by the compiler.
   case_size_op(OP_BUILD_STR, metas,
     {
-      Value *string_val = value_to_string(vm, peek(vm, 0));
+      Value *string_val = value_to_string(vm, pop(vm));
 
       for (size_t i = 1; i < metas; i++)
         string_val = String_concat(vm,
-            value_to_string(vm, peek(vm, i)),
-            string_val);
+            value_to_string(vm, pop(vm)), string_val);
 
-      popn(vm, metas);
       push(vm, *string_val);
       break;
     })
 
-    // Chains the right hand side of an op to be the left hand of another.
-    // The good ol' switcheroo.
-  case OP_CHAIN_BINOP:
+    // Create optional values
+  case OP_MAKE_SOME:
+    push(vm, *Maybe_some(vm, pop(vm)));
+    break;
+  case OP_MAKE_NONE:
+    push(vm, *Maybe_none(vm));
+    break;
+    // Unwrap a Some() value
+  case OP_UNWRAP_MAYBE:
     {
-      Value rhs = peek(vm, 0);
-      bool running = execute_instruction(vm);
-      push(vm, rhs);
-      return running;
+      Maybe *optional = pop(vm).as.maybe;
+      assert(optional->is_some);
+
+      push(vm, optional->raw);
+      break;
     }
 
+    // Get a value on the stack.
   case_size_op(OP_GET, stack_slot,
     {
       push(vm, vm->frame->op_stack[stack_slot]);
       break;
     })
+    // Set a value on the stack.
   case_size_op(OP_SET, stack_slot,
     {
-      Value val  = peek(vm, 0);
+      Value val = peek(vm, 0);
 
       if (val.type == V_no)
         runtime_error(vm, "invalid assign to expression without value\n");
@@ -224,14 +243,16 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     })
 
-  case OP_LIST_GET:
+    // Get an element from a collection.
+  case OP_INDEXED_GET:
     {
       Value idx = pop(vm),
             list = pop(vm);
       push(vm, _vm_get_elem(vm, list, idx));
       break;
     }
-  case OP_LIST_SET:
+    // Set an element of a collection.
+  case OP_INDEXED_SET:
     {
       Value val = pop(vm),
             idx = pop(vm),
@@ -244,44 +265,28 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     }
 
+    // Reserve a slot on the stack.
   case OP_RESERVE_SLOT:
     push(vm, NO_VALUE);
     break;
-  case OP_DUPLICATE:
-    push(vm, peek(vm, 0));
-    break;
-  case OP_DISCARD:
-    pop(vm);
-    break;
-  case_size_op(OP_DISCARDN, n,
+    // End code block
+  case_size_op(OP_END_BLOCK, n,
     {
+      Value block_val = peek(vm, 0);
       popn(vm, n);
+      push(vm, block_val);
       break;
     })
-  case_size_op(OP_RETAIN1_DISCARDN, n,
+    // End code block with no value.
+  case_size_op(OP_END_EMPTY_BLOCK, n,
     {
-      Value retained_val = peek(vm, 0);
       popn(vm, n);
-      push(vm, retained_val);
+      push(vm, NO_VALUE);
       break;
     })
 
-  case OP_MAKE_SOME:
-    push(vm, *Maybe_some(vm, pop(vm)));
-    break;
-  case OP_MAKE_NONE:
-    push(vm, *Maybe_none(vm));
-    break;
-  case OP_UNWRAP_MAYBE:
-    {
-      Maybe *optional = pop(vm).as.maybe;
-      assert(optional->is_some);
-
-      push(vm, optional->raw);
-      break;
-    }
-
-    // If False, jump over the Some()-constructing body and push None
+    // Start an if clause.
+    // If lhs is False, jump over the Some()-constructing body and push None
   case OP_IF_CLAUSE:
     {
       uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
@@ -293,7 +298,8 @@ static inline bool execute_instruction(Varmint *restrict vm)
       }
       break;
     }
-    // If lhs is Some(), jump over the default and push the unwrapped value.
+    // Start an else clause.
+    // If lhs is Some(), jump over the body and push the unwrapped value.
   case OP_ELSE_CLAUSE:
     {
       uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
@@ -307,7 +313,8 @@ static inline bool execute_instruction(Varmint *restrict vm)
       }
       break;
     }
-    // If lhs Some(), jump over the if body and push the Some().
+    // Start an elif clause.
+    // If lhs Some(), jump over the if body and push the Some()
   case OP_ELIF_CLAUSE:
     {
       uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
@@ -321,6 +328,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     }
 
+    // Call a value
   case_size_op(OP_CALL, argc,
     {
       call_val(vm, peek(vm, argc), argc);
@@ -345,15 +353,18 @@ static inline bool execute_instruction(Varmint *restrict vm)
       // Push return value
       push(vm, return_val);
 
-      // Ensure balanced stack after the call
+      // Ensure a balanced stack after the call!
       assert(vm->op_stack.data + vm->op_stack.len == frame.op_stack);
 
       vm->frame = CallStack_top(&vm->call_stack);
       break;
     }
 
+    // Collect garbage.
+    // This instruction is only ever encountered by the VM when the garbage
+    // collector manually sets ip pointing to it.
   case OP_GC:
-    vm->frame->ip--; // NB: Backstep to the GC instruction.
+    vm->frame->ip--; // NB: Backstep to the instruction, so GC knows where at.
     gcollect(vm);
     vm->frame->ip = vm->gc_resume_ip; // Pick up where we left off.
     break;

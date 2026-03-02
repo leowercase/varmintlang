@@ -111,10 +111,14 @@ static void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
 }
 
 // Emit the end of a block
-static void emit_block_end(Parse *p, Token block_tok, size_t slots)
+static void block_end(Parse *p, Token block_tok, size_t slots, bool has_result)
 {
-  if (!emit_size_op(code(p), block_tok.line, OP_RETAIN1_DISCARDN, slots))
+  Opcode opcode = has_result ? OP_END_BLOCK : OP_END_EMPTY_BLOCK;
+
+  if (!emit_size_op(code(p), block_tok.line, opcode, slots))
     parse_error(p, block_tok, "block occupies too many stack slots");
+
+  p->c->stack_slot_count -= slots;
 }
 
 // Local lookup.
@@ -379,12 +383,12 @@ static void led_op(Parse *p, int min_bp)
     postfix_op(p, min_bp);
 }
 
-static void assign_list(Parse *p)
+static void indexed_assign(Parse *p)
 {
-  emit_byte(code(p), p->current.line, OP_LIST_SET);
+  emit_byte(code(p), p->current.line, OP_INDEXED_SET);
 }
 
-// list[i]
+// a[i]
 static void subscript(Parse *p, int min_bp)
 {
   if (PREC_CALL < min_bp) {
@@ -398,12 +402,12 @@ static void subscript(Parse *p, int min_bp)
 
   if (p->current.type != TK_ASSIGN)
     // Access.
-    emit_byte(code(p), brack_tok.line, OP_LIST_GET);
+    emit_byte(code(p), brack_tok.line, OP_INDEXED_GET);
 
   else if (semantic(p)->assign_fn == NULL)
     parse_error(p, brack_tok, "invalid list assign");
 
-  semantic(p)->assign_fn = assign_list;
+  semantic(p)->assign_fn = indexed_assign;
 }
 
 static bool consume_arg_list_start(Parse *p)
@@ -686,7 +690,7 @@ static void using(Parse *p)
   construct_body(p);
 
   clear_local_scope(p);
-  emit_block_end(p, tok, native_count + 1);
+  block_end(p, tok, native_count + 1, true);
   p->c->depth--;
 }
 
@@ -867,6 +871,7 @@ static void block(Parse *p)
 
   new_semantic_scope(p);
   p->c->depth++;
+  bool has_result = true;
 
   // Consume first statement
   stmt(p);
@@ -883,7 +888,7 @@ static void block(Parse *p)
 
     if (match(p, TK_RCURLY)) {
       // Trailing semicolon, no value from block expr.
-      emit_byte(code(p), curly_tok.line, OP_RESERVE_SLOT);
+      has_result = false;
       stmts++;
       p->c->stack_slot_count++;
       break;
@@ -895,8 +900,7 @@ static void block(Parse *p)
   }
 
   clear_local_scope(p);
-  emit_block_end(p, curly_tok, stmts);
-  p->c->stack_slot_count -= stmts;
+  block_end(p, curly_tok, stmts, has_result);
 
   p->c->depth--;
   end_semantic_scope(p);
