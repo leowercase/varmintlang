@@ -19,6 +19,7 @@ static inline SemanticDatum *semantic(Parse *p)
 static inline SemanticDatum *new_semantic_scope(Parse *p)
 {
   SemanticDatum sem;
+  sem.in_stmt = semantic(p)->in_stmt;
   sem.assign_fn = semantic(p)->assign_fn;
   sem.led_fail = false;
   sem.panic = false;
@@ -78,7 +79,7 @@ static void parse_error(Parse *p, Token offending_tok, char *const msg, ...)
   va_start(args, msg);
   v_error_out(msg, args);
   va_end(args);
-  error_out(":\n");
+  error_out("\n");
 
   error_line_snip(p->vm->source, offending_tok.line,
                          (char *)offending_tok.slice.s);
@@ -499,7 +500,10 @@ static void grouping(Parse *p)
     maplet(p);
 
   else {
+    new_semantic_scope(p)->in_stmt = false;
     expr(p, PREC_NONE);
+    end_semantic_scope(p);
+
     consume(p, TK_RPAREN, "expect grouping end"); // )
   }
 }
@@ -522,8 +526,10 @@ static size_t delimited_listing(Parse *p,
             "invalid trailing %s in listing", token_cstring(delim));
     }
 
+    new_semantic_scope(p)->in_stmt = false;
     expr(p, PREC_NONE);
     len++;
+    end_semantic_scope(p);
 
     if (match(p, end)) // ]
       return len;
@@ -869,9 +875,10 @@ static void block(Parse *p)
     return;
   }
 
-  new_semantic_scope(p);
+  new_semantic_scope(p)->in_stmt = true;
+
   p->c->depth++;
-  bool has_result = true;
+  bool block_has_result = true;
 
   // Consume first statement
   stmt(p);
@@ -888,7 +895,7 @@ static void block(Parse *p)
 
     if (match(p, TK_RCURLY)) {
       // Trailing semicolon, no value from block expr.
-      has_result = false;
+      block_has_result = false;
       stmts++;
       p->c->stack_slot_count++;
       break;
@@ -900,9 +907,9 @@ static void block(Parse *p)
   }
 
   clear_local_scope(p);
-  block_end(p, curly_tok, stmts, has_result);
-
+  block_end(p, curly_tok, stmts, block_has_result);
   p->c->depth--;
+
   end_semantic_scope(p);
 }
 
@@ -926,8 +933,14 @@ static void expr(Parse *p, int min_bp)
     LedRule op_rule = parse_rule(op_token.type)->led;
 
     if (op_rule == NULL) {
-      parse_error(p, op_token, "expect operator, got `%.*s`",
-          (int)op_token.slice.len, op_token.slice.s);
+      if (semantic(p)->in_stmt)
+        parse_error(p, op_token,
+            "unexpected `%.*s`, did you mean to add `;`?",
+              (int)op_token.slice.len, op_token.slice.s);
+      else
+        parse_error(p, op_token,
+            "expect operator, got `%.*s`",
+              (int)op_token.slice.len, op_token.slice.s);
 
       next(p); continue; // Consume tokens until a valid operator is found.
     }
@@ -1055,6 +1068,7 @@ Procedure *compile(Varmint *vm, char *source)
   }
 
   SemanticDatum sem;
+  sem.in_stmt = false;
   sem.assign_fn = NULL;
   sem.led_fail = false;
   sem.panic = false;

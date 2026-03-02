@@ -40,6 +40,8 @@ typedef struct {
   void (*assign_fn)(Parse *p); // Assignment function for left hand side
   Local *assignable_local;
 
+  bool in_stmt; // {}
+
   // Whether the latest left-denoted parse failed.
   bool led_fail;
 
