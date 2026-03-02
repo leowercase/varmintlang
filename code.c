@@ -20,17 +20,19 @@ void emit_byte(PCode *code, size_t line, uint8_t byte)
   LineInfo_push(&code->lines, l);
 }
 
-uint8_t *defer_op(PCode *code, size_t line, Opcode opcode)
+size_t defer_op(PCode *code, size_t line, Opcode opcode)
 {
-  emit_bytes(code, line, 3, 0xff, 0xff, (uint8_t)opcode);
-  return Instructions_top(&code->instructions) - 1;
+  emit_bytes(code, line, 3, (uint8_t)opcode, 0xff, 0xff);
+  return code->instructions.len - 2;
 }
 
-void patch_op(PCode *code, uint8_t *ip, uint16_t operand)
+void patch_op(PCode *code, size_t operand_idx, uint16_t operand)
 {
+  uint8_t *i = code->instructions.data;
+
   uint8_t bytes[2] = uint16_to_8(operand);
-  ip[0] = bytes[0];
-  ip[1] = bytes[1];
+  i[operand_idx] = bytes[0];
+  i[operand_idx + 1] = bytes[1];
 }
 
 // We make use of the fact that an 8-bit and a 16-bit op

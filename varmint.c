@@ -62,33 +62,54 @@ static Value _input(Varmint *vm, Value *args)
   return *String_own(vm, input_line);
 }
 
-// strton(string: string) -> maybe(number)
-static Value _strton(Varmint *vm, Value *args)
+// to_number(val) -> maybe(number)
+static Value _to_number(Varmint *vm, Value *args)
 {
-  Value string = args[0];
-  String *s = typechecked(vm, string, string);
+  float64_t n;
 
-  char c = s->s[0];
-  // man 3 strtod
-  if (!isdigit(c)) switch (c) {
-  case '+': case '-': // Optional sign
-  case 'I': case 'i': // INFINITY
-  case 'N': case 'n': // NAN
+  Value val = args[0];
+
+  switch (val.type) {
+  case V_no:
+    unreachable();
+  case V_number:
+    n = val.as.number;
     break;
-  default:
-    // Invalid string!
-    goto error;
+  case V_boolean:
+    n = val.as.boolean ? 1 : 0;
+    break;
+  case V_string:
+    {
+      char c = val.as.string->s[0];
+      // man 3 strtod
+      if (!isdigit(c)) switch (c) {
+      case '+': case '-': // Optional sign
+      case 'I': case 'i': // INFINITY
+      case 'N': case 'n': // NAN
+        break;
+      default:
+        // Invalid string!
+        goto no_num;
+      }
+
+      char *endptr;
+      n = strtod(val.as.string->s, &endptr);
+
+      if (*endptr != '\0')
+        // Invalid tailing characters!
+        goto no_num;
+
+      break;
+    }
+  case V_native:
+  case V_maybe:
+  case V_list:
+  case V_procedure:
+    goto no_num;
   }
 
-  char *endptr;
-  float64_t n = strtod(s->s, &endptr);
-
-  if (*endptr != '\0')
-    // Invalid tailing characters!
-    goto error;
-
   return *Maybe_some(vm, value_new(n, number));
-error:
+no_num:
   return *Maybe_none(vm);
 }
 
@@ -149,7 +170,7 @@ Varmint varmint_start(void)
   varmint_add_native(&vm, "put", _put, 1);
   varmint_add_native(&vm, "putln", _putln, 1);
   varmint_add_native(&vm, "input", _input, 0);
-  varmint_add_native(&vm, "strton", _strton, 1);
+  varmint_add_native(&vm, "to_number", _to_number, 1);
   varmint_add_native(&vm, "rot", _rot, 2);
 
   gc_init(&vm);

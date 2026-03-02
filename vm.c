@@ -91,7 +91,7 @@ static void call_val(Varmint *vm, Value callee, size_t argc)
       value_type_cstring(callee.type));
 }
 
-static inline bool execute_instruction(Varmint *vm)
+static inline bool execute_instruction(Varmint *restrict vm)
 {
   Opcode instruction = *(vm->frame->ip++);
 
@@ -266,14 +266,58 @@ static inline bool execute_instruction(Varmint *vm)
       break;
     })
 
-  case OP_JMP:
+  case OP_MAKE_SOME:
+    push(vm, *Maybe_some(vm, pop(vm)));
+    break;
+  case OP_MAKE_NONE:
+    push(vm, *Maybe_none(vm));
+    break;
+  case OP_UNWRAP_MAYBE:
     {
-      ;
+      Maybe *optional = pop(vm).as.maybe;
+      assert(optional->is_some);
+
+      push(vm, optional->raw);
       break;
     }
-  case OP_JMP_IFFEN:
+
+    // If False, jump over the Some()-constructing body and push None
+  case OP_IF_CLAUSE:
     {
-      ;
+      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
+      vm->frame->ip += 2;
+
+      if (value_is_falsey(pop(vm))) {
+        vm->frame->ip += jumpable_code;
+        push(vm, *Maybe_none(vm));
+      }
+      break;
+    }
+    // If lhs is Some(), jump over the default and push the unwrapped value.
+  case OP_ELSE_CLAUSE:
+    {
+      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
+      vm->frame->ip += 2;
+
+      Value lhs = pop(vm);
+      Maybe *optional = typechecked(vm, lhs, maybe);
+      if (optional->is_some) {
+        vm->frame->ip += jumpable_code;
+        push(vm, optional->raw);
+      }
+      break;
+    }
+    // If lhs Some(), jump over the if body and push the Some().
+  case OP_ELIF_CLAUSE:
+    {
+      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
+      vm->frame->ip += 2;
+
+      Value lhs = pop(vm);
+      if (typechecked(vm, lhs, maybe)->is_some) {
+        vm->frame->ip += jumpable_code;
+        push(vm, lhs);
+      }
       break;
     }
 

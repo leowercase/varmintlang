@@ -1,20 +1,30 @@
 #include "code.h"
+#include "disassemble.h"
 #include "util.h"
 #include "val.h"
 #include "proc.h"
 
 #include <stdio.h>
 
-static void constant(PCode *code, int idx)
+static void constant(PCode *code, size_t _, size_t idx)
 {
-  printf("  [%i] = ", idx);
+  printf("  [%li] = ", idx);
   print_value(stdout, code->constants.data[idx]);
   printf(ANSI_CYAN);
 }
 
-static void size(PCode *code, int s)
+static void size(PCode *code, size_t _, size_t s)
 {
-  printf(" " ANSI_YELLOW "(%i)" ANSI_CYAN, s);
+  printf(" " ANSI_YELLOW "(%li)" ANSI_CYAN, s);
+}
+
+static void jump(PCode *code, size_t offset, size_t jumpable_bytes)
+{
+  size(code, offset, jumpable_bytes);
+
+  printf(" -> ");
+  disassemble_instruction(code,
+      offset + 3 + jumpable_bytes); // + 3 for skipping over to the next opcode
 }
 
 // Returns the offset where the instruction ends.
@@ -28,23 +38,27 @@ size_t disassemble_instruction(PCode *code, size_t offset)
       stmt; \
   }
 
-// Instructions with 8-bit operands
-#define case_size_op(name, fn) \
+  // Instructions with 16-bit operands
+#define case_fixed_size_op(name, fn) \
   case_(name, \
     { \
-        fn(code, code->instructions.data[offset + 1]); \
-        return offset + 2; \
-    }) \
-  case_(name##16, \
-    { \
         uint8_t *ip = code->instructions.data + offset + 1; \
-        fn(code, uint8_to_16(ip)); \
+        fn(code, offset, uint8_to_16(ip)); \
         return offset + 3; \
     })
 
+  // Instructions with 8/16-bit operands
+#define case_size_op(name, fn) \
+  case_(name, \
+    { \
+        fn(code, offset, code->instructions.data[offset + 1]); \
+        return offset + 2; \
+    }) \
+  case_fixed_size_op(name##16, fn)
+
 #define case_op(name) case_(name, return offset + 1)
 
-  switch ((int)instruction) {
+  switch ((Op)instruction) {
   case_op(NOT)
   case_op(NEGATE)
   case_op(FACTORIAL)
@@ -67,6 +81,9 @@ size_t disassemble_instruction(PCode *code, size_t offset)
   case_op(IN)
   case_op(NOTIN)
   case_op(CONCAT)
+  }
+
+  switch ((Opcode)instruction) {
   case_size_op(CONST, constant)
   case_(ONE,
     {
@@ -88,8 +105,16 @@ size_t disassemble_instruction(PCode *code, size_t offset)
   case_op(DISCARD)
   case_size_op(DISCARDN, size)
   case_size_op(RETAIN1_DISCARDN, size)
+  case_op(MAKE_SOME)
+  case_op(MAKE_NONE)
+  case_op(UNWRAP_MAYBE)
+  case_fixed_size_op(IF_CLAUSE, jump)
+  case_fixed_size_op(ELSE_CLAUSE, jump)
+  case_fixed_size_op(ELIF_CLAUSE, jump)
   case_size_op(CALL, size)
   case_op(RETURN)
+  case OP_GC:
+    break; // Special instruction, shouldn't appear in code
   }
 
   unreachable();

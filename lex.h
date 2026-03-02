@@ -35,6 +35,7 @@ typedef enum {
   TK_BREAK, TK_CONTINUE,
   TK_USING,
   TK_TRUE, TK_FALSE,
+  TK_SOME, TK_NONE,
   TK_ARROW,
   TK_MAPS_TO,
   TK_LPAREN, TK_RPAREN,
@@ -80,9 +81,11 @@ TokenType is_keyword(Str str)
     [TK_USING]    = str_from("using"),
     [TK_TRUE]     = str_from("True"),
     [TK_FALSE]    = str_from("False"),
+    [TK_SOME]     = str_from("Some"),
+    [TK_NONE]     = str_from("None"),
   };
   // This could be faster with a trie. Still sufficiently fast though.
-  for (int i = TK_LET; i <= TK_FALSE; i++)
+  for (int i = TK_LET; i <= TK_NONE; i++)
     if (strs_eq(keywords[i], str)) return (TokenType)i;
 
   return (TokenType)false;

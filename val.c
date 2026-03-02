@@ -136,6 +136,7 @@ Value *Procedure_create(Varmint *vm, size_t arity)
   Value *val = create_gc_obj(vm, V_procedure, sizeof(Procedure));
   val->as.procedure->arity = arity;
   val->as.procedure->code = new_p_code(); // Code allocation isn't GC'd.
+  val->as.procedure->name = NULL_STR;
   return val;
 }
 

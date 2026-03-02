@@ -3,14 +3,14 @@
 
 #include <math.h>
 
-#define BINOP_(a, op, b, vat_value_t, vat_return_t) { \
+#define BINOP_(lhs, op, rhs, vm_value_t, vm_return_t) { \
   return value_new( \
-    typechecked(vm, a, vat_value_t) op typechecked(vm, b, vat_value_t), \
-    vat_return_t \
+    typechecked(vm, lhs, vm_value_t) op typechecked(vm, rhs, vm_value_t), \
+    vm_return_t \
   ); \
 }
 
-#define BINOP(a, op, b, vat_t) BINOP_(a, op, b, vat_t, vat_t)
+#define BINOP(lhs, op, rhs, vm_t) BINOP_(lhs, op, rhs, vm_t, vm_t)
 
 Value _vm_not(Varmint *vm, Value P)
 {

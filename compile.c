@@ -98,6 +98,25 @@ static Value *emit_constant(Parse *p, size_t line, Value value)
   return constant;
 }
 
+// Patch a jumping instruction
+static void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
+{
+  // 2 slots for the 16-bit operand.
+  size_t jumpable_code = code(p)->instructions.len - jmp_operand_idx - 2;
+
+  if (jumpable_code > UINT16_MAX)
+    parse_error(p, jmp_tok, "too much code to jump over");
+
+  patch_op(code(p), jmp_operand_idx, (uint16_t)jumpable_code);
+}
+
+// Emit the end of a block
+static void emit_block_end(Parse *p, Token block_tok, size_t slots)
+{
+  if (!emit_size_op(code(p), block_tok.line, OP_RETAIN1_DISCARDN, slots))
+    parse_error(p, block_tok, "block occupies too many stack slots");
+}
+
 // Local lookup.
 static Local *resolve_local(Parse *p, Str name)
 {
@@ -122,15 +141,12 @@ static Local *create_local(Locals *locals,
 
 static Local *create_local_var(Parse *p, Str name)
 {
-  return create_local(&p->c->locals,
+  Local *local = create_local(&p->c->locals,
                       name, p->c->depth, false);
-}
-
-static void patch_local(Parse *p, Local *local)
-{
   // Because variables are declared in a stack-like manner,
   // we can predict the op stack slot they will occupy
   local->stack_slot = p->c->stack_slot_count;
+  return local;
 }
 
 static void clear_local_scope(Parse *p)
@@ -523,94 +539,125 @@ static void invocation(Parse *p, int min_bp)
     semantic(p)->led_fail = true;
     return;
   }
-  size_t line = p->current.line;
+  Token paren = p->current;
 
   size_t arity = delimited_listing(p,
       TK_LPAREN, TK_COMMA, TK_RPAREN, false); // Parse argument list.
-  emit_size_op(code(p), line, OP_CALL, arity);
+
+  if (!emit_size_op(code(p), paren.line, OP_CALL, arity))
+    parse_error(p, paren, "too many parameters to function");
 }
 
 // [a, b, c]
 static void list(Parse *p)
 {
-  size_t line = p->current.line;
-
+  Token bracket = p->current;
   size_t list_len = delimited_listing(p, TK_LBRACK, TK_COMMA, TK_RBRACK, true);
-  emit_size_op(code(p), line, OP_BUILD_LIST, list_len);
+
+  if (!emit_size_op(code(p), bracket.line, OP_BUILD_LIST, list_len))
+    parse_error(p, bracket, "too many list items");
 }
 
 static void construct_body(Parse *p)
 {
   consume(p, TK_COLON, "expect `:`");
-  const int r_bp = (int)PREC_BASE + (int)ASSOC_RIGHT;
+  const int r_bp = (int)PREC_BASE + (int)ASSOC_LEFT;
   expr(p, r_bp);
 }
 
-// if while.
-// These are in essence mixfix operators terminated by :
-static void cond(Parse *p)
+static void if_expr(Parse *p)
 {
-  //Token cond_tok = eat(p);
-  abort();
+  Token if_tok = eat(p);
+
+  // Parse condition.
+  expr(p, PREC_NONE);
+  size_t jumpable_code = defer_op(code(p), if_tok.line, OP_IF_CLAUSE);
+
+  // Parse conditional value (and wrap it in Some()).
+  construct_body(p);
+  emit_byte(code(p), if_tok.line, OP_MAKE_SOME);
+
+  patch_jump(p, if_tok, jumpable_code);
 }
 
-// elif is likewise mixfix, else on the other hand binary.
 static void else_elif(Parse *p, int min_bp)
 {
+  // else and elif are left-denoted operators.
   if (PREC_BASE < min_bp) {
     semantic(p)->led_fail = true;
     return;
   }
+  Token else_tok = p->current;
+  size_t jumpable_code;
 
-  //Token tok = eat(p);
-  abort();
+  if (else_tok.type == TK_ELIF) {
+    jumpable_code = defer_op(code(p), else_tok.line, OP_ELIF_CLAUSE);
+    if_expr(p);
+  }
+  else {
+    jumpable_code = defer_op(code(p), else_tok.line, OP_ELSE_CLAUSE);
+    next(p);
+    construct_body(p);
+  }
+
+  patch_jump(p, else_tok, jumpable_code);
 }
 
 static void loop(Parse *p)
 {
-  size_t line = eat(p).line; // loop
-  uint8_t *ip = defer_op(code(p), line, OP_JMP);
+  //size_t line = eat(p).line; // loop
+  //uint8_t *ip = defer_op(code(p), line, OP_JMP);
 
   construct_body(p);
+  abort(); // TODO
+}
 
+static void while_loop(Parse *p)
+{
+  Token cond_tok = eat(p);
+  abort();
 }
 
 static void for_loop(Parse *p)
 {
-  //Token for_tok = eat(p),
-        //ident_tok = consume(p, TK_WORD);
-  //consume(p, TK_IN);
+  size_t line = eat(p).line;
+  Token ident_tok = consume(p, TK_WORD, "expect identifier in `for`");
 
-  // TODO
-  abort();
+  consume(p, TK_IN, "expect `in` clause in `for`");
+  expr(p, PREC_NONE);
 
   const int r_bp = (int)PREC_BASE + (int)ASSOC_RIGHT;
   expr(p, r_bp);
   construct_body(p);
+
+  abort(); // TODO
+}
+
+static void handle_flow(Parse *p, int breaks, bool continues)
+{
+  printf("TODO\n");
+  abort();
 }
 
 // break [... break] [continue]
 static void loop_break(Parse *p)
 {
-  //int breaks;
-  //for (breaks = 0; match(p, TK_BREAK); breaks++);
-  //bool continues = match(p, TK_CONTINUE);
-
-  // TODO
-  abort();
+  int breaks;
+  for (breaks = 0; match(p, TK_BREAK); breaks++);
+  bool continues = match(p, TK_CONTINUE);
+  handle_flow(p, breaks, continues);
 }
 
 // continue
 static void loop_cont(Parse *p)
 {
-  // TODO
-  abort();
+  handle_flow(p, 0, true);
 }
 
 // using f, g, h: ...
 static void using(Parse *p)
 {
-  size_t line = eat(p).line;
+  Token tok = eat(p);
   p->c->depth++;
 
   size_t native_count = 0;
@@ -631,8 +678,6 @@ static void using(Parse *p)
     else
       emit_constant(p, ident_tok.line, value_new(*native_idx, native));
 
-    patch_local(p, local);
-
     // Native function values occupy space too.
     native_count++;
     p->c->stack_slot_count++;
@@ -641,7 +686,7 @@ static void using(Parse *p)
   construct_body(p);
 
   clear_local_scope(p);
-  emit_size_op(code(p), line, OP_RETAIN1_DISCARDN, native_count + 1);
+  emit_block_end(p, tok, native_count + 1);
   p->c->depth--;
 }
 
@@ -650,6 +695,22 @@ static void boolean(Parse *p)
   Token booltok = eat(p);
   int P = booltok.type == TK_TRUE;
   emit_constant(p, booltok.line, value_new(P, boolean));
+}
+
+static void maybe_some(Parse *p)
+{
+  size_t line = eat(p).line;
+  consume(p, TK_LPAREN, "expect `(` after `Some`");
+
+  expr(p, PREC_NONE);
+
+  consume(p, TK_RPAREN, "expect `)` after `Some`");
+  emit_byte(code(p), line, OP_MAKE_SOME);
+}
+
+static void maybe_none(Parse *p)
+{
+  emit_byte(code(p), eat(p).line, OP_MAKE_NONE);
 }
 
 static void number(Parse *p)
@@ -675,7 +736,7 @@ static void string(Parse *p)
 static void metastring(Parse *p)
 {
   size_t metas = 0;
-  size_t line = p->current.line;
+  Token tok = p->current;
 
   for (bool found_end = false; !found_end; metas++) {
     switch (p->current.type) {
@@ -693,7 +754,8 @@ static void metastring(Parse *p)
     }
   }
 
-  emit_size_op(code(p), line, OP_BUILD_STR, metas);
+  if (!emit_size_op(code(p), tok.line, OP_BUILD_STR, metas))
+    parse_error(p, tok, "too many metastrings");
 }
 
 static void assign_local(Parse *p)
@@ -750,7 +812,6 @@ static void fn_decl(Parse *p, Token ident_tok)
   Local *fn_local = create_local_var(p, name);
   fn_local->initialized = true;
 
-  patch_local(p, fn_local);
   function(p, p->current.line, name, args);
 }
 
@@ -776,16 +837,11 @@ static void let(Parse *p)
 
   if (match(p, TK_ASSIGN)) {
     const int assign_r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
-
     expr(p, assign_r_bp);
-    patch_local(p, local);
-
     local->initialized = true;
   }
-  else {
+  else
     emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
-    patch_local(p, local);
-  }
 
   end_semantic_scope(p);
 }
@@ -839,7 +895,8 @@ static void block(Parse *p)
   }
 
   clear_local_scope(p);
-  emit_size_op(code(p), p->current.line, OP_RETAIN1_DISCARDN, stmts);
+  emit_block_end(p, curly_tok, stmts);
+  p->c->stack_slot_count -= stmts;
 
   p->c->depth--;
   end_semantic_scope(p);
@@ -920,13 +977,13 @@ static const ParseRule parse_rules[] =
 
     [TK_MOD]       = { NULL,       infix_op   },
 
-    [TK_IF]        = { cond,       NULL       },
+    [TK_IF]        = { if_expr,    NULL       },
     [TK_ELSE]      = { NULL,       else_elif  },
     [TK_ELIF]      = { NULL,       else_elif  },
 
     [TK_LOOP]      = { loop,       NULL       },
     [TK_FOR]       = { for_loop,   NULL       },
-    [TK_WHILE]     = { cond,       NULL       },
+    [TK_WHILE]     = { while_loop, NULL       },
 
     [TK_BREAK]     = { loop_break, NULL       },
     [TK_CONTINUE]  = { loop_cont,  NULL       },
@@ -935,6 +992,9 @@ static const ParseRule parse_rules[] =
 
     [TK_TRUE]      = { boolean,    NULL       },
     [TK_FALSE]     = { boolean,    NULL       },
+
+    [TK_SOME]      = { maybe_some, NULL       },
+    [TK_NONE]      = { maybe_none, NULL       },
 
     [TK_ARROW]     = { NULL,       infix_op   },
     [TK_MAPS_TO]   = { NULL,       NULL       },
