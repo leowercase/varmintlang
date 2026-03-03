@@ -110,20 +110,18 @@ static inline bool execute_instruction(Varmint *restrict vm)
   break; \
 }
 
-  // Opcode with a variable sized operand (8/16-bit)
-#define case_size_op(op_name, operand_ident, stmt) \
+#define case_op(op_name, decl, expr, ip_increment, stmt) \
   case op_name: \
-    { \
-      uint8_t operand_ident = *vm->frame->ip; \
-      vm->frame->ip++; \
-      stmt; \
-    } \
-  case op_name##16: \
-    { \
-      uint16_t operand_ident = uint8_to_16(vm->frame->ip); \
-      vm->frame->ip += 2; \
-      stmt; \
-    }
+    { decl = expr; vm->frame->ip += ip_increment; stmt; }
+
+  // Opcode with a 16-bit operand
+#define case_16_op(op_name, ident, stmt) \
+    case_op(op_name, uint16_t ident, uint8_to_16(vm->frame->ip), 2, stmt)
+
+  // Opcode with a variable sized operand (8/16-bit)
+#define case_var_op(op_name, ident, stmt) \
+    case_op(op_name,     uint8_t ident,  *vm->frame->ip,             1, stmt) \
+    case_op(op_name##16, uint16_t ident, uint8_to_16(vm->frame->ip), 2, stmt)
 
   switch ((int)instruction) {
   case OP_NOT:    UNARY(value_new((int)value_is_falsey(operand), boolean))
@@ -158,7 +156,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case OP_CONCAT: BINARY(_vm_concat(vm, lhs, rhs))
 
     // Load a constant value.
-  case_size_op(OP_CONST, idx,
+  case_var_op(OP_CONST, idx,
     {
       Value constant = vm->frame->procedure->code.constants.data[idx];
       push(vm, constant);
@@ -183,7 +181,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     }
 
     // Weaves a list.
-  case_size_op(OP_BUILD_LIST, len,
+  case_var_op(OP_BUILD_LIST, len,
     {
       Value list_val = List_create(vm, len);
       list_val.as.list->len = len;
@@ -196,7 +194,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     })
 
     // Stitches together the metastrings emitted by the compiler.
-  case_size_op(OP_BUILD_STR, metas,
+  case_var_op(OP_BUILD_STR, metas,
     {
       Value string_val = value_to_string(vm, pop(vm));
 
@@ -227,13 +225,13 @@ static inline bool execute_instruction(Varmint *restrict vm)
     }
 
     // Get a value on the stack.
-  case_size_op(OP_GET, stack_slot,
+  case_var_op(OP_GET, stack_slot,
     {
       push(vm, vm->frame->op_stack[stack_slot]);
       break;
     })
     // Set a value on the stack.
-  case_size_op(OP_SET, stack_slot,
+  case_var_op(OP_SET, stack_slot,
     {
       Value val = peek(vm, 0);
 
@@ -271,7 +269,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     push(vm, NO_VALUE);
     break;
     // End code block
-  case_size_op(OP_END_BLOCK, n,
+  case_var_op(OP_END_BLOCK, n,
     {
       Value block_val = peek(vm, 0);
       popn(vm, n);
@@ -279,7 +277,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     })
     // End code block with no value.
-  case_size_op(OP_END_EMPTY_BLOCK, n,
+  case_var_op(OP_END_EMPTY_BLOCK, n,
     {
       popn(vm, n);
       push(vm, NO_VALUE);
@@ -287,34 +285,26 @@ static inline bool execute_instruction(Varmint *restrict vm)
     })
 
     // Jump over some code
-  case OP_JMP:
+  case_16_op(OP_JMP, jumpable_code,
     {
-      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
-      vm->frame->ip += 2;
       vm->frame->ip += jumpable_code;
       break;
-    }
+    })
 
     // Start an if clause.
     // If lhs is False, jump over the Some()-constructing body and push None
-  case OP_IF:
+  case_16_op(OP_IF, jumpable_code,
     {
-      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
-      vm->frame->ip += 2;
-
       if (value_is_falsey(pop(vm))) {
         vm->frame->ip += jumpable_code;
         push(vm, Maybe_none(vm));
       }
       break;
-    }
+    })
     // Start an else clause.
     // If lhs is Some(), jump over the body and push the unwrapped value.
-  case OP_ELSE:
+  case_16_op(OP_ELSE, jumpable_code,
     {
-      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
-      vm->frame->ip += 2;
-
       Value lhs = pop(vm);
       Maybe *optional = typechecked(vm, lhs, maybe);
       if (optional != NULL) {
@@ -322,34 +312,28 @@ static inline bool execute_instruction(Varmint *restrict vm)
         push(vm, optional->raw);
       }
       break;
-    }
+    })
     // Start an elif clause.
     // If lhs Some(), jump over the if body and push the Some()
-  case OP_ELIF:
+  case_16_op(OP_ELIF, jumpable_code,
     {
-      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
-      vm->frame->ip += 2;
-
       Value lhs = pop(vm);
       if (typechecked(vm, lhs, maybe) != NULL) {
         vm->frame->ip += jumpable_code;
         push(vm, lhs);
       }
       break;
-    }
+    })
     // Start an if..elif..else chain -> don't construct Some()/None
-  case OP_IF_ELSE_CHAIN:
+  case_16_op(OP_IF_ELSE_CHAIN, jumpable_code,
     {
-      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
-      vm->frame->ip += 2;
-
       if (value_is_falsey(pop(vm)))
         vm->frame->ip += jumpable_code;
       break;
-    }
+    })
 
     // Call a value
-  case_size_op(OP_CALL, argc,
+  case_var_op(OP_CALL, argc,
     {
       call_val(vm, peek(vm, argc), argc);
       break;
@@ -397,7 +381,9 @@ static inline bool execute_instruction(Varmint *restrict vm)
 
 #undef UNARY
 #undef BINARY
-#undef case_size_op
+#undef case_op
+#undef case_16_op
+#undef case_var_op
 }
 
 void execute(Varmint *vm, Procedure *program)

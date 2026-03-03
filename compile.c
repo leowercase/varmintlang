@@ -94,7 +94,7 @@ static Value *emit_constant(Parse *p, size_t line, Value value)
   Value *constant = Constants_push(&code(p)->constants, value);
   size_t idx = code(p)->constants.len - 1;
 
-  if (!emit_size_op(code(p), line, OP_CONST, idx))
+  if (!emit_var_op(code(p), line, OP_CONST, idx))
     parse_error(p, p->current, "too many constants");
 
   return constant;
@@ -103,7 +103,7 @@ static Value *emit_constant(Parse *p, size_t line, Value value)
 // Patch a jumping instruction
 static void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
 {
-  // 2 slots for the 16-bit operand.
+  // 2 slots account for the 16-bit operand.
   size_t jumpable_code = code(p)->instructions.len - jmp_operand_idx - 2;
 
   if (jumpable_code > UINT16_MAX)
@@ -117,7 +117,7 @@ static void block_end(Parse *p, Token block_tok, size_t slots, bool has_result)
 {
   Opcode opcode = has_result ? OP_END_BLOCK : OP_END_EMPTY_BLOCK;
 
-  if (!emit_size_op(code(p), block_tok.line, opcode, slots))
+  if (!emit_var_op(code(p), block_tok.line, opcode, slots))
     parse_error(p, block_tok, "block occupies too many stack slots");
 
   p->c->stack_slot_count -= slots;
@@ -555,7 +555,7 @@ static void invocation(Parse *p, int min_bp)
   size_t arity = delimited_listing(p,
       TK_LPAREN, TK_COMMA, TK_RPAREN, false); // Parse argument list.
 
-  if (!emit_size_op(code(p), paren.line, OP_CALL, arity))
+  if (!emit_var_op(code(p), paren.line, OP_CALL, arity))
     parse_error(p, paren, "too many parameters to function");
 }
 
@@ -565,7 +565,7 @@ static void list(Parse *p)
   Token bracket = p->current;
   size_t list_len = delimited_listing(p, TK_LBRACK, TK_COMMA, TK_RBRACK, true);
 
-  if (!emit_size_op(code(p), bracket.line, OP_BUILD_LIST, list_len))
+  if (!emit_var_op(code(p), bracket.line, OP_BUILD_LIST, list_len))
     parse_error(p, bracket, "too many list items");
 }
 
@@ -630,9 +630,7 @@ static void else_elif(Parse *p, int min_bp)
 static void loop(Parse *p)
 {
   //size_t line = eat(p).line; // loop
-  //uint8_t *ip = defer_op(code(p), line, OP_JMP);
-
-  construct_body(p);
+  //construct_body(p);
   abort(); // TODO
 }
 
@@ -778,14 +776,14 @@ static void metastring(Parse *p)
     }
   }
 
-  if (!emit_size_op(code(p), tok.line, OP_BUILD_STR, metas))
+  if (!emit_var_op(code(p), tok.line, OP_BUILD_STR, metas))
     parse_error(p, tok, "too many metastrings");
 }
 
 static void assign_local(Parse *p)
 {
   Local *local = semantic(p)->assignable_local;
-  emit_size_op(code(p), p->current.line, OP_SET, local->stack_slot);
+  emit_var_op(code(p), p->current.line, OP_SET, local->stack_slot);
   local->initialized = true;
 }
 
@@ -807,7 +805,7 @@ static void ident_str(Parse *p, Token ident_tok)
   if (p->current.type != TK_ASSIGN) {
     // Access.
     if (local->initialized)
-      emit_size_op(code(p), ident_tok.line, OP_GET, local->stack_slot);
+      emit_var_op(code(p), ident_tok.line, OP_GET, local->stack_slot);
     else
       parse_error(p, ident_tok, "variable %.*s has not been initialized",
           (int)ident.len, ident.s);

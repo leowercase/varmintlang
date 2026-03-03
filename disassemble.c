@@ -20,11 +20,10 @@ static void size(PCode *code, size_t _, size_t s)
 
 static void jump(PCode *code, size_t offset, size_t jumpable_bytes)
 {
-  size(code, offset, jumpable_bytes);
-
+  size(code, offset, (size_t)jumpable_bytes);
   printf(" -> ");
-  disassemble_instruction(code,
-      offset + 3 + jumpable_bytes); // + 3 for skipping over to the next opcode
+  size_t dest = offset + jumpable_bytes + 3; // jump from the next instruction
+  disassemble_instruction(code, dest);
 }
 
 // Returns the offset where the instruction ends.
@@ -39,7 +38,7 @@ size_t disassemble_instruction(PCode *code, size_t offset)
   }
 
   // Instructions with 16-bit operands
-#define case_fixed_size_op(name, fn) \
+#define case_16_op(name, fn) \
   case_(name, \
     { \
         uint8_t *ip = code->instructions.data + offset + 1; \
@@ -48,13 +47,13 @@ size_t disassemble_instruction(PCode *code, size_t offset)
     })
 
   // Instructions with 8/16-bit operands
-#define case_size_op(name, fn) \
+#define case_var_op(name, fn) \
   case_(name, \
     { \
         fn(code, offset, code->instructions.data[offset + 1]); \
         return offset + 2; \
     }) \
-  case_fixed_size_op(name##16, fn)
+  case_16_op(name##16, fn)
 
 #define case_op(name) case_(name, return offset + 1)
 
@@ -84,7 +83,7 @@ size_t disassemble_instruction(PCode *code, size_t offset)
   }
 
   switch ((Opcode)instruction) {
-  case_size_op(CONST, constant)
+  case_var_op(CONST, constant)
   case_(ONE,
     {
       const Value one = value_new(1.0, number);
@@ -93,25 +92,25 @@ size_t disassemble_instruction(PCode *code, size_t offset)
       printf(ANSI_CYAN);
       return offset + 1;
     })
-  case_size_op(BUILD_LIST, size)
-  case_size_op(BUILD_STR, size)
+  case_var_op(BUILD_LIST, size)
+  case_var_op(BUILD_STR, size)
   case_op(CHAIN_BINOP)
-  case_size_op(GET, size)
-  case_size_op(SET, size)
+  case_var_op(GET, size)
+  case_var_op(SET, size)
   case_op(INDEXED_GET)
   case_op(INDEXED_SET)
   case_op(RESERVE_SLOT)
-  case_size_op(END_BLOCK, size)
-  case_size_op(END_EMPTY_BLOCK, size)
+  case_var_op(END_BLOCK, size)
+  case_var_op(END_EMPTY_BLOCK, size)
   case_op(MAKE_SOME)
   case_op(MAKE_NONE)
   case_op(UNWRAP_MAYBE)
-  case_fixed_size_op(JMP, jump)
-  case_fixed_size_op(IF, jump)
-  case_fixed_size_op(ELSE, jump)
-  case_fixed_size_op(ELIF, jump)
-  case_fixed_size_op(IF_ELSE_CHAIN, jump)
-  case_size_op(CALL, size)
+  case_16_op(JMP, jump)
+  case_16_op(IF, jump)
+  case_16_op(ELSE, jump)
+  case_16_op(ELIF, jump)
+  case_16_op(IF_ELSE_CHAIN, jump)
+  case_var_op(CALL, size)
   case_op(RETURN)
   case OP_GC:
     break; // Special instruction, shouldn't appear in code

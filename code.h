@@ -117,10 +117,7 @@ size_t defer_op(PCode *code, size_t line, Opcode op);
 // Inserts operand of defer_op into code
 void patch_op(PCode *code, size_t operand_idx, uint16_t operand);
 
-// Maximum size of variable sized operands
-static const size_t MAX_OPERAND_SIZE = UINT16_MAX;
-
-// Emit an operation that has a variable sized size operand
-bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size);
+// Emit an operation that has a variable sized operand
+bool emit_var_op(PCode *code, size_t line, Opcode opcode, size_t operand);
 
 #endif

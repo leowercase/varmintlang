@@ -37,13 +37,13 @@ void patch_op(PCode *code, size_t operand_idx, uint16_t operand)
 
 // We make use of the fact that an 8-bit and a 16-bit op
 // reside next to each other in the enum.
-bool emit_size_op(PCode *code, size_t line, Opcode opcode, size_t size)
+bool emit_var_op(PCode *code, size_t line, Opcode opcode, size_t operand)
 {
-  if (size <= UINT8_MAX)
-    emit_bytes(code, line, 2, (uint8_t)opcode, (uint8_t)size);
+  if (operand <= UINT8_MAX)
+    emit_bytes(code, line, 2, (uint8_t)opcode, (uint8_t)operand);
 
-  else if (size <= UINT16_MAX) {
-    uint8_t bytes[2] = uint16_to_8((uint16_t)size);
+  else if (operand <= UINT16_MAX) {
+    uint8_t bytes[2] = uint16_to_8((uint16_t)operand);
     emit_bytes(code, line, 3, (uint8_t)opcode + 1, bytes[0], bytes[1]);
   }
 
