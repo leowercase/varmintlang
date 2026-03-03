@@ -285,9 +285,18 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     })
 
+    // Jump over some code
+  case OP_JMP:
+    {
+      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
+      vm->frame->ip += 2;
+      vm->frame->ip += jumpable_code;
+      break;
+    }
+
     // Start an if clause.
     // If lhs is False, jump over the Some()-constructing body and push None
-  case OP_IF_CLAUSE:
+  case OP_IF:
     {
       uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
       vm->frame->ip += 2;
@@ -300,7 +309,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     }
     // Start an else clause.
     // If lhs is Some(), jump over the body and push the unwrapped value.
-  case OP_ELSE_CLAUSE:
+  case OP_ELSE:
     {
       uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
       vm->frame->ip += 2;
@@ -315,7 +324,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     }
     // Start an elif clause.
     // If lhs Some(), jump over the if body and push the Some()
-  case OP_ELIF_CLAUSE:
+  case OP_ELIF:
     {
       uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
       vm->frame->ip += 2;
@@ -325,6 +334,16 @@ static inline bool execute_instruction(Varmint *restrict vm)
         vm->frame->ip += jumpable_code;
         push(vm, lhs);
       }
+      break;
+    }
+    // Start an if..elif..else chain -> don't construct Some()/None
+  case OP_IF_ELSE_CHAIN:
+    {
+      uint16_t jumpable_code = uint8_to_16(vm->frame->ip);
+      vm->frame->ip += 2;
+
+      if (value_is_falsey(pop(vm)))
+        vm->frame->ip += jumpable_code;
       break;
     }
 

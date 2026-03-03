@@ -20,6 +20,7 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
 {
   SemanticDatum sem;
   sem.in_stmt = semantic(p)->in_stmt;
+  sem.if_else_chained = false;
   sem.assign_fn = semantic(p)->assign_fn;
   sem.led_fail = false;
   sem.panic = false;
@@ -581,13 +582,22 @@ static void if_expr(Parse *p)
 
   // Parse condition.
   expr(p, PREC_NONE);
-  size_t jumpable_code = defer_op(code(p), if_tok.line, OP_IF_CLAUSE);
+  size_t operand_idx = defer_op(code(p), if_tok.line, OP_IF);
 
-  // Parse conditional value (and wrap it in Some()).
+  // Parse conditional value.
   construct_body(p);
-  emit_byte(code(p), if_tok.line, OP_MAKE_SOME);
 
-  patch_jump(p, if_tok, jumpable_code);
+  if (p->current.type == TK_ELSE || p->current.type == TK_ELIF) {
+    code(p)->instructions.data[operand_idx - 1] = OP_IF_ELSE_CHAIN;
+
+    semantic(p)->if_else_chained = true;
+    semantic(p)->if_jmp_op_idx = operand_idx;
+  }
+  else {
+    // Create an optional value.
+    emit_byte(code(p), p->current.line, OP_MAKE_SOME);
+    patch_jump(p, if_tok, operand_idx);
+  }
 }
 
 static void else_elif(Parse *p, int min_bp)
@@ -598,19 +608,23 @@ static void else_elif(Parse *p, int min_bp)
     return;
   }
   Token else_tok = p->current;
-  size_t jumpable_code;
+  bool is_elif = else_tok.type == TK_ELIF;
 
-  if (else_tok.type == TK_ELIF) {
-    jumpable_code = defer_op(code(p), else_tok.line, OP_ELIF_CLAUSE);
-    if_expr(p);
-  }
-  else {
-    jumpable_code = defer_op(code(p), else_tok.line, OP_ELSE_CLAUSE);
-    next(p);
-    construct_body(p);
-  }
+  Opcode opcode =
+    semantic(p)->if_else_chained ? OP_JMP
+                                 : (is_elif ? OP_ELIF : OP_ELSE);
+  size_t operand_idx =
+    defer_op(code(p), else_tok.line, opcode);
 
-  patch_jump(p, else_tok, jumpable_code);
+  if (semantic(p)->if_else_chained)
+    patch_jump(p, else_tok, semantic(p)->if_jmp_op_idx);
+
+  semantic(p)->if_else_chained = false;
+
+  if (is_elif) if_expr(p);
+  else { next(p); construct_body(p); }
+
+  patch_jump(p, else_tok, operand_idx);
 }
 
 static void loop(Parse *p)
@@ -1069,6 +1083,7 @@ Procedure *compile(Varmint *vm, char *source)
 
   SemanticDatum sem;
   sem.in_stmt = false;
+  sem.if_else_chained = false;
   sem.assign_fn = NULL;
   sem.led_fail = false;
   sem.panic = false;

@@ -42,6 +42,10 @@ typedef struct {
 
   bool in_stmt; // {}
 
+  // if..else..elif chains are optimized a bit to avoid useless shuffling
+  bool if_else_chained;
+  size_t if_jmp_op_idx;
+
   // Whether the latest left-denoted parse failed.
   bool led_fail;
 
