@@ -7,29 +7,27 @@
 // https://github.com/Cyan4973/xxHash
 #include <xxhash.h>
 
-Value *Maybe_some(Varmint *vm, Value raw)
+Value Maybe_some(Varmint *vm, Value raw)
 {
-  Value *val = create_gc_obj(vm, V_maybe, sizeof(Maybe));
-  val->as.maybe->is_some = true;
-  val->as.maybe->raw = raw;
+  Value val = *create_gc_obj(vm, V_maybe, sizeof(Maybe));
+  val.as.maybe->raw = raw;
   return val;
 }
 
-Value *Maybe_none(Varmint *vm)
+Value Maybe_none(Varmint *vm)
 {
-  // Don't even allocate space for the empty raw field; it is extraneous
-  const size_t none_size = sizeof(Maybe) - sizeof(Value);
-
-  Value *val = create_gc_obj(vm, V_maybe, none_size);
-  val->as.maybe->is_some = false;
+  // None isn't GC'd.
+  Value val;
+  val.type = V_maybe;
+  val.as.maybe = NULL;
   return val;
 }
 
-Value *List_create(Varmint *vm, size_t cap)
+Value List_create(Varmint *vm, size_t cap)
 {
-  Value *val = create_gc_obj(vm, V_list, sizeof(List));
+  Value val = *create_gc_obj(vm, V_list, sizeof(List));
 
-  List *l = val->as.list;
+  List *l = val.as.list;
   l->len = l->cap = 0;
   l->data = NULL;
 
@@ -37,44 +35,44 @@ Value *List_create(Varmint *vm, size_t cap)
   return val;
 }
 
-Value *String_create(Varmint *vm, const char *s, size_t len)
+Value String_create(Varmint *vm, const char *s, size_t len)
 {
-  Value *val = create_gc_obj(vm, V_string, sizeof(String));
-  val->as.string->len = len;
+  Value val = *create_gc_obj(vm, V_string, sizeof(String));
+  val.as.string->len = len;
 
-  val->as.string->s = gc_alloc(vm, NULL, 0, len * sizeof(char) + sizeof('\0'));
-  memcpy(val->as.string->s, s, len);
-  val->as.string->s[len] = '\0';
+  val.as.string->s = gc_alloc(vm, NULL, 0, len * sizeof(char) + sizeof('\0'));
+  memcpy(val.as.string->s, s, len);
+  val.as.string->s[len] = '\0';
 
   return val;
 }
 
-Value *String_from(Varmint *vm, const char *s)
+Value String_from(Varmint *vm, const char *s)
 {
   return String_create(vm, s, strlen(s));
 }
 
-Value *String_own(Varmint *vm, char *allocated_cstring)
+Value String_own(Varmint *vm, char *allocated_cstring)
 {
-  Value *val = create_gc_obj(vm, V_string, sizeof(String));
+  Value val = *create_gc_obj(vm, V_string, sizeof(String));
 
   size_t len = strlen(allocated_cstring);
-  val->as.string->len = len;
+  val.as.string->len = len;
 
-  val->as.string->s = allocated_cstring;
+  val.as.string->s = allocated_cstring;
   gc_own_bytes(vm, len * sizeof(char));
 
   return val;
 }
 
-Value *String_copy(Varmint *vm, Value *string_val)
+Value String_copy(Varmint *vm, Value *string_val)
 {
   return String_create(vm,
       string_val->as.string->s, string_val->as.string->len);
 }
 
 // Format strings just like sprintf et al., except retaining sanity
-Value *String_fmt(Varmint *vm, const char *fmt, ...)
+Value String_fmt(Varmint *vm, const char *fmt, ...)
 {
   // man 3 vnsprintf
   va_list a;
@@ -104,14 +102,13 @@ Value *String_fmt(Varmint *vm, const char *fmt, ...)
     runtime_error(vm, "string formatting failed\n");
   }
 
-  Value *string = create_gc_obj(vm, V_string, sizeof(String));
-  string->as.string->len = len;
-  string->as.string->s = s;
-
-  return string;
+  Value val = *create_gc_obj(vm, V_string, sizeof(String));
+  val.as.string->len = len;
+  val.as.string->s = s;
+  return val;
 }
 
-Value *String_concat(Varmint *vm, Value *head, Value *tail)
+Value String_concat(Varmint *vm, Value *head, Value *tail)
 {
   String *head_s = head->as.string, *tail_s = tail->as.string;
   size_t len = head_s->len + tail_s->len;
@@ -120,9 +117,9 @@ Value *String_concat(Varmint *vm, Value *head, Value *tail)
   memcpy(s, head_s->s, head_s->len);
   memcpy(s + head_s->len, tail_s->s, tail_s->len + 1);
 
-  Value *result = create_gc_obj(vm, V_string, sizeof(String));
-  result->as.string->s = s;
-  result->as.string->len = len;
+  Value result = *create_gc_obj(vm, V_string, sizeof(String));
+  result.as.string->s = s;
+  result.as.string->len = len;
   return result;
 }
 
@@ -131,12 +128,12 @@ Str String_as_str(Value *val)
   return str_new(val->as.string->s, val->as.string->len);
 }
 
-Value *Procedure_create(Varmint *vm, size_t arity)
+Value Procedure_create(Varmint *vm, size_t arity)
 {
-  Value *val = create_gc_obj(vm, V_procedure, sizeof(Procedure));
-  val->as.procedure->arity = arity;
-  val->as.procedure->code = new_p_code(); // Code allocation isn't GC'd.
-  val->as.procedure->name = NULL_STR;
+  Value val = *create_gc_obj(vm, V_procedure, sizeof(Procedure));
+  val.as.procedure->arity = arity;
+  val.as.procedure->code = new_p_code(); // Code allocation isn't GC'd.
+  val.as.procedure->name = NULL_STR;
   return val;
 }
 
@@ -154,9 +151,13 @@ bool values_eq(Value a, Value b)
     case V_native:
       return a.as.native == b.as.native;
     case V_maybe:
-      return a.as.maybe->is_some == b.as.maybe->is_some
-        && (!a.as.maybe->is_some
-            || values_eq(a.as.maybe->raw, b.as.maybe->raw));
+      {
+        bool a_none = a.as.maybe == NULL,
+             b_none = b.as.maybe == NULL;
+        return (a_none && b_none)
+          || (!a_none && !b_none &&
+              values_eq(a.as.maybe->raw, b.as.maybe->raw));
+      }
     case V_string:
       return strs_eq(String_as_str(&a), String_as_str(&b));
     case V_list:
@@ -195,7 +196,7 @@ const char *value_type_cstring(Typetag type)
 #undef case_
 }
 
-static Value *fn_to_string(Varmint *vm, const char *moniker, Str name)
+static Value fn_to_string(Varmint *vm, const char *moniker, Str name)
 {
   if (name.s != NULL)
     return String_fmt(vm, "<%s %.*s>", moniker, (int)name.len, name.s);
@@ -203,7 +204,7 @@ static Value *fn_to_string(Varmint *vm, const char *moniker, Str name)
     return String_fmt(vm, "<%s>", moniker);
 }
 
-Value *value_to_string(Varmint *vm, Value val)
+Value value_to_string(Varmint *vm, Value val)
 {
   switch (val.type) {
   case V_no:
@@ -213,13 +214,13 @@ Value *value_to_string(Varmint *vm, Value val)
   case V_boolean:
     return val.as.boolean ? String_from(vm, "True") : String_from(vm, "False");
   case V_maybe:
-    if (val.as.maybe->is_some) {
-      String *some = value_to_string(vm, val.as.maybe->raw)->as.string;
+    if (val.as.maybe == NULL)
+      return String_from(vm, "None");
+    else {
+      String *some = value_to_string(vm, val.as.maybe->raw).as.string;
       return
         String_fmt(vm, "Some(%.*s)", (int)some->len, some->s);
     }
-    else
-      return String_from(vm, "None");
   case V_string:
     return String_copy(vm, &val);
   case V_list:
@@ -247,13 +248,13 @@ void print_value(FILE *restrict stream, Value val)
   case V_native:
     fprintf(stream, ANSI_GREEN "<native fn>" ANSI_RESET); break;
   case V_maybe:
-    if (val.as.maybe->is_some) {
+    if (val.as.maybe == NULL)
+      fprintf(stream, ANSI_BLUE "None" ANSI_RESET);
+    else {
       fprintf(stream, ANSI_BLUE "Some" ANSI_RESET "(");
       print_value(stream, val.as.maybe->raw);
       fprintf(stream, ")");
     }
-    else
-      fprintf(stream, ANSI_BLUE "None" ANSI_RESET);
     break;
   case V_string:
     fprintf(stream, ANSI_YELLOW "\"%s\"" ANSI_RESET "(%li)",
@@ -297,7 +298,7 @@ uint64_t hash_value(Value val)
   case V_native:
     return XXH3_64bits(&val.as.native, sizeof(size_t));
   case V_maybe:
-    return val.as.maybe->is_some ? hash_value(val.as.maybe->raw) : 0;
+    return val.as.maybe != NULL ? hash_value(val.as.maybe->raw) : 0;
   case V_string:
     return XXH3_64bits(val.as.string->s, val.as.string->len);
   case V_list:

@@ -97,7 +97,7 @@ Value _vm_concat(Varmint *vm, Value head, Value tail)
   if (head.type != V_string || tail.type != V_string)
     runtime_error(vm, "invalid operand types to concatenation\n");
 
-  return *String_concat(vm, &head, &tail);
+  return String_concat(vm, &head, &tail);
 }
 
 Value _vm_in(Varmint *vm, Value x, Value collection)
@@ -151,7 +151,7 @@ Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
     {
       String *string = collection.as.string;
       char c = string->s[index_into(vm, string->len, idx)];
-      return *String_create(vm, &c, 1);
+      return String_create(vm, &c, 1);
     }
   case V_list:
     return *index_list(vm, collection, idx);

@@ -185,41 +185,42 @@ static inline bool execute_instruction(Varmint *restrict vm)
     // Weaves a list.
   case_size_op(OP_BUILD_LIST, len,
     {
-      Value *list_val = List_create(vm, len);
-      list_val->as.list->len = len;
+      Value list_val = List_create(vm, len);
+      list_val.as.list->len = len;
 
       for (int i = len - 1; i >= 0; i--)
-        list_val->as.list->data[i] = pop(vm);
+        list_val.as.list->data[i] = pop(vm);
 
-      push(vm, *list_val);
+      push(vm, list_val);
       break;
     })
 
     // Stitches together the metastrings emitted by the compiler.
   case_size_op(OP_BUILD_STR, metas,
     {
-      Value *string_val = value_to_string(vm, pop(vm));
+      Value string_val = value_to_string(vm, pop(vm));
 
-      for (size_t i = 1; i < metas; i++)
-        string_val = String_concat(vm,
-            value_to_string(vm, pop(vm)), string_val);
+      for (size_t i = 1; i < metas; i++) {
+        Value meta = value_to_string(vm, pop(vm));
+        string_val = String_concat(vm, &meta, &string_val);
+      }
 
-      push(vm, *string_val);
+      push(vm, string_val);
       break;
     })
 
     // Create optional values
   case OP_MAKE_SOME:
-    push(vm, *Maybe_some(vm, pop(vm)));
+    push(vm, Maybe_some(vm, pop(vm)));
     break;
   case OP_MAKE_NONE:
-    push(vm, *Maybe_none(vm));
+    push(vm, Maybe_none(vm));
     break;
     // Unwrap a Some() value
   case OP_UNWRAP_MAYBE:
     {
       Maybe *optional = pop(vm).as.maybe;
-      assert(optional->is_some);
+      assert(optional != NULL);
 
       push(vm, optional->raw);
       break;
@@ -303,7 +304,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
 
       if (value_is_falsey(pop(vm))) {
         vm->frame->ip += jumpable_code;
-        push(vm, *Maybe_none(vm));
+        push(vm, Maybe_none(vm));
       }
       break;
     }
@@ -316,7 +317,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
 
       Value lhs = pop(vm);
       Maybe *optional = typechecked(vm, lhs, maybe);
-      if (optional->is_some) {
+      if (optional != NULL) {
         vm->frame->ip += jumpable_code;
         push(vm, optional->raw);
       }
@@ -330,7 +331,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
       vm->frame->ip += 2;
 
       Value lhs = pop(vm);
-      if (typechecked(vm, lhs, maybe)->is_some) {
+      if (typechecked(vm, lhs, maybe) != NULL) {
         vm->frame->ip += jumpable_code;
         push(vm, lhs);
       }

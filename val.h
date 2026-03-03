@@ -62,14 +62,15 @@ typedef struct GCData {
 } GCData;
 
 static inline
-bool is_heaped_value(Typetag type)
+bool is_heaped_value(Value val)
 {
-  return type >= V_maybe;
+  return val.type == V_maybe
+    ? val.as.maybe != NULL : val.type >= V_string;
 }
 
+// None is represented as (Maybe *)NULL
 typedef struct Maybe {
   GCData gc_data;
-  bool is_some;
   Value raw;
 } Maybe;
 
@@ -90,26 +91,26 @@ typedef struct List {
 
 struct Varmint;
 
-Value *Maybe_some(struct Varmint *vm, Value value);
-Value *Maybe_none(struct Varmint *vm);
+Value Maybe_some(struct Varmint *vm, Value value);
+Value Maybe_none(struct Varmint *vm);
 
-Value *List_create(struct Varmint *vm, size_t cap);
+Value List_create(struct Varmint *vm, size_t cap);
 
-Value *String_create(struct Varmint *vm, const char *s, size_t len);
-Value *String_from(struct Varmint *vm, const char *cstring);
-Value *String_own(struct Varmint *vm, char *allocated_cstring);
-Value *String_copy(struct Varmint *vm, Value *string_val);
-Value *String_fmt(struct Varmint *vm, const char *fmt, ...);
-Value *String_concat(struct Varmint *vm, Value *head, Value *tail);
+Value String_create(struct Varmint *vm, const char *s, size_t len);
+Value String_from(struct Varmint *vm, const char *cstring);
+Value String_own(struct Varmint *vm, char *allocated_cstring);
+Value String_copy(struct Varmint *vm, Value *string_val);
+Value String_fmt(struct Varmint *vm, const char *fmt, ...);
+Value String_concat(struct Varmint *vm, Value *head, Value *tail);
 Str String_as_str(Value *val);
 
-Value *Procedure_create(struct Varmint *vm, size_t arity);
+Value Procedure_create(struct Varmint *vm, size_t arity);
 
 bool values_eq(Value a, Value b);
 bool value_is_falsey(Value val);
 
 const char *value_type_cstring(Typetag type);
-Value *value_to_string(struct Varmint *vm, Value val);
+Value value_to_string(struct Varmint *vm, Value val);
 void print_value(FILE *restrict stream, Value val);
 
 // Obtain the 64-bit hash of a value.

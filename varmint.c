@@ -13,7 +13,7 @@ static Value _typeof(Varmint *vm, Value *args)
   Value val = args[0];
   const char *type_string = value_type_cstring(val.type);
 
-  return *String_create(vm, type_string, strlen(type_string));
+  return String_create(vm, type_string, strlen(type_string));
 }
 
 // lenof(collection) -> number
@@ -59,7 +59,7 @@ static Value _putln(Varmint *vm, Value *args)
 static Value _input(Varmint *vm, Value *args)
 {
   char *input_line = readline(NULL);
-  return *String_own(vm, input_line);
+  return String_own(vm, input_line);
 }
 
 // to_number(val) -> maybe(number)
@@ -108,9 +108,9 @@ static Value _to_number(Varmint *vm, Value *args)
     goto no_num;
   }
 
-  return *Maybe_some(vm, value_new(n, number));
+  return Maybe_some(vm, value_new(n, number));
 no_num:
-  return *Maybe_none(vm);
+  return Maybe_none(vm);
 }
 
 // rot(text: string, shift: number) -> string
@@ -122,25 +122,25 @@ static Value _rot(Varmint *vm, Value *args)
   int shift_n = (int)typechecked(vm, shift, number);
   String *s = typechecked(vm, text, string);
 
-  Value *ciphertext = String_create(vm, s->s, s->len);
+  Value ciphertext = String_create(vm, s->s, s->len);
 
   // https://en.wikipedia.org/wiki/Caesar_cipher
   for (size_t i = 0; i < s->len; i++) {
     const char c = s->s[i];
 
     if (!isalpha(c))
-      ciphertext->as.string->s[i] = c;
+      ciphertext.as.string->s[i] = c;
 
     else {
       char ciphered_c = (((toupper(c) - 'A') + shift_n) % 26) + 'A';
       if (islower(c))
         ciphered_c = (char)tolower(ciphered_c);
 
-      ciphertext->as.string->s[i] = ciphered_c;
+      ciphertext.as.string->s[i] = ciphered_c;
     }
   }
 
-  return *ciphertext;
+  return ciphertext;
 }
 
 void varmint_add_native(Varmint *vm,

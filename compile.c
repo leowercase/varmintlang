@@ -38,10 +38,10 @@ static void init_compiler(Parse *p, Locals args)
   Compiler *c = allocate(NULL, sizeof(Compiler));
   c->depth = 0;
 
-  Value *proc_val = Procedure_create(p->vm, args.len);
-  GCList_push(&p->vm->compiler_roots, *proc_val);
+  Value proc_val = Procedure_create(p->vm, args.len);
+  GCList_push(&p->vm->compiler_roots, proc_val);
 
-  c->procedure = proc_val->as.procedure;
+  c->procedure = proc_val.as.procedure;
 
   c->locals = args;
   c->stack_slot_count = args.len;
@@ -743,7 +743,7 @@ static void number(Parse *p)
 
   // Copying the slice to NUL-terminated so strtod doesn't parse anything extra
   String *nstring = String_create(p->vm,
-      ntok.slice.s, ntok.slice.len)->as.string;
+      ntok.slice.s, ntok.slice.len).as.string;
   float64_t n = strtod(nstring->s, NULL);
 
   emit_constant(p, ntok.line, value_new(n, number));
@@ -754,7 +754,7 @@ static void string(Parse *p)
   Token strtok = eat(p);
 
   emit_constant(p, strtok.line,
-      *String_create(p->vm, strtok.slice.s, strtok.slice.len));
+      String_create(p->vm, strtok.slice.s, strtok.slice.len));
 }
 
 static void metastring(Parse *p)

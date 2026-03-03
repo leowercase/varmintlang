@@ -111,9 +111,8 @@ static void mark_obj(Varmint *vm, Value obj)
     unreachable();
   case V_maybe:
     {
-      Maybe *maybe = obj.as.maybe;
-      if (maybe->is_some && is_heaped_value(maybe->raw.type))
-        mark_obj(vm, maybe->raw);
+      if (is_heaped_value(obj.as.maybe->raw))
+        mark_obj(vm, obj.as.maybe->raw);
       break;
     }
   case V_string:
@@ -121,7 +120,7 @@ static void mark_obj(Varmint *vm, Value obj)
   case V_list:
     for (size_t i = 0; i < obj.as.list->len; i++) {
       Value elem = obj.as.list->data[i];
-      if (is_heaped_value(elem.type)) mark_obj(vm, elem);
+      if (is_heaped_value(elem)) mark_obj(vm, elem);
     }
     break;
   case V_procedure:
@@ -129,7 +128,7 @@ static void mark_obj(Varmint *vm, Value obj)
       Constants *constants = &obj.as.procedure->code.constants;
       for (size_t i = 0; i < constants->len; i++) {
         Value c = constants->data[i];
-        if (is_heaped_value(c.type)) mark_obj(vm, c);
+        if (is_heaped_value(c)) mark_obj(vm, c);
       }
       break;
     }
@@ -146,7 +145,7 @@ static void mark(Varmint *vm)
 
   for (size_t i = 0; i < vm->op_stack.len; i++) {
     Value val = vm->op_stack.data[i];
-    if (is_heaped_value(val.type)) add_grey(vm, val);
+    if (is_heaped_value(val)) add_grey(vm, val);
   }
 
   GC_DBG_FMT_MSG("mark roots (%li)\n", vm->grey_worklist.len);
@@ -170,10 +169,7 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
     unreachable();
   case V_maybe:
     {
-      if (((Maybe *)data)->is_some)
-        FREE(Maybe);
-      else
-        gc_free(vm, data, sizeof(Maybe) - sizeof(Value));
+      FREE(Maybe);
       break;
     }
   case V_string:
