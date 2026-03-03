@@ -62,6 +62,17 @@ static Value _input(Varmint *vm, Value *args)
   return String_own(vm, input_line);
 }
 
+
+// prompt(prompt_string: string) -> string
+static Value _prompt(Varmint *vm, Value *args)
+{
+  Value prompt_string = args[0];
+  String *s = typechecked(vm, prompt_string, string);
+
+  char *input_line = readline(s->s);
+  return String_own(vm, input_line);
+}
+
 // to_number(val) -> maybe(number)
 static Value _to_number(Varmint *vm, Value *args)
 {
@@ -170,6 +181,7 @@ Varmint varmint_start(void)
   varmint_add_native(&vm, "put", _put, 1);
   varmint_add_native(&vm, "putln", _putln, 1);
   varmint_add_native(&vm, "input", _input, 0);
+  varmint_add_native(&vm, "prompt", _prompt, 1);
   varmint_add_native(&vm, "to_number", _to_number, 1);
   varmint_add_native(&vm, "rot", _rot, 2);
 
