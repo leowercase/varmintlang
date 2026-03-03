@@ -246,8 +246,8 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case OP_INDEXED_GET:
     {
       Value idx = pop(vm),
-            list = pop(vm);
-      push(vm, _vm_get_elem(vm, list, idx));
+            collection = pop(vm);
+      push(vm, _vm_get_elem(vm, collection, idx));
       break;
     }
     // Set an element of a collection.
@@ -255,12 +255,12 @@ static inline bool execute_instruction(Varmint *restrict vm)
     {
       Value val = pop(vm),
             idx = pop(vm),
-            list = pop(vm);
+            collection = pop(vm);
 
       if (val.type == V_no)
         runtime_error(vm, "invalid list assign to expression without value\n");
 
-      push(vm, _vm_set_elem(vm, list, idx, val));
+      push(vm, _vm_set_elem(vm, collection, idx, val));
       break;
     }
 
