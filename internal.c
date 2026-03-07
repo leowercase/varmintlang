@@ -1,6 +1,7 @@
 #include "error.h"
 #include "val.h"
 
+#include <ctype.h>
 #include <math.h>
 
 #define BINOP_(lhs, op, rhs, vm_value_t, vm_return_t) { \
@@ -182,3 +183,141 @@ Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
     return *elem;
   }
 }
+
+Value _typeof(Varmint *vm, Value *args)
+{
+  Value val = args[0];
+  const char *type_string = value_type_cstring(val.type);
+
+  return String_create(vm, type_string, strlen(type_string));
+}
+
+Value _lenof(Varmint *vm, Value *args)
+{
+  Value collection = args[0];
+
+  switch (collection.type) {
+  case V_string:
+    return value_new((float64_t)collection.as.string->len, number);
+  case V_list:
+    return value_new((float64_t)collection.as.list->len, number);
+  default:
+    runtime_error(vm, "expect type string or list for collection, got %s",
+        value_type_cstring(collection.type));
+    return NO_VALUE;
+  }
+}
+
+Value _put(Varmint *vm, Value *args)
+{
+  Value output_string = args[0];
+
+  String *s = typechecked(vm, output_string, string);
+  printf("%.*s", (int)s->len, s->s);
+
+  return NO_VALUE;
+}
+
+Value _putln(Varmint *vm, Value *args)
+{
+  Value output_string = args[0];
+
+  String *s = typechecked(vm, output_string, string);
+  printf("%.*s\n", (int)s->len, s->s);
+
+  return NO_VALUE;
+}
+
+Value _input(Varmint *vm, Value *_)
+{
+  return String_readline(vm, NULL);
+}
+
+Value _prompt(Varmint *vm, Value *args)
+{
+  Value prompt = args[0];
+  return String_readline(vm, typechecked(vm, prompt, string)->s);
+}
+
+Value _to_number(Varmint *vm, Value *args)
+{
+  float64_t n;
+
+  Value val = args[0];
+
+  switch (val.type) {
+  case V_no:
+    unreachable();
+  case V_number:
+    n = val.as.number;
+    break;
+  case V_boolean:
+    n = val.as.boolean ? 1 : 0;
+    break;
+  case V_string:
+    {
+      if (val.as.string->len == 0)
+        goto no_num;
+
+      char c = val.as.string->s[0];
+      // man 3 strtod
+      if (!isdigit(c)) switch (c) {
+      case '+': case '-': // Optional sign
+      case 'I': case 'i': // INFINITY
+      case 'N': case 'n': // NAN
+        break;
+      default:
+        // Invalid string!
+        goto no_num;
+      }
+
+      char *endptr;
+      n = strtod(val.as.string->s, &endptr);
+
+      if (*endptr != '\0')
+        // Invalid tailing characters!
+        goto no_num;
+
+      break;
+    }
+  case V_native:
+  case V_maybe:
+  case V_list:
+  case V_procedure:
+    goto no_num;
+  }
+
+  return Maybe_some(vm, value_new(n, number));
+no_num:
+  return Maybe_none();
+}
+
+Value _rot(Varmint *vm, Value *args)
+{
+  Value shift = args[0],
+        text = args[1];
+
+  int shift_n = (int)typechecked(vm, shift, number);
+  String *s = typechecked(vm, text, string);
+
+  Value ciphertext = String_create(vm, s->s, s->len);
+
+  // https://en.wikipedia.org/wiki/Caesar_cipher
+  for (size_t i = 0; i < s->len; i++) {
+    const char c = s->s[i];
+
+    if (!isalpha(c))
+      ciphertext.as.string->s[i] = c;
+
+    else {
+      char ciphered_c = (((toupper(c) - 'A') + shift_n) % 26) + 'A';
+      if (islower(c))
+        ciphered_c = (char)tolower(ciphered_c);
+
+      ciphertext.as.string->s[i] = ciphered_c;
+    }
+  }
+
+  return ciphertext;
+}
+

@@ -20,6 +20,7 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
 {
   SemanticDatum sem;
   sem.in_stmt = semantic(p)->in_stmt;
+  sem.insert_semicolon = false;
   sem.if_else_chained = false;
   sem.assign_fn = semantic(p)->assign_fn;
   sem.led_fail = false;
@@ -28,9 +29,11 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
   return SemanticData_push(&p->semantic, sem);
 }
 
-static inline SemanticDatum end_semantic_scope(Parse *p)
+static inline void end_semantic_scope(Parse *p)
 {
-  return SemanticData_pop(&p->semantic);
+  SemanticDatum old_scope = SemanticData_pop(&p->semantic);
+
+  semantic(p)->insert_semicolon = old_scope.insert_semicolon;
 }
 
 static void init_compiler(Parse *p, Locals args)
@@ -110,6 +113,19 @@ static void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
     parse_error(p, jmp_tok, "too much code to jump over");
 
   patch_op(code(p), jmp_operand_idx, (uint16_t)jumpable_code);
+}
+
+// Emit a looping instruction
+static void emit_loop(Parse *p, Token loop_tok, Opcode loopcode,
+    size_t loop_start)
+{
+  size_t op_idx = defer_op(code(p), loop_tok.line, loopcode);
+  size_t jumpable_code = code(p)->instructions.len - loop_start;
+
+  if (jumpable_code > UINT16_MAX)
+    parse_error(p, loop_tok, "too much code to loop over");
+
+  patch_op(code(p), op_idx, (uint16_t)jumpable_code);
 }
 
 // Emit the end of a block
@@ -588,7 +604,7 @@ static void if_expr(Parse *p)
   construct_body(p);
 
   if (p->current.type == TK_ELSE || p->current.type == TK_ELIF) {
-    code(p)->instructions.data[operand_idx - 1] = OP_IF_ELSE_CHAIN;
+    code(p)->instructions.data[operand_idx - 1] = OP_JMP_WHEN_FALSE;
 
     semantic(p)->if_else_chained = true;
     semantic(p)->if_jmp_op_idx = operand_idx;
@@ -627,32 +643,66 @@ static void else_elif(Parse *p, int min_bp)
   patch_jump(p, else_tok, operand_idx);
 }
 
-static void loop(Parse *p)
+static inline bool consume_comprehension(Parse *p)
 {
-  //size_t line = eat(p).line; // loop
-  //construct_body(p);
-  abort(); // TODO
+  return match(p, TK_LBRACK) && match(p, TK_RBRACK);
 }
 
-static void while_loop(Parse *p)
+static inline size_t consume_loop_header(Parse *p, size_t line, TokenType type)
 {
-  Token cond_tok = eat(p);
-  abort();
+  switch (type) {
+  case TK_LOOP:
+    return false; // No conditional jump present
+  case TK_FOR:
+    {
+      Token ident_tok = consume(p, TK_WORD, "expect identifier");
+      consume(p, TK_IN, "expect `in`");
+      expr(p, PREC_NONE); // Collection to be iterated over
+
+      emit_byte(code(p), line, OP_FOR_INIT);
+
+      create_local_var(p, ident_tok.slice) // Iteration variable
+        ->initialized = true;
+      p->c->stack_slot_count++; // Counter
+
+      return defer_op(code(p), line, OP_FOR);
+    }
+  case TK_WHILE:
+    expr(p, PREC_NONE); // Loop condition
+    return defer_op(code(p), line, OP_JMP_WHEN_FALSE);
+  default:
+    unreachable();
+  }
 }
 
-static void for_loop(Parse *p)
+static void loop_expr(Parse *p)
 {
-  size_t line = eat(p).line;
-  Token ident_tok = consume(p, TK_WORD, "expect identifier in `for`");
+  Token loop_tok = eat(p);
+  size_t loop_start = code(p)->instructions.len;
 
-  consume(p, TK_IN, "expect `in` clause in `for`");
-  expr(p, PREC_NONE);
+  // Similar to Python list comprehension.
+  // https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions
+  bool is_list_comprehension = consume_comprehension(p);
 
-  const int r_bp = (int)PREC_BASE + (int)ASSOC_RIGHT;
-  expr(p, r_bp);
+  // loop for while
+  size_t conditional_jmp_idx =
+    consume_loop_header(p, loop_tok.line, loop_tok.type);
+
   construct_body(p);
+  emit_loop(p, loop_tok,
+      is_list_comprehension ? OP_LOOP_COMP : OP_LOOP,
+      loop_start);
 
-  abort(); // TODO
+  if (loop_tok.type == TK_FOR) {
+    Locals_pop(&p->c->locals); // End iteration var
+    p->c->stack_slot_count--; // End counter
+  }
+
+  if (conditional_jmp_idx)
+    patch_jump(p, loop_tok, conditional_jmp_idx);
+
+  // TODO
+  //emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
 }
 
 static void handle_flow(Parse *p, int breaks, bool continues)
@@ -674,6 +724,21 @@ static void loop_break(Parse *p)
 static void loop_cont(Parse *p)
 {
   handle_flow(p, 0, true);
+}
+
+// return [value]
+static void returnage(Parse *p)
+{
+  Token return_tok = eat(p);
+  bool has_return_value = parse_rule(p->current.type)->nud != NULL;
+
+  const int r_bp = (int)PREC_BASE + (int)ASSOC_LEFT;
+  if (has_return_value)
+    expr(p, r_bp); // Parse return value.
+  else
+    emit_byte(code(p), return_tok.line, OP_RESERVE_SLOT);
+
+  emit_byte(code(p), return_tok.line, OP_RETURN);
 }
 
 // using f, g, h: ...
@@ -900,16 +965,15 @@ static void block(Parse *p)
   // Consume statements ...;
   for (; !match(p, TK_RCURLY); stmts++, p->c->stack_slot_count++) {
     // Consume tokens until a semicolon is found.
-    while (!match(p, TK_SEMICOLON))
+    while (!match(p, TK_SEMICOLON) && !semantic(p)->insert_semicolon)
       parse_error(p, eat(p), "expect semicolon");
 
+    semantic(p)->insert_semicolon = false;
     semantic(p)->panic = false; // Synchronize error state between statements.
 
     if (match(p, TK_RCURLY)) {
       // Trailing semicolon, no value from block expr.
       block_has_result = false;
-      stmts++;
-      p->c->stack_slot_count++;
       break;
     }
 
@@ -945,14 +1009,17 @@ static void expr(Parse *p, int min_bp)
     LedRule op_rule = parse_rule(op_token.type)->led;
 
     if (op_rule == NULL) {
-      if (semantic(p)->in_stmt)
-        parse_error(p, op_token,
-            "unexpected `%.*s`, did you mean to add `;`?",
-              (int)op_token.slice.len, op_token.slice.s);
-      else
-        parse_error(p, op_token,
-            "expect operator, got `%.*s`",
-              (int)op_token.slice.len, op_token.slice.s);
+      if (semantic(p)->in_stmt) {
+        if (semantic(p)->insert_semicolon) break;
+
+        parse_error(p, op_token, "unexpected `%.*s`, did you mean to add `;`?",
+            (int)op_token.slice.len, op_token.slice.s);
+
+        semantic(p)->insert_semicolon = true; break; // "Insert" semicolon.
+      }
+
+      parse_error(p, op_token, "expect operator, got `%.*s`",
+          (int)op_token.slice.len, op_token.slice.s);
 
       next(p); continue; // Consume tokens until a valid operator is found.
     }
@@ -1010,12 +1077,13 @@ static const ParseRule parse_rules[] =
     [TK_ELSE]      = { NULL,       else_elif  },
     [TK_ELIF]      = { NULL,       else_elif  },
 
-    [TK_LOOP]      = { loop,       NULL       },
-    [TK_FOR]       = { for_loop,   NULL       },
-    [TK_WHILE]     = { while_loop, NULL       },
+    [TK_LOOP]      = { loop_expr,  NULL       },
+    [TK_FOR]       = { loop_expr,  NULL       },
+    [TK_WHILE]     = { loop_expr,  NULL       },
 
     [TK_BREAK]     = { loop_break, NULL       },
     [TK_CONTINUE]  = { loop_cont,  NULL       },
+    [TK_RETURN]    = { returnage,  NULL       },
 
     [TK_USING]     = { using,      NULL       },
 
@@ -1081,6 +1149,7 @@ Procedure *compile(Varmint *vm, char *source)
 
   SemanticDatum sem;
   sem.in_stmt = false;
+  sem.insert_semicolon = false;
   sem.if_else_chained = false;
   sem.assign_fn = NULL;
   sem.led_fail = false;
@@ -1089,7 +1158,6 @@ Procedure *compile(Varmint *vm, char *source)
 
   expr(&p, PREC_NONE);
 
-  end_semantic_scope(&p);
   free(p.semantic.data);
 
   Procedure *proc = return_compiler(&p);

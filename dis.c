@@ -1,39 +1,53 @@
 #include "code.h"
-#include "disassemble.h"
+#include "dis.h"
 #include "util.h"
 #include "val.h"
 #include "proc.h"
 
 #include <stdio.h>
 
-static void constant(PCode *code, size_t _, size_t idx)
+static void constant(FILE *restrict stream, PCode *code, size_t _, size_t idx)
 {
-  printf("  [%li] = ", idx);
-  print_value(stdout, code->constants.data[idx]);
-  printf(ANSI_CYAN);
+  fprintf(stream, "  [%li] = ", idx);
+  print_value(stream, code->constants.data[idx]);
+  fprintf(stream, ANSI_CYAN);
 }
 
-static void size(PCode *code, size_t _, size_t s)
+static void size(FILE *restrict stream, PCode *code, size_t _, size_t s)
 {
-  printf(" " ANSI_YELLOW "(%li)" ANSI_CYAN, s);
+  fprintf(stream, " " ANSI_YELLOW "(%li)" ANSI_CYAN, s);
 }
 
-static void jump(PCode *code, size_t offset, size_t jumpable_bytes)
+static void jump(FILE *restrict stream, PCode *code, size_t offset,
+    size_t jumpable_code, int sign)
 {
-  size(code, offset, (size_t)jumpable_bytes);
-  printf(" -> ");
-  size_t dest = offset + jumpable_bytes + 3; // jump from the next instruction
-  disassemble_instruction(code, dest);
+  size(stream, code, offset, (size_t)jumpable_code);
+  fprintf(stream, " -> ");
+  // +3 accounts for the instruction and its operands
+  size_t dest = (size_t)((long)offset + 3 + sign * (long)jumpable_code);
+  dis_instruction(stream, code, dest);
+}
+
+static void jump_fwd(FILE *restrict stream, PCode *code, size_t offset,
+    size_t jumpable_code)
+{
+  jump(stream, code, offset, jumpable_code, +1);
+}
+
+static void jump_bkwd(FILE *restrict stream, PCode *code, size_t offset,
+    size_t jumpable_code)
+{
+  jump(stream, code, offset, jumpable_code, -1);
 }
 
 // Returns the offset where the instruction ends.
-size_t disassemble_instruction(PCode *code, size_t offset)
+size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
 {
   Opcode instruction = code->instructions.data[offset];
 
 #define case_(name, stmt) \
   case OP_##name: { \
-      printf("%.2i " #name, (int)get_line(&code->lines, offset)); \
+      fprintf(stream, "%.2i " #name, (int)get_line(&code->lines, offset)); \
       stmt; \
   }
 
@@ -42,7 +56,7 @@ size_t disassemble_instruction(PCode *code, size_t offset)
   case_(name, \
     { \
         uint8_t *ip = code->instructions.data + offset + 1; \
-        fn(code, offset, uint8_to_16(ip)); \
+        fn(stream, code, offset, uint8_to_16(ip)); \
         return offset + 3; \
     })
 
@@ -50,7 +64,7 @@ size_t disassemble_instruction(PCode *code, size_t offset)
 #define case_var_op(name, fn) \
   case_(name, \
     { \
-        fn(code, offset, code->instructions.data[offset + 1]); \
+        fn(stream, code, offset, code->instructions.data[offset + 1]); \
         return offset + 2; \
     }) \
   case_16_op(name##16, fn)
@@ -87,9 +101,9 @@ size_t disassemble_instruction(PCode *code, size_t offset)
   case_(ONE,
     {
       const Value one = value_new(1.0, number);
-      printf(" ");
-      print_value(stdout, one);
-      printf(ANSI_CYAN);
+      fprintf(stream, " ");
+      print_value(stream, one);
+      fprintf(stream, ANSI_CYAN);
       return offset + 1;
     })
   case_var_op(BUILD_LIST, size)
@@ -104,12 +118,15 @@ size_t disassemble_instruction(PCode *code, size_t offset)
   case_var_op(END_EMPTY_BLOCK, size)
   case_op(MAKE_SOME)
   case_op(MAKE_NONE)
-  case_op(UNWRAP_MAYBE)
-  case_16_op(JMP, jump)
-  case_16_op(IF, jump)
-  case_16_op(ELSE, jump)
-  case_16_op(ELIF, jump)
-  case_16_op(IF_ELSE_CHAIN, jump)
+  case_16_op(JMP, jump_fwd)
+  case_16_op(JMP_WHEN_FALSE, jump_fwd)
+  case_16_op(IF, jump_fwd)
+  case_16_op(ELSE, jump_fwd)
+  case_16_op(ELIF, jump_fwd)
+  case_16_op(LOOP, jump_bkwd)
+  case_16_op(LOOP_COMP, jump_bkwd)
+  case_op(FOR_INIT)
+  case_16_op(FOR, jump_fwd);
   case_var_op(CALL, size)
   case_op(RETURN)
   case OP_GC:
@@ -124,19 +141,19 @@ size_t disassemble_instruction(PCode *code, size_t offset)
 #undef case_op
 }
 
-static void disassemble_code(PCode *code)
+static void dis_code(FILE *restrict stream, PCode *code)
 {
-  printf(ANSI_CYAN);
+  fprintf(stream, ANSI_CYAN);
 
   for (size_t offset = 0; offset < code->instructions.len;) {
-    offset = disassemble_instruction(code, offset);
-    printf("\n");
+    offset = dis_instruction(stream, code, offset);
+    fprintf(stream, "\n");
   }
 
-  printf(ANSI_RESET);
+  fprintf(stream, ANSI_RESET);
 }
 
-void disassemble(Procedure *program)
+void dis(FILE *restrict stream, Procedure *program)
 {
   PCode *code = &program->code;
 
@@ -147,16 +164,16 @@ void disassemble(Procedure *program)
       Procedure *fn = c->as.procedure;
 
       if (fn->name.s == NULL)
-        printf("-- anonymous function [%li] --\n",
+        fprintf(stream, "-- anonymous function [%li] --\n",
             fn->arity);
       else
-        printf("-- function %.*s [%li] --\n",
+        fprintf(stream, "-- function %.*s [%li] --\n",
             (int)fn->name.len, fn->name.s, fn->arity);
-      disassemble_code(&c->as.procedure->code);
-      printf("\n");
+      dis_code(stream, &c->as.procedure->code);
+      fprintf(stream, "\n");
     }
   }
 
-  printf("-- program --\n");
-  disassemble_code(code);
+  fprintf(stream, "-- program --\n");
+  dis_code(stream, code);
 }

@@ -92,7 +92,7 @@ typedef struct List {
 struct Varmint;
 
 Value Maybe_some(struct Varmint *vm, Value value);
-Value Maybe_none(struct Varmint *vm);
+Value Maybe_none(void);
 
 Value List_create(struct Varmint *vm, size_t cap);
 
@@ -102,6 +102,7 @@ Value String_own(struct Varmint *vm, char *allocated_cstring);
 Value String_copy(struct Varmint *vm, Value *string_val);
 Value String_fmt(struct Varmint *vm, const char *fmt, ...);
 Value String_concat(struct Varmint *vm, Value *head, Value *tail);
+Value String_readline(struct Varmint *vm, const char *prompt);
 Str String_as_str(Value *val);
 
 Value Procedure_create(struct Varmint *vm, size_t arity);

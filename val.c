@@ -4,6 +4,7 @@
 #include "proc.h"
 
 #include <stdio.h>
+#include <readline/readline.h>
 // https://github.com/Cyan4973/xxHash
 #include <xxhash.h>
 
@@ -14,7 +15,7 @@ Value Maybe_some(Varmint *vm, Value raw)
   return val;
 }
 
-Value Maybe_none(Varmint *vm)
+Value Maybe_none(void)
 {
   // None isn't GC'd.
   Value val;
@@ -121,6 +122,20 @@ Value String_concat(Varmint *vm, Value *head, Value *tail)
   result.as.string->s = s;
   result.as.string->len = len;
   return result;
+}
+
+Value String_readline(Varmint *vm, const char *prompt)
+{
+  char *line = readline(prompt);
+
+  if (line == NULL) {
+    Value empty = *create_gc_obj(vm, V_string, sizeof(String));
+    empty.as.string->s = NULL;
+    empty.as.string->len = 0;
+    return empty;
+  }
+
+  return String_own(vm, line);
 }
 
 Str String_as_str(Value *val)

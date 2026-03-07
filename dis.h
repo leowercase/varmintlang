@@ -4,9 +4,9 @@
 #include "proc.h"
 
 // Disassemble a program.
-void disassemble(Procedure *program);
+void dis(FILE *restrict stream, Procedure *program);
 
 // Disassemble an instruction.
-size_t disassemble_instruction(PCode *code, size_t offset);
+size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset);
 
 #endif

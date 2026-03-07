@@ -36,11 +36,12 @@ typedef DYN_ARRAY_STRUCT(Local) Locals;
 #include "generic/dyn_array.inc"
 
 // Info about the current expression being parsed.
-typedef struct {
+typedef struct SemanticDatum {
   void (*assign_fn)(Parse *p); // Assignment function for left hand side
   Local *assignable_local;
 
   bool in_stmt; // {}
+  bool insert_semicolon;
 
   // if..else..elif chains are optimized a bit to avoid useless shuffling
   bool if_else_chained;

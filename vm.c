@@ -212,17 +212,8 @@ static inline bool execute_instruction(Varmint *restrict vm)
     push(vm, Maybe_some(vm, pop(vm)));
     break;
   case OP_MAKE_NONE:
-    push(vm, Maybe_none(vm));
+    push(vm, Maybe_none());
     break;
-    // Unwrap a Some() value
-  case OP_UNWRAP_MAYBE:
-    {
-      Maybe *optional = pop(vm).as.maybe;
-      assert(optional != NULL);
-
-      push(vm, optional->raw);
-      break;
-    }
 
     // Get a value on the stack.
   case_var_op(OP_GET, stack_slot,
@@ -290,6 +281,13 @@ static inline bool execute_instruction(Varmint *restrict vm)
       vm->frame->ip += jumpable_code;
       break;
     })
+    // Jump when value is False.
+  case_16_op(OP_JMP_WHEN_FALSE, jumpable_code,
+    {
+      if (value_is_falsey(pop(vm)))
+        vm->frame->ip += jumpable_code;
+      break;
+    })
 
     // Start an if clause.
     // If lhs is False, jump over the Some()-constructing body and push None
@@ -297,7 +295,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     {
       if (value_is_falsey(pop(vm))) {
         vm->frame->ip += jumpable_code;
-        push(vm, Maybe_none(vm));
+        push(vm, Maybe_none());
       }
       break;
     })
@@ -324,11 +322,47 @@ static inline bool execute_instruction(Varmint *restrict vm)
       }
       break;
     })
-    // Start an if..elif..else chain -> don't construct Some()/None
-  case_16_op(OP_IF_ELSE_CHAIN, jumpable_code,
+
+  case_16_op(OP_LOOP, loopable_code,
     {
-      if (value_is_falsey(pop(vm)))
-        vm->frame->ip += jumpable_code;
+      pop(vm); // Result of the last cycle
+      vm->frame->ip -= loopable_code;
+      break;
+    })
+    // A loop that creates a list from its cycles
+  case_16_op(OP_LOOP_COMP, loopable_code,
+    {
+      abort();
+      pop(vm); // Result of the last cycle
+      vm->frame->ip -= loopable_code;
+      break;
+    })
+
+  case OP_FOR_INIT:
+    {
+      // The first cycle will increment the counter to 0
+      float64_t counter = -1;
+
+      push(vm, NO_VALUE); // Iterable
+      push(vm, value_new(counter, number));
+      break;
+    }
+  case_16_op(OP_FOR, jumpable_code,
+    {
+      popn(vm, 2);
+      float64_t counter = pop(vm).as.number;
+      counter++;
+
+      Value collection = peek(vm, 0);
+      if (counter < _lenof(vm, &collection).as.number) {
+        push(vm, _vm_get_elem(vm, collection, value_new(counter, number)));
+        push(vm, value_new(counter, number));
+        break;
+      }
+      // End loop
+      vm->frame->ip += jumpable_code;
+      pop(vm); // Discard list
+      push(vm, NO_VALUE); // TODO
       break;
     })
 
