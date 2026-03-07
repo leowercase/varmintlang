@@ -84,5 +84,15 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
     error_line_snip(vm->source, line, NULL);
   }
 
+#ifdef VARMINT_DEBUG
+  info_out("operation stack:\n");
+
+  for (size_t i = 0; i < vm->op_stack.len; i++) {
+    info_out("[%li] ", i);
+    print_value(stderr, vm->op_stack.data[i]);
+    info_out("\n");
+  }
+#endif
+
   exit(EX_DATAERR);
 }

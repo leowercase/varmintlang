@@ -98,6 +98,14 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
 
   switch ((Opcode)instruction) {
   case_var_op(CONST, constant)
+  case_(ZERO,
+    {
+      const Value zero = value_new(0.0, number);
+      fprintf(stream, " ");
+      print_value(stream, zero);
+      fprintf(stream, ANSI_CYAN);
+      return offset + 1;
+    })
   case_(ONE,
     {
       const Value one = value_new(1.0, number);
@@ -113,6 +121,7 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
   case_var_op(SET, size)
   case_op(INDEXED_GET)
   case_op(INDEXED_SET)
+  case_op(POP)
   case_op(RESERVE_SLOT)
   case_var_op(END_BLOCK, size)
   case_var_op(END_EMPTY_BLOCK, size)
@@ -123,10 +132,14 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
   case_16_op(IF, jump_fwd)
   case_16_op(ELSE, jump_fwd)
   case_16_op(ELIF, jump_fwd)
+  case_op(LIST_COMPREHEND)
   case_16_op(LOOP, jump_bkwd)
-  case_16_op(LOOP_COMP, jump_bkwd)
-  case_op(FOR_INIT)
-  case_16_op(FOR, jump_fwd);
+  case_16_op(LOOP_LIST, jump_bkwd)
+  case_16_op(WHILE, jump_fwd)
+  case_16_op(WHILE_LIST, jump_fwd)
+  case_16_op(FOR, jump_fwd)
+  case_16_op(FOR_LIST, jump_fwd)
+  case_var_op(FOR_INCREMENT, size)
   case_var_op(CALL, size)
   case_op(RETURN)
   case OP_GC:

@@ -92,6 +92,37 @@ static void call_val(Varmint *vm, Value callee, size_t argc)
       value_type_cstring(callee.type));
 }
 
+static void loop_result(Varmint *vm, Value result)
+{
+  push(vm, result.type == V_no
+      ? Maybe_none() : Maybe_some(vm, result));
+}
+
+static bool for_loop_next(Varmint *vm, Value iterable, size_t counter)
+{
+  // Value of the loop variable
+  Value val = NO_VALUE;
+
+  switch (iterable.type) {
+  case V_list:
+    if (counter < iterable.as.list->len)
+      val = iterable.as.list->data[counter];
+    else return false;
+    break;
+  case V_string:
+    if (counter < iterable.as.string->len)
+      val = String_create(vm, &iterable.as.string->s[counter], 1);
+    else return false;
+    break;
+  default:
+    runtime_error(vm, "cannot use %s as iterable in for loop\n",
+        value_type_cstring(iterable.type));
+  }
+
+  push(vm, val);
+  return true;
+}
+
 static inline bool execute_instruction(Varmint *restrict vm)
 {
   Opcode instruction = *(vm->frame->ip++);
@@ -163,6 +194,12 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     })
 
+  case OP_ZERO:
+    {
+      const Value zero = value_new(0.0, number);
+      push(vm, zero);
+      break;
+    }
   case OP_ONE:
     {
       const Value one = value_new(1.0, number);
@@ -255,6 +292,11 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     }
 
+    // Discard a value.
+  case OP_POP:
+    pop(vm);
+    break;
+
     // Reserve a slot on the stack.
   case OP_RESERVE_SLOT:
     push(vm, NO_VALUE);
@@ -323,46 +365,87 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     })
 
+    // Create a list for list comprehension
+  case OP_LIST_COMPREHEND:
+    push(vm, List_create(vm, 0));
+    break;
+
   case_16_op(OP_LOOP, loopable_code,
     {
-      pop(vm); // Result of the last cycle
       vm->frame->ip -= loopable_code;
       break;
     })
-    // A loop that creates a list from its cycles
-  case_16_op(OP_LOOP_COMP, loopable_code,
+    // List comprehension.
+    // A loop that creates a list from its cycles' values
+  case_16_op(OP_LOOP_LIST, loopable_code,
     {
-      abort();
-      pop(vm); // Result of the last cycle
+      Value result = pop(vm); // What the last cycle evaluated to
+      List_push(vm, peek(vm, 0).as.list, result);
+
       vm->frame->ip -= loopable_code;
       break;
     })
 
-  case OP_FOR_INIT:
+    // Start a while loop cycle.
+  case_16_op(OP_WHILE, jumpable_code,
     {
-      // The first cycle will increment the counter to 0
-      float64_t counter = -1;
+      Value cond = pop(vm);
+      Value result = pop(vm);
 
-      push(vm, NO_VALUE); // Iterable
-      push(vm, value_new(counter, number));
+      if (value_is_falsey(cond)) {
+        vm->frame->ip += jumpable_code;
+        loop_result(vm, result);
+      }
       break;
-    }
+    })
+    // Start a while list comprehension cycle.
+  case_16_op(OP_WHILE_LIST, jumpable_code,
+    {
+      Value cond = pop(vm);
+
+      if (value_is_falsey(cond))
+        vm->frame->ip += jumpable_code;
+      break;
+    })
+
+    // Start a for loop cycle.
   case_16_op(OP_FOR, jumpable_code,
     {
-      popn(vm, 2);
-      float64_t counter = pop(vm).as.number;
-      counter++;
+      Value result = pop(vm);
 
-      Value collection = peek(vm, 0);
-      if (counter < _lenof(vm, &collection).as.number) {
-        push(vm, _vm_get_elem(vm, collection, value_new(counter, number)));
-        push(vm, value_new(counter, number));
-        break;
+      size_t counter = (size_t)peek(vm, 0).as.number;
+      Value iterable = peek(vm, 1);
+
+      if (!for_loop_next(vm, iterable, counter)) {
+        popn(vm, 2);
+        vm->frame->ip += jumpable_code;
+        loop_result(vm, result);
       }
-      // End loop
-      vm->frame->ip += jumpable_code;
-      pop(vm); // Discard list
-      push(vm, NO_VALUE); // TODO
+      break;
+    })
+    // Start a for list comprehension cycle.
+  case_16_op(OP_FOR_LIST, jumpable_code,
+    {
+      size_t counter = (size_t)peek(vm, 1).as.number;
+      Value iterable = peek(vm, 2);
+
+      if (!for_loop_next(vm, iterable, counter)) {
+        Value result = pop(vm);
+        popn(vm, 2);
+        push(vm, result);
+        vm->frame->ip += jumpable_code;
+      }
+      break;
+    })
+    // Discard loop variable slot & increment counter
+  case_var_op(OP_FOR_INCREMENT, stack_slot,
+    {
+      Value result = pop(vm);
+
+      pop(vm); // Loop variable
+      vm->op_stack.data[stack_slot].as.number++;
+
+      push(vm, result);
       break;
     })
 

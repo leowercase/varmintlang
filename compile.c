@@ -19,10 +19,10 @@ static inline SemanticDatum *semantic(Parse *p)
 static inline SemanticDatum *new_semantic_scope(Parse *p)
 {
   SemanticDatum sem;
+  sem.assign_fn = semantic(p)->assign_fn;
   sem.in_stmt = semantic(p)->in_stmt;
   sem.insert_semicolon = false;
   sem.if_else_chained = false;
-  sem.assign_fn = semantic(p)->assign_fn;
   sem.led_fail = false;
   sem.panic = false;
 
@@ -32,8 +32,8 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
 static inline void end_semantic_scope(Parse *p)
 {
   SemanticDatum old_scope = SemanticData_pop(&p->semantic);
-
-  semantic(p)->insert_semicolon = old_scope.insert_semicolon;
+  semantic(p)->insert_semicolon =
+    old_scope.insert_semicolon;
 }
 
 static void init_compiler(Parse *p, Locals args)
@@ -131,12 +131,13 @@ static void emit_loop(Parse *p, Token loop_tok, Opcode loopcode,
 // Emit the end of a block
 static void block_end(Parse *p, Token block_tok, size_t slots, bool has_result)
 {
+  p->c->stack_slot_count -= slots;
+  if (slots == 1 && has_result) return;
+
   Opcode opcode = has_result ? OP_END_BLOCK : OP_END_EMPTY_BLOCK;
 
   if (!emit_var_op(code(p), block_tok.line, opcode, slots))
     parse_error(p, block_tok, "block occupies too many stack slots");
-
-  p->c->stack_slot_count -= slots;
 }
 
 // Local lookup.
@@ -592,6 +593,11 @@ static void construct_body(Parse *p)
   expr(p, r_bp);
 }
 
+static inline bool is_else(Parse *p)
+{
+  return p->current.type == TK_ELSE || p->current.type == TK_ELIF;
+}
+
 static void if_expr(Parse *p)
 {
   Token if_tok = eat(p);
@@ -603,7 +609,7 @@ static void if_expr(Parse *p)
   // Parse conditional value.
   construct_body(p);
 
-  if (p->current.type == TK_ELSE || p->current.type == TK_ELIF) {
+  if (is_else(p)) {
     code(p)->instructions.data[operand_idx - 1] = OP_JMP_WHEN_FALSE;
 
     semantic(p)->if_else_chained = true;
@@ -648,61 +654,83 @@ static inline bool consume_comprehension(Parse *p)
   return match(p, TK_LBRACK) && match(p, TK_RBRACK);
 }
 
-static inline size_t consume_loop_header(Parse *p, size_t line, TokenType type)
-{
-  switch (type) {
-  case TK_LOOP:
-    return false; // No conditional jump present
-  case TK_FOR:
-    {
-      Token ident_tok = consume(p, TK_WORD, "expect identifier");
-      consume(p, TK_IN, "expect `in`");
-      expr(p, PREC_NONE); // Collection to be iterated over
-
-      emit_byte(code(p), line, OP_FOR_INIT);
-
-      create_local_var(p, ident_tok.slice) // Iteration variable
-        ->initialized = true;
-      p->c->stack_slot_count++; // Counter
-
-      return defer_op(code(p), line, OP_FOR);
-    }
-  case TK_WHILE:
-    expr(p, PREC_NONE); // Loop condition
-    return defer_op(code(p), line, OP_JMP_WHEN_FALSE);
-  default:
-    unreachable();
-  }
-}
-
+// loop for while
 static void loop_expr(Parse *p)
 {
-  Token loop_tok = eat(p);
-  size_t loop_start = code(p)->instructions.len;
+  Token tok = eat(p);
+  TokenType type = tok.type; size_t line = tok.line;
 
-  // Similar to Python list comprehension.
+  // Loops can do something similar to Python list comprehension.
   // https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions
-  bool is_list_comprehension = consume_comprehension(p);
+  bool is_list_compre = consume_comprehension(p);
 
-  // loop for while
-  size_t conditional_jmp_idx =
-    consume_loop_header(p, loop_tok.line, loop_tok.type);
+  Str for_var_ident;
+  size_t for_counter_slot;
+  // Initialize stack slots occupied before the loop
+  if (type == TK_FOR) {
+    for_var_ident = consume(p, TK_WORD, "expect identifier").slice;
+    consume(p, TK_IN, "expect `in`");
 
-  construct_body(p);
-  emit_loop(p, loop_tok,
-      is_list_comprehension ? OP_LOOP_COMP : OP_LOOP,
-      loop_start);
-
-  if (loop_tok.type == TK_FOR) {
-    Locals_pop(&p->c->locals); // End iteration var
-    p->c->stack_slot_count--; // End counter
+    expr(p, PREC_NONE); // Iterable
+    emit_byte(code(p), line, OP_ZERO); // Counter
+    for_counter_slot = p->c->stack_slot_count += 2;
   }
 
-  if (conditional_jmp_idx)
-    patch_jump(p, loop_tok, conditional_jmp_idx);
+  // Initial value for the result of the last cycle.
+  // Either an empty slot, or an empty list ready for comprehension
+  if (is_list_compre) {
+    emit_byte(code(p), line, OP_LIST_COMPREHEND);
+    p->c->stack_slot_count++;
+  }
+  else
+    emit_byte(code(p), line, OP_RESERVE_SLOT);
 
-  // TODO
-  //emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
+  // Loop start
+  size_t start = code(p)->instructions.len;
+
+  // Emit conditional jump
+  size_t jmp_idx = false;
+  switch (type) {
+  case TK_LOOP:
+    // No conditional jump, but discard what the last cycle evaluated to
+    if (!is_list_compre) emit_byte(code(p), line, OP_POP);
+    jmp_idx = false; break;
+
+  case TK_WHILE:
+    expr(p, PREC_NONE); // Condition
+    jmp_idx = defer_op(code(p), line,
+        is_list_compre ? OP_WHILE_LIST : OP_WHILE); break;
+
+  case TK_FOR:
+    // Create loop variable
+    create_local_var(p, for_var_ident)->initialized = true;
+    p->c->stack_slot_count++;
+    jmp_idx = defer_op(code(p), line,
+        is_list_compre ? OP_FOR_LIST : OP_FOR); break;
+
+  default: unreachable();
+  }
+
+  // Parse loop body
+  construct_body(p);
+  // Increment counter variable at the end of for
+  if (type == TK_FOR)
+    emit_var_op(code(p), p->current.line, OP_FOR_INCREMENT, for_counter_slot);
+
+  // Emit the looping instruction
+  emit_loop(p, tok,
+      is_list_compre ? OP_LOOP_LIST : OP_LOOP,
+      start);
+  // Land the conditional jump here.
+  if (jmp_idx) patch_jump(p, tok, jmp_idx);
+
+  // Loop end
+  if (type == TK_FOR) {
+    Locals_pop(&p->c->locals); // Loop variable
+    p->c->stack_slot_count -= 3;
+  }
+  if (is_list_compre)
+    p->c->stack_slot_count--;
 }
 
 static void handle_flow(Parse *p, int breaks, bool continues)
@@ -1148,10 +1176,10 @@ Procedure *compile(Varmint *vm, char *source)
   }
 
   SemanticDatum sem;
+  sem.assign_fn = NULL;
   sem.in_stmt = false;
   sem.insert_semicolon = false;
   sem.if_else_chained = false;
-  sem.assign_fn = NULL;
   sem.led_fail = false;
   sem.panic = false;
   SemanticData_push(&p.semantic, sem);
