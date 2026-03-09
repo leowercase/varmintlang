@@ -73,7 +73,8 @@ static Procedure *return_compiler(Parse *p)
 }
 
 // Issue a parsing error and enter panic mode in the imminent semantic scope.
-static void parse_error(Parse *p, Token offending_tok, char *const msg, ...)
+static void parse_error(Parse *p, Token offending_tok, bool pointer,
+    char *const msg, ...)
 {
   if (semantic(p)->panic) return;
 
@@ -86,7 +87,7 @@ static void parse_error(Parse *p, Token offending_tok, char *const msg, ...)
   error_out("\n");
 
   error_line_snip(p->vm->source, offending_tok.line,
-                         (char *)offending_tok.slice.s);
+               pointer ? (char *)offending_tok.slice.s : NULL);
   p->had_error = true;
   semantic(p)->panic = true;
 }
@@ -98,7 +99,7 @@ static Value *emit_constant(Parse *p, size_t line, Value value)
   size_t idx = code(p)->constants.len - 1;
 
   if (!emit_var_op(code(p), line, OP_CONST, idx))
-    parse_error(p, p->current, "too many constants");
+    parse_error(p, p->current, true, "too many constants");
 
   return constant;
 }
@@ -110,7 +111,7 @@ static void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
   size_t jumpable_code = code(p)->instructions.len - jmp_operand_idx - 2;
 
   if (jumpable_code > UINT16_MAX)
-    parse_error(p, jmp_tok, "too much code to jump over");
+    parse_error(p, jmp_tok, true, "too much code to jump over");
 
   patch_op(code(p), jmp_operand_idx, (uint16_t)jumpable_code);
 }
@@ -123,7 +124,7 @@ static void emit_loop(Parse *p, Token loop_tok, Opcode loopcode,
   size_t jumpable_code = code(p)->instructions.len - loop_start;
 
   if (jumpable_code > UINT16_MAX)
-    parse_error(p, loop_tok, "too much code to loop over");
+    parse_error(p, loop_tok, true, "too much code to loop over");
 
   patch_op(code(p), op_idx, (uint16_t)jumpable_code);
 }
@@ -137,7 +138,7 @@ static void block_end(Parse *p, Token block_tok, size_t slots, bool has_result)
   Opcode opcode = has_result ? OP_END_BLOCK : OP_END_EMPTY_BLOCK;
 
   if (!emit_var_op(code(p), block_tok.line, opcode, slots))
-    parse_error(p, block_tok, "block occupies too many stack slots");
+    parse_error(p, block_tok, true, "block occupies too many stack slots");
 }
 
 // Local lookup.
@@ -198,7 +199,7 @@ static Token next(Parse *p)
 
     // Catch as many consecutive error tokens as possible.
     if (t.type != TK_ERR) break;
-    parse_error(p, t, "%.*s", (int)t.slice.len, t.slice.s);
+    parse_error(p, t, false, "%.*s", (int)t.slice.len, t.slice.s);
   }
   return next_tok;
 }
@@ -224,7 +225,7 @@ static Token consume(Parse *p, TokenType expected, char *const msg)
 {
   Token tok = p->current;
   if (!match(p, expected))
-    parse_error(p, p->current, msg);
+    parse_error(p, p->current, true, msg);
   return tok;
 }
 
@@ -283,7 +284,7 @@ static inline void assignage(Parse *p, int min_bp, Op op_shorthand)
   if (semantic(p)->assign_fn != NULL)
     semantic(p)->assign_fn(p);
   else
-    parse_error(p, p->current, "lhs is not assignable");
+    parse_error(p, p->current, true, "lhs is not assignable");
 }
 
 static void assign(Parse *p, int min_bp)
@@ -424,7 +425,7 @@ static void subscript(Parse *p, int min_bp)
     emit_byte(code(p), brack_tok.line, OP_INDEXED_GET);
 
   else if (semantic(p)->assign_fn == NULL)
-    parse_error(p, brack_tok, "invalid list assign");
+    parse_error(p, brack_tok, true, "invalid list assign");
 
   semantic(p)->assign_fn = indexed_assign;
 }
@@ -498,7 +499,7 @@ static void maplet(Parse *p)
 
     else
       // Something is wrong in the user's code.
-      parse_error(p, p->current,
+      parse_error(p, p->current, true,
           "expect maplet arrow after argument list");
 
     free(args.data);
@@ -540,7 +541,7 @@ static size_t delimited_listing(Parse *p,
       if (len == 0 || allow_trailing_delim)
         return len;
       else
-        parse_error(p, p->current,
+        parse_error(p, p->current, true,
             "invalid trailing %s in listing", token_cstring(delim));
     }
 
@@ -553,7 +554,7 @@ static size_t delimited_listing(Parse *p,
       return len;
   } while (match(p, delim)); // ,
 
-  parse_error(p, p->current,
+  parse_error(p, p->current, true,
       "expect %s in listing", token_cstring(delim));
   next(p);
   consume(p, end, "expect listing end");
@@ -573,7 +574,7 @@ static void invocation(Parse *p, int min_bp)
       TK_LPAREN, TK_COMMA, TK_RPAREN, false); // Parse argument list.
 
   if (!emit_var_op(code(p), paren.line, OP_CALL, arity))
-    parse_error(p, paren, "too many parameters to function");
+    parse_error(p, paren, true, "too many parameters to function");
 }
 
 // [a, b, c]
@@ -583,7 +584,7 @@ static void list(Parse *p)
   size_t list_len = delimited_listing(p, TK_LBRACK, TK_COMMA, TK_RBRACK, true);
 
   if (!emit_var_op(code(p), bracket.line, OP_BUILD_LIST, list_len))
-    parse_error(p, bracket, "too many list items");
+    parse_error(p, bracket, true, "too many list items");
 }
 
 static void construct_body(Parse *p)
@@ -788,7 +789,7 @@ static void using(Parse *p)
       NativesTable_get(&p->vm->natives_table, name);
 
     if (native_idx == NULL)
-      parse_error(p, ident_tok,
+      parse_error(p, ident_tok, true,
           "no native function named %.*s", (int)name.len, name.s);
     else
       emit_constant(p, ident_tok.line, value_new(*native_idx, native));
@@ -870,7 +871,7 @@ static void metastring(Parse *p)
   }
 
   if (!emit_var_op(code(p), tok.line, OP_BUILD_STR, metas))
-    parse_error(p, tok, "too many metastrings");
+    parse_error(p, tok, true, "too many metastrings");
 }
 
 static void assign_local(Parse *p)
@@ -887,7 +888,7 @@ static void ident_str(Parse *p, Token ident_tok)
 
   Local *local = resolve_local(p, ident);
   if (!local) {
-    parse_error(p, ident_tok, "use of undeclared variable %.*s",
+    parse_error(p, ident_tok, true, "use of undeclared variable %.*s",
         (int)ident.len, ident.s);
     return;
   }
@@ -900,7 +901,7 @@ static void ident_str(Parse *p, Token ident_tok)
     if (local->initialized)
       emit_var_op(code(p), ident_tok.line, OP_GET, local->stack_slot);
     else
-      parse_error(p, ident_tok, "variable %.*s has not been initialized",
+      parse_error(p, ident_tok, true, "variable %.*s has not been initialized",
           (int)ident.len, ident.s);
   }
 }
@@ -916,7 +917,7 @@ static void ident(Parse *p)
 static void fn_decl(Parse *p, Token ident_tok)
 {
   if (!consume_arg_list_start(p))
-    parse_error(p, p->current, "expect argument list");
+    parse_error(p, p->current, true, "expect argument list");
 
   Str name = ident_tok.slice;
   Locals args = consume_arg_list(p);
@@ -948,7 +949,7 @@ static void let(Parse *p)
   Local *local = create_local_var(p, ident_tok.slice);
 
   if (p->current.type == TK_EQ)
-    parse_error(p, p->current, "did you mean `:=`?");
+    parse_error(p, p->current, true, "did you mean `:=`?");
 
   if (match(p, TK_ASSIGN)) {
     const int assign_r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
@@ -976,7 +977,7 @@ static void block(Parse *p)
   Token curly_tok = eat(p); // {
 
   if (p->current.type == TK_RCURLY) {
-    parse_error(p, eat(p), "illegal empty block");
+    parse_error(p, eat(p), true, "illegal empty block");
     return;
   }
 
@@ -994,7 +995,7 @@ static void block(Parse *p)
   for (; !match(p, TK_RCURLY); stmts++, p->c->stack_slot_count++) {
     // Consume tokens until a semicolon is found.
     while (!match(p, TK_SEMICOLON) && !semantic(p)->insert_semicolon)
-      parse_error(p, eat(p), "expect semicolon");
+      parse_error(p, eat(p), true, "expect semicolon");
 
     semantic(p)->insert_semicolon = false;
     semantic(p)->panic = false; // Synchronize error state between statements.
@@ -1027,7 +1028,7 @@ static void expr(Parse *p, int min_bp)
   NudRule lhs_rule = parse_rule(lhs_token.type)->nud;
 
   if (lhs_rule == NULL)
-    parse_error(p, lhs_token, "expect expression, got `%.*s`",
+    parse_error(p, lhs_token, true, "expect expression, got `%.*s`",
         (int)lhs_token.slice.len, lhs_token.slice.s);
   else
     lhs_rule(p);
@@ -1040,13 +1041,13 @@ static void expr(Parse *p, int min_bp)
       if (semantic(p)->in_stmt) {
         if (semantic(p)->insert_semicolon) break;
 
-        parse_error(p, op_token, "unexpected `%.*s`, did you mean to add `;`?",
+        parse_error(p, op_token, true, "unexpected `%.*s`, did you mean to add `;`?",
             (int)op_token.slice.len, op_token.slice.s);
 
         semantic(p)->insert_semicolon = true; break; // "Insert" semicolon.
       }
 
-      parse_error(p, op_token, "expect operator, got `%.*s`",
+      parse_error(p, op_token, true, "expect operator, got `%.*s`",
           (int)op_token.slice.len, op_token.slice.s);
 
       next(p); continue; // Consume tokens until a valid operator is found.
@@ -1156,7 +1157,6 @@ static Parse init_parse(Varmint *vm, char *source)
   p.vm = vm;
 
   p.lex = lex_new(source);
-  next(&p); next(&p);
 
   p.had_error = false;
   p.semantic = SemanticData_init();
@@ -1184,6 +1184,7 @@ Procedure *compile(Varmint *vm, char *source)
   sem.panic = false;
   SemanticData_push(&p.semantic, sem);
 
+  next(&p); next(&p);
   expr(&p, PREC_NONE);
 
   free(p.semantic.data);
