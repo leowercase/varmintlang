@@ -103,16 +103,42 @@ Value _vm_concat(Varmint *vm, Value head, Value tail)
 
 Value _vm_in(Varmint *vm, Value x, Value collection)
 {
-  List *list = typechecked(vm, collection, list);
+  bool contains = false;
 
-  for (size_t i = 0; i < list->len; i++) {
-    Value elem = list->data[i];
+  switch (collection.type) {
+  case V_list:
+    for (size_t i = 0; i < collection.as.list->len; i++) {
+      Value elem = collection.as.list->data[i];
+      if (values_eq(x, elem)) {
+        contains = true; break;
+      }
+    }
+    break;
+  case V_string:
+    {
+      String *string = collection.as.string;
+      String *substring = typechecked(vm, x, string);
 
-    if (values_eq(x, elem))
-      return value_new(true, boolean);
+      if (substring->len == 0 || substring->len > string->len) {
+        contains = false; break;
+      }
+
+      for (size_t i = 0; string->len - i >= substring->len; i++) {
+        char *c = &string->s[i];
+
+        if (*c == substring->s[0]
+            && strncmp(&c[1], &substring->s[1], substring->len - 1) == 0) {
+          contains = true; break;
+        }
+      }
+      break;
+    }
+  default:
+    runtime_error(vm, "`in`: expect collection, got %s\n",
+        value_type_cstring(collection.type));
   }
 
-  return value_new(false, boolean);
+  return value_new(contains, boolean);
 }
 
 Value _vm_notin(Varmint *vm, Value x, Value collection)
