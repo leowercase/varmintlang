@@ -49,6 +49,8 @@ static void init_compiler(Parse *p, Locals args)
   c->locals = args;
   c->stack_slot_count = args.len;
 
+  c->loops = LoopStack_init();
+
   // Switch compilers.
   // We're one function nesting level deeper.
   c->enclosing = p->c;
@@ -104,16 +106,21 @@ static Value *emit_constant(Parse *p, size_t line, Value value)
   return constant;
 }
 
+static void patch_jump_to(Parse *p, Token loop_tok,
+    size_t jmp_operand_idx, size_t jumpable_code)
+{
+  if (jumpable_code > UINT16_MAX)
+    parse_error(p, loop_tok, true, "Too much code to jump over");
+
+  patch_op(code(p), jmp_operand_idx, (uint16_t)jumpable_code);
+}
+
 // Patch a jumping instruction
 static void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
 {
   // 2 slots account for the 16-bit operand.
   size_t jumpable_code = code(p)->instructions.len - jmp_operand_idx - 2;
-
-  if (jumpable_code > UINT16_MAX)
-    parse_error(p, jmp_tok, true, "too much code to jump over");
-
-  patch_op(code(p), jmp_operand_idx, (uint16_t)jumpable_code);
+  patch_jump_to(p, jmp_tok, jmp_operand_idx, jumpable_code);
 }
 
 // Emit a looping instruction
@@ -130,7 +137,7 @@ static void emit_loop(Parse *p, Token loop_tok, Opcode loopcode,
 }
 
 // Emit the end of a block
-static void block_end(Parse *p, Token block_tok, size_t slots, bool has_result)
+static void end_block(Parse *p, Token block_tok, size_t slots, bool has_result)
 {
   p->c->stack_slot_count -= slots;
   if (slots == 1 && has_result) return;
@@ -231,6 +238,11 @@ static Token consume(Parse *p, TokenType expected, char *const msg)
 
 static const ParseRule *parse_rule(TokenType t);
 static void expr(Parse *p, int min_bp);
+
+static inline bool is_expr(Parse *p)
+{
+  return parse_rule(p->current.type)->nud != NULL;
+}
 
 typedef struct {
   Op type;
@@ -587,10 +599,10 @@ static void list(Parse *p)
     parse_error(p, bracket, true, "too many list items");
 }
 
-static void construct_body(Parse *p)
+static void construct_body(Parse *p, Precedence prec)
 {
   consume(p, TK_COLON, "expect `:`");
-  const int r_bp = (int)PREC_BASE + (int)ASSOC_LEFT;
+  int r_bp = (int)prec + (int)ASSOC_RIGHT;
   expr(p, r_bp);
 }
 
@@ -608,7 +620,7 @@ static void if_expr(Parse *p)
   size_t operand_idx = defer_op(code(p), if_tok.line, OP_IF);
 
   // Parse conditional value.
-  construct_body(p);
+  construct_body(p, PREC_IF);
 
   if (is_else(p)) {
     code(p)->instructions.data[operand_idx - 1] = OP_JMP_WHEN_FALSE;
@@ -626,7 +638,7 @@ static void if_expr(Parse *p)
 static void else_elif(Parse *p, int min_bp)
 {
   // else and elif are left-denoted operators.
-  if (PREC_BASE < min_bp) {
+  if (PREC_ELSE < min_bp) {
     semantic(p)->led_fail = true;
     return;
   }
@@ -645,14 +657,57 @@ static void else_elif(Parse *p, int min_bp)
   semantic(p)->if_else_chained = false;
 
   if (is_elif) if_expr(p);
-  else { next(p); construct_body(p); }
+  else { next(p); construct_body(p, PREC_ELSE); }
 
   patch_jump(p, else_tok, operand_idx);
+}
+
+static Str loop_label(Parse *p)
+{
+  if (p->current.type == TK_LABEL) {
+    Str label = eat(p).slice;
+    label.s++; label.len--; // Cut out '
+    return label;
+  }
+  else return NULL_STR;
 }
 
 static inline bool consume_comprehension(Parse *p)
 {
   return match(p, TK_LBRACK) && match(p, TK_RBRACK);
+}
+
+static inline Loop *init_loop(Parse *p)
+{
+  Loop loop;
+
+  loop.breaks = JumpIndices_init();
+  loop.continues = JumpIndices_init();
+  loop.start = code(p)->instructions.len;
+
+  loop.stack_slot = p->c->stack_slot_count;
+
+  loop.label = loop_label(p);
+
+  return LoopStack_push(&p->c->loops, loop);
+}
+
+static inline void end_loop(Parse *p, Token loop_tok, Loop *loop)
+{
+  // Patch instructions breaking out of the loop
+  for (size_t i = 0; i < loop->breaks.len; i++)
+    patch_jump(p, loop_tok, loop->breaks.data[i]);
+
+  // ...And those continuing to the next iteration
+  for (size_t i = 0; i < loop->continues.len; i++) {
+    size_t continue_idx = loop->continues.data[i];
+    patch_jump_to(p, loop_tok,
+        continue_idx,
+        // 2 accounts for the operands
+        loop->iter - continue_idx - 2);
+  }
+
+  LoopStack_pop(&p->c->loops);
 }
 
 // loop for while
@@ -683,11 +738,12 @@ static void loop_expr(Parse *p)
     emit_byte(code(p), line, OP_LIST_COMPREHEND);
     p->c->stack_slot_count++;
   }
-  else
-    emit_byte(code(p), line, OP_RESERVE_SLOT);
+  else emit_byte(code(p), line, OP_RESERVE_SLOT);
 
   // Loop start
-  size_t start = code(p)->instructions.len;
+  Loop *loop = init_loop(p);
+  loop->is_for = type == TK_FOR;
+  loop->is_list_compre = is_list_compre;
 
   // Emit conditional jump
   size_t jmp_idx = false;
@@ -713,7 +769,9 @@ static void loop_expr(Parse *p)
   }
 
   // Parse loop body
-  construct_body(p);
+  construct_body(p, PREC_TOP);
+  loop->iter = code(p)->instructions.len;
+
   // Increment counter variable at the end of for
   if (type == TK_FOR)
     emit_var_op(code(p), p->current.line, OP_FOR_INCREMENT, for_counter_slot);
@@ -721,11 +779,13 @@ static void loop_expr(Parse *p)
   // Emit the looping instruction
   emit_loop(p, tok,
       is_list_compre ? OP_LOOP_LIST : OP_LOOP,
-      start);
+      loop->start);
+
+  // Loop end
+  end_loop(p, tok, loop);
   // Land the conditional jump here.
   if (jmp_idx) patch_jump(p, tok, jmp_idx);
 
-  // Loop end
   if (type == TK_FOR) {
     Locals_pop(&p->c->locals); // Loop variable
     p->c->stack_slot_count -= 3;
@@ -734,39 +794,85 @@ static void loop_expr(Parse *p)
     p->c->stack_slot_count--;
 }
 
-static void handle_flow(Parse *p, int breaks, bool continues)
+static Loop *resolve_loop(Parse *p, Token control_flow)
 {
-  printf("TODO\n");
-  abort();
+  Token label_tok = p->current;
+  Str label = loop_label(p);
+
+  if (p->c->loops.len == 0) {
+    parse_error(p, control_flow, true,
+        "can only `%.*s` in a loop",
+          (int)control_flow.slice.len, control_flow.slice.s);
+    return NULL;
+  }
+  Loop *loop = LoopStack_top(&p->c->loops);
+
+  if (label.s == NULL) return loop;
+  // Find matching label
+  for (; loop >= p->c->loops.data; loop--)
+    if (strs_eq(label, loop->label)) return loop;
+
+  parse_error(p, label_tok, true, "invalid label");
+  return NULL;
 }
 
-// break [... break] [continue]
-static void loop_break(Parse *p)
+// Emit the result of a control flow keyword
+static void control_flow_result(Parse *p)
 {
-  int breaks;
-  for (breaks = 0; match(p, TK_BREAK); breaks++);
-  bool continues = match(p, TK_CONTINUE);
-  handle_flow(p, breaks, continues);
+  bool has_result = is_expr(p);
+
+  const int r_bp = (int)PREC_FLOW + (int)ASSOC_LEFT;
+  if (has_result) expr(p, r_bp); // Parse resulting value.
+
+  else emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
 }
 
-// continue
-static void loop_cont(Parse *p)
+// break [value]
+// continue [value]
+static void loop_flow(Parse *p)
 {
-  handle_flow(p, 0, true);
+  Token tok = eat(p);
+
+  Loop *loop = resolve_loop(p, tok);
+  control_flow_result(p);
+
+  if (loop == NULL) return;
+
+  Opcode opcode;
+  JumpIndices *worklist;
+
+  // 1 accounts for the resulting value.
+  size_t slots = p->c->stack_slot_count - loop->stack_slot + 1;
+
+  if (tok.type == TK_CONTINUE && loop->is_for)
+    slots--; // Don't discard the loop variable yet.
+
+  // Discard the stack slots occupied.
+  if (!emit_var_op(code(p), tok.line, OP_END_BLOCK, slots))
+    parse_error(p, tok, true, "loop occupies too many stack slots");
+
+  if (tok.type == TK_BREAK) {
+    worklist = &loop->breaks;
+    opcode = loop->is_list_compre ? OP_BREAK_LIST : OP_BREAK;
+
+    if (loop->is_for)
+      emit_byte(code(p), tok.line,
+          loop->is_list_compre ? OP_DISCARD_FOR_LIST : OP_DISCARD_FOR);
+  }
+  else {
+    worklist = &loop->continues;
+    opcode = OP_JMP;
+  }
+
+  size_t jmp_idx = defer_op(code(p), tok.line, opcode);
+  JumpIndices_push(worklist, jmp_idx);
 }
 
 // return [value]
 static void returnage(Parse *p)
 {
   Token return_tok = eat(p);
-  bool has_return_value = parse_rule(p->current.type)->nud != NULL;
-
-  const int r_bp = (int)PREC_BASE + (int)ASSOC_LEFT;
-  if (has_return_value)
-    expr(p, r_bp); // Parse return value.
-  else
-    emit_byte(code(p), return_tok.line, OP_RESERVE_SLOT);
-
+  control_flow_result(p);
   emit_byte(code(p), return_tok.line, OP_RETURN);
 }
 
@@ -799,10 +905,10 @@ static void using(Parse *p)
     p->c->stack_slot_count++;
   } while (match(p, TK_COMMA));
 
-  construct_body(p);
+  construct_body(p, PREC_TOP);
 
   clear_local_scope(p);
-  block_end(p, tok, native_count + 1, true);
+  end_block(p, tok, native_count + 1, true);
   p->c->depth--;
 }
 
@@ -994,8 +1100,11 @@ static void block(Parse *p)
   // Consume statements ...;
   for (; !match(p, TK_RCURLY); stmts++, p->c->stack_slot_count++) {
     // Consume tokens until a semicolon is found.
-    while (!match(p, TK_SEMICOLON) && !semantic(p)->insert_semicolon)
-      parse_error(p, eat(p), true, "expect semicolon");
+    while (!match(p, TK_SEMICOLON) && !semantic(p)->insert_semicolon) {
+      Token tok = eat(p);
+      if (tok.type == TK_EOF) goto end;
+      parse_error(p, tok, true, "expect semicolon");
+    }
 
     semantic(p)->insert_semicolon = false;
     semantic(p)->panic = false; // Synchronize error state between statements.
@@ -1011,8 +1120,9 @@ static void block(Parse *p)
     stmt(p);
   }
 
+end:
   clear_local_scope(p);
-  block_end(p, curly_tok, stmts, block_has_result);
+  end_block(p, curly_tok, stmts, block_has_result);
   p->c->depth--;
 
   end_semantic_scope(p);
@@ -1110,8 +1220,8 @@ static const ParseRule parse_rules[] =
     [TK_FOR]       = { loop_expr,  NULL       },
     [TK_WHILE]     = { loop_expr,  NULL       },
 
-    [TK_BREAK]     = { loop_break, NULL       },
-    [TK_CONTINUE]  = { loop_cont,  NULL       },
+    [TK_BREAK]     = { loop_flow,  NULL       },
+    [TK_CONTINUE]  = { loop_flow,  NULL       },
     [TK_RETURN]    = { returnage,  NULL       },
 
     [TK_USING]     = { using,      NULL       },
@@ -1144,6 +1254,7 @@ static const ParseRule parse_rules[] =
     [TK_STREND]    = { string,     led_end    },
 
     [TK_WORD]      = { ident,      NULL       },
+    [TK_LABEL]     = { NULL,       led_end    },
  };
 
 static const ParseRule *parse_rule(TokenType type)
@@ -1168,12 +1279,12 @@ static Parse init_parse(Varmint *vm, char *source)
 
 Procedure *compile(Varmint *vm, char *source)
 {
-  Parse p = init_parse(vm, source);
-
-  if (p.current.type == TK_EOF) {
+  if (*source == '\0') {
     error_out("empty file\n");
     return NULL;
   }
+
+  Parse p = init_parse(vm, source);
 
   SemanticDatum sem;
   sem.assign_fn = NULL;

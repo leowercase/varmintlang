@@ -181,6 +181,13 @@ static Token word(Lex *lex)
   return word;
 }
 
+static Token label(Lex *lex)
+{
+  Token label = word(lex);
+  label.type = TK_LABEL;
+  return label;
+}
+
 static void skip_rest_line(Lex *lex)
 {
   char c;
@@ -247,6 +254,11 @@ Token lex_token(Lex *lex)
   // One or two character tokens
   next(lex);
   switch (c) {
+  case '\'':
+    if (is_ident_beginning(*lex->current))
+      return label(lex);
+    break;
+
   case '(':
     current_unmatched(lex)->parens++;
     return token(lex, TK_LPAREN);
@@ -353,7 +365,7 @@ char *const token_cstring(const TokenType type)
   case_(COLON) case_(SEMICOLON) case_(COMMA)
   case_(NUMERAL)
   case_(STRCONT) case_(STREND)
-  case_(WORD)
+  case_(WORD) case_(LABEL)
   }
 
 #undef case_

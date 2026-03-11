@@ -35,6 +35,29 @@ typedef DYN_ARRAY_STRUCT(Local) Locals;
 #define ARR Locals
 #include "generic/dyn_array.inc"
 
+// Stack of jumps queued to a loop.
+typedef DYN_ARRAY_STRUCT(size_t) JumpIndices;
+#define T size_t
+#define ARR JumpIndices
+#include "generic/dyn_array.inc"
+
+// Loops can be continued or broken out of.
+typedef struct {
+  Str label; // Label identifier for multi-level breaks/continues
+  JumpIndices breaks;
+  JumpIndices continues;
+  size_t stack_slot;
+  size_t start, // Index of the first instruction in the loop.
+         iter; // Index of the looping instruction
+  bool is_for, is_list_compre;
+} Loop;
+
+// Similar to the locals array, except for loop labels.
+typedef DYN_ARRAY_STRUCT(Loop) LoopStack;
+#define T Loop
+#define ARR LoopStack
+#include "generic/dyn_array.inc"
+
 // Info about the current expression being parsed.
 typedef struct SemanticDatum {
   void (*assign_fn)(Parse *p); // Assignment function for left hand side
@@ -75,14 +98,18 @@ typedef struct Compiler {
   struct Compiler *enclosing;
   Locals locals;
   size_t stack_slot_count;
+  LoopStack loops;
   int depth; // Current block depth { { ... } }
   Procedure *procedure;
 } Compiler;
 
 typedef enum {
   PREC_NONE,
-  PREC_BASE,      // else: elif:
   PREC_ASSIGN,    // :=
+  PREC_TOP,       // loop: for x in iter: while P: using f, g, h:
+  PREC_ELSE,      // else: elif P:
+  PREC_IF,        // if P:
+  PREC_FLOW,      // break continue return
   PREC_MAPLET,    // =>
   PREC_OR,        // or
   PREC_AND,       // and

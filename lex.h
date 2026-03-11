@@ -45,7 +45,7 @@ typedef enum {
   TK_COLON, TK_SEMICOLON, TK_COMMA,
   TK_NUMERAL,
   TK_STRCONT, TK_STREND,
-  TK_WORD,
+  TK_WORD, TK_LABEL,
 } TokenType;
 
 static inline

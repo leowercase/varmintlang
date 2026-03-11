@@ -98,6 +98,17 @@ static void loop_result(Varmint *vm, Value result)
       ? Maybe_none() : Maybe_some(vm, result));
 }
 
+static void list_comprehend(Varmint *vm, Value value)
+{
+  if (value.type == V_no)
+    runtime_error(vm, "must provide value for list comprehension\n");
+
+  Value list_val = peek(vm, 0);
+  assert(list_val.type == V_list);
+
+  List_push(vm, list_val.as.list, value);
+}
+
 static bool for_loop_next(Varmint *vm, Value iterable, size_t counter)
 {
   // Value of the loop variable
@@ -379,9 +390,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     // A loop that creates a list from its cycles' values
   case_16_op(OP_LOOP_LIST, loopable_code,
     {
-      Value result = pop(vm); // What the last cycle evaluated to
-      List_push(vm, peek(vm, 0).as.list, result);
-
+      list_comprehend(vm, pop(vm));
       vm->frame->ip -= loopable_code;
       break;
     })
@@ -430,9 +439,9 @@ static inline bool execute_instruction(Varmint *restrict vm)
       Value iterable = peek(vm, 2);
 
       if (!for_loop_next(vm, iterable, counter)) {
-        Value result = pop(vm);
+        Value result_list = pop(vm);
         popn(vm, 2);
-        push(vm, result);
+        push(vm, result_list);
         vm->frame->ip += jumpable_code;
       }
       break;
@@ -441,13 +450,50 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case_var_op(OP_FOR_INCREMENT, stack_slot,
     {
       Value result = pop(vm);
-
       pop(vm); // Loop variable
+
+      assert(vm->op_stack.data[stack_slot].type == V_number);
       vm->op_stack.data[stack_slot].as.number++;
 
       push(vm, result);
       break;
     })
+
+  case_16_op(OP_BREAK, jumpable_code,
+    {
+      loop_result(vm, pop(vm));
+      vm->frame->ip += jumpable_code;
+      break;
+    })
+  case_16_op(OP_BREAK_LIST, jumpable_code,
+    {
+      list_comprehend(vm, pop(vm));
+      vm->frame->ip += jumpable_code;
+      break;
+    })
+
+  case OP_DISCARD_FOR:
+    {
+      Value result = pop(vm);
+
+      // Discard the counter and iterable
+      popn(vm, 2);
+
+      push(vm, result);
+      break;
+    }
+  case OP_DISCARD_FOR_LIST:
+    {
+      Value result = pop(vm);
+      Value list = pop(vm);
+
+      // Discard the counter and iterable
+      popn(vm, 2);
+
+      push(vm, list);
+      push(vm, result);
+      break;
+    }
 
     // Call a value
   case_var_op(OP_CALL, argc,

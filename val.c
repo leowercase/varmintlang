@@ -230,12 +230,9 @@ Value value_to_string(Varmint *vm, Value val)
     return val.as.boolean ? String_from(vm, "True") : String_from(vm, "False");
   case V_maybe:
     if (val.as.maybe == NULL)
-      return String_from(vm, "None");
-    else {
-      String *some = value_to_string(vm, val.as.maybe->raw).as.string;
-      return
-        String_fmt(vm, "Some(%.*s)", (int)some->len, some->s);
-    }
+      return String_from(vm, "");
+    else
+      return value_to_string(vm, val.as.maybe->raw);
   case V_string:
     return String_copy(vm, &val);
   case V_list:
