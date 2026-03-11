@@ -1,0 +1,2 @@
+5 + "Heyo!"
+# expect type number for addend, got string

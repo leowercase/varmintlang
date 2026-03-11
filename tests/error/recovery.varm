@@ -1,0 +1,8 @@
+{
+  12 * / 5;
+  let ({} -)
+}
+# expect expression, got `/`
+# expect identifier after `let`
+# illegal empty block
+# expect expression, got `)`

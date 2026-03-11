@@ -1,0 +1,15 @@
+using put, putln, prompt, to_number:
+{
+  let failure := False;
+
+  let n := to_number(prompt("Type a number! "))
+  else: { failure := True; 1 };
+
+  if n <= 0:
+    putln("Type a positive number.")
+  elif failure:
+    putln("You must type a number.")
+  else:
+    putln("Two to the power of your number is \(2^n)");
+}
+

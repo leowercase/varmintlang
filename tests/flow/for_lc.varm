@@ -1,0 +1,10 @@
+for[] i in ["Fee", "Fi", "Fo", "Fum"]:
+  using putln, lenof: {
+    let len := lenof(i);
+    putln("\(i) of length \(len)"); len
+  }
+# Fee of length 3
+# Fi of length 2
+# Fo of length 2
+# Fum of length 3
+# [3, 2, 2, 3]

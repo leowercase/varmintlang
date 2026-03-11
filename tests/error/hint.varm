@@ -1,0 +1,6 @@
+{
+  1 + 2
+  let x = 3
+}
+# unexpected `let`, did you mean to add `;`?
+# did you mean `:=`?
