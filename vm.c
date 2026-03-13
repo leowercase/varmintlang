@@ -244,6 +244,15 @@ static inline bool execute_instruction(Varmint *restrict vm)
       return running;
     }
 
+    // Duplicate two stack slots.
+  case OP_DUP_2:
+    {
+      Value one = peek(vm, 1), two = peek(vm, 0);
+      push(vm, one);
+      push(vm, two);
+      break;
+    }
+
     // Weaves a list.
   case_var_op(OP_BUILD_LIST, len,
     {

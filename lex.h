@@ -50,6 +50,16 @@ typedef enum {
 } TokenType;
 
 static inline
+bool is_infix_op(TokenType t)
+{
+  return (TK_PLUS <= t && t <= TK_PERCENT)
+    || (TK_2PIPE <= t && t <= TK_GEQ)
+    || (TK_AND <= t && t <= TK_MOD)
+    || t == TK_ARROW
+    || t == TK_DOTDOT || t == TK_DOTDOTEQ;
+}
+
+static inline
 bool is_ident_beginning(char c)
 {
   return isalpha(c) || c == '_';

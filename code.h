@@ -20,6 +20,7 @@ typedef enum {
   OP_ZERO,
   OP_ONE,
   OP_CHAIN_BINOP,
+  OP_DUP_2,
   OP_BUILD_LIST,
   OP_BUILD_LIST16,
   OP_BUILD_STR,

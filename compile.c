@@ -435,11 +435,22 @@ static void subscript(Parse *p, int min_bp)
   expr(p, PREC_NONE);
   consume(p, TK_RBRACK, "unterminated subscript"); // ]
 
-  if (p->current.type != TK_ASSIGN)
+  if (p->current.type != TK_ASSIGN) {
+    bool compound =
+        is_infix_op(p->current.type) && peek(p).type == TK_ASSIGN;
+
+    if (compound)
+      // Compound assign.
+      emit_byte(code(p), brack_tok.line, OP_DUP_2);
+
     // Access.
     emit_byte(code(p), brack_tok.line, OP_INDEXED_GET);
 
-  else if (semantic(p)->assign_fn == NULL)
+    if (!compound) return;
+  }
+
+  // Assign.
+  if (semantic(p)->assign_fn == NULL)
     parse_error(p, brack_tok, true, "invalid list assign");
 
   semantic(p)->assign_fn = indexed_assign;
