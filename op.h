@@ -39,6 +39,8 @@ typedef enum {
   OP_GEQ,
   OP_IN,
   OP_NOTIN,
+  OP_RANGE,
+  OP_RANGE_IN,
   OP_CONCAT,
 } BinOp;
 

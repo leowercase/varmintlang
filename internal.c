@@ -93,6 +93,13 @@ Value _vm_greater_than(Varmint *vm, Value a, Value b)
 Value _vm_greater_than_or_eq(Varmint *vm, Value a, Value b)
   BINOP_(a, >=, b, number, boolean)
 
+Value _vm_range(Varmint *vm, Value left, Value right, bool inclusive)
+{
+  float64_t a = typechecked(vm, left, number),
+            b = typechecked(vm, right, number);
+  return Range_create(vm, a, b, inclusive);
+}
+
 Value _vm_concat(Varmint *vm, Value head, Value tail)
 {
   if (head.type != V_string || tail.type != V_string)
@@ -106,6 +113,16 @@ Value _vm_in(Varmint *vm, Value x, Value collection)
   bool contains = false;
 
   switch (collection.type) {
+  case V_range:
+    {
+      Range *range = collection.as.range;
+      float64_t n = typechecked(vm, x, number);
+      contains =
+        range->inclusive
+          ? range->start <= n && n <= range->end
+          : range->start <= n && n < range->end;
+      break;
+    }
   case V_list:
     for (size_t i = 0; i < collection.as.list->len; i++) {
       Value elem = collection.as.list->data[i];
@@ -147,6 +164,7 @@ Value _vm_notin(Varmint *vm, Value x, Value collection)
       value_is_falsey(_vm_in(vm, x, collection)), boolean);
 }
 
+// Allow indexing from the top with negative numbers.
 static size_t index_into(Varmint *vm, size_t len, Value idx)
 {
   float64_t _idx = typechecked(vm, idx, number);
@@ -159,21 +177,33 @@ static size_t index_into(Varmint *vm, size_t len, Value idx)
     actual_idx = (size_t)_idx;
 
   if (actual_idx >= len)
-    runtime_error(vm, "list index [%li] out of range (length %li)\n",
-        _idx, len);
+    runtime_error(vm, "index [%li] out of range (length %li)\n", _idx, len);
 
   return actual_idx;
 }
 
-static inline Value *index_list(Varmint *vm, Value list, Value idx)
+static inline Value *index_list(Varmint *vm, List *list, Value idx)
 {
-  List *_list = typechecked(vm, list, list);
-  return &_list->data[index_into(vm, _list->len, idx)];
+  return &list->data[index_into(vm, list->len, idx)];
+}
+
+static inline float64_t *index_range(Varmint *vm, Range *range, Value idx)
+{
+  float64_t range_index = typechecked(vm, idx, number);
+  if (range_index == 0)
+    return &range->start;
+  else if (range_index == 1)
+    return &range->end;
+  else
+    runtime_error(vm, "invalid range index %g", range_index);
+  unreachable();
 }
 
 Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
 {
   switch (collection.type) {
+  case V_range:
+    return value_new(*index_range(vm, collection.as.range, idx), number);
   case V_string:
     {
       String *string = collection.as.string;
@@ -181,11 +211,11 @@ Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
       return String_create(vm, &c, 1);
     }
   case V_list:
-    return *index_list(vm, collection, idx);
+    return *index_list(vm, collection.as.list, idx);
   default:
     runtime_error(vm, "cannot index into %s\n",
         value_type_cstring(collection.type));
-    return NO_VALUE;
+    unreachable();
   }
 }
 
@@ -200,13 +230,25 @@ static Value set_string_idx(Varmint *vm, String *string, Value idx, Value val)
 
 Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
 {
-  if (collection.type == V_string)
+  switch (collection.type) {
+  case V_range:
+    {
+      *index_range(vm, collection.as.range, idx) =
+        typechecked(vm, val, number);
+      return val;
+    }
+  case V_string:
     return set_string_idx(vm, collection.as.string, idx, val);
-
-  else {
-    Value *elem = index_list(vm, collection, idx);
-    *elem = val;
-    return *elem;
+  case V_list:
+    {
+      Value *elem = index_list(vm, collection.as.list, idx);
+      *elem = val;
+      return val;
+    }
+  default:
+    runtime_error(vm, "cannot index into %s\n",
+        value_type_cstring(collection.type));
+    unreachable();
   }
 }
 
@@ -223,12 +265,17 @@ Value _lenof(Varmint *vm, Value *args)
   Value collection = args[0];
 
   switch (collection.type) {
+  case V_range:
+    {
+      float64_t len = collection.as.range->end - collection.as.range->start;
+      return value_new(len, number);
+    }
   case V_string:
     return value_new((float64_t)collection.as.string->len, number);
   case V_list:
     return value_new((float64_t)collection.as.list->len, number);
   default:
-    runtime_error(vm, "expect type string or list for collection, got %s",
+    runtime_error(vm, "expect collection type, got %s",
         value_type_cstring(collection.type));
     return NO_VALUE;
   }
@@ -306,6 +353,7 @@ Value _to_number(Varmint *vm, Value *args)
 
       break;
     }
+  case V_range:
   case V_native:
   case V_maybe:
   case V_list:

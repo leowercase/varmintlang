@@ -305,27 +305,30 @@ static void assign(Parse *p, int min_bp)
 }
 
 static const BinaryOp infix_ops[] = {
-  [TK_PLUS]    = { OP_ADD,     PREC_TERM,   ASSOC_LEFT  },
-  [TK_MINUS]   = { OP_SUB,     PREC_TERM,   ASSOC_LEFT  },
-  [TK_STAR]    = { OP_MUL,     PREC_FACTOR, ASSOC_LEFT  },
-  [TK_SLASH]   = { OP_DIV,     PREC_FACTOR, ASSOC_LEFT  },
-  [TK_CARET]   = { OP_POW,     PREC_POWER,  ASSOC_RIGHT },
-  [TK_PERCENT] = { OP_MODULO,  PREC_FACTOR, ASSOC_LEFT  },
-  [TK_2PIPE]   = { OP_CONCAT,  PREC_CONCAT, ASSOC_LEFT  },
+  [TK_PLUS]     = { OP_ADD,      PREC_TERM,   ASSOC_LEFT  },
+  [TK_MINUS]    = { OP_SUB,      PREC_TERM,   ASSOC_LEFT  },
+  [TK_STAR]     = { OP_MUL,      PREC_FACTOR, ASSOC_LEFT  },
+  [TK_SLASH]    = { OP_DIV,      PREC_FACTOR, ASSOC_LEFT  },
+  [TK_CARET]    = { OP_POW,      PREC_POWER,  ASSOC_RIGHT },
+  [TK_PERCENT]  = { OP_MODULO,   PREC_FACTOR, ASSOC_LEFT  },
+  [TK_2PIPE]    = { OP_CONCAT,   PREC_CONCAT, ASSOC_LEFT  },
 
-  [TK_EQ]      = { OP_EQ,      PREC_CMP,    ASSOC_LEFT  },
-  [TK_NEQ]     = { OP_NEQ,     PREC_CMP,    ASSOC_LEFT  },
-  [TK_LT]      = { OP_LT,      PREC_CMP,    ASSOC_LEFT  },
-  [TK_LEQ]     = { OP_LEQ,     PREC_CMP,    ASSOC_LEFT  },
-  [TK_GT]      = { OP_GT,      PREC_CMP,    ASSOC_LEFT  },
-  [TK_GEQ]     = { OP_GEQ,     PREC_CMP,    ASSOC_LEFT  },
+  [TK_EQ]       = { OP_EQ,       PREC_CMP,    ASSOC_LEFT  },
+  [TK_NEQ]      = { OP_NEQ,      PREC_CMP,    ASSOC_LEFT  },
+  [TK_LT]       = { OP_LT,       PREC_CMP,    ASSOC_LEFT  },
+  [TK_LEQ]      = { OP_LEQ,      PREC_CMP,    ASSOC_LEFT  },
+  [TK_GT]       = { OP_GT,       PREC_CMP,    ASSOC_LEFT  },
+  [TK_GEQ]      = { OP_GEQ,      PREC_CMP,    ASSOC_LEFT  },
 
-  [TK_AND]     = { OP_AND,     PREC_AND,    ASSOC_LEFT  },
-  [TK_OR]      = { OP_OR,      PREC_OR,     ASSOC_LEFT  },
-  [TK_IN]      = { OP_IN,      PREC_IN,     ASSOC_LEFT  },
-  [TK_NOTIN]   = { OP_NOTIN,   PREC_IN,     ASSOC_LEFT  },
-  [TK_MOD]     = { OP_MODULO,  PREC_FACTOR, ASSOC_LEFT  },
-  [TK_ARROW]   = { OP_I9N,     PREC_I9N,    ASSOC_LEFT  },
+  [TK_AND]      = { OP_AND,      PREC_AND,    ASSOC_LEFT  },
+  [TK_OR]       = { OP_OR,       PREC_OR,     ASSOC_LEFT  },
+  [TK_IN]       = { OP_IN,       PREC_IN,     ASSOC_LEFT  },
+  [TK_NOTIN]    = { OP_NOTIN,    PREC_IN,     ASSOC_LEFT  },
+  [TK_MOD]      = { OP_MODULO,   PREC_FACTOR, ASSOC_LEFT  },
+  [TK_ARROW]    = { OP_I9N,      PREC_I9N,    ASSOC_LEFT  },
+
+  [TK_DOTDOT]   = { OP_RANGE,    PREC_RANGE,  ASSOC_RIGHT },
+  [TK_DOTDOTEQ] = { OP_RANGE_IN, PREC_RANGE,  ASSOC_RIGHT },
 };
 
 static void infix_op(Parse *p, int min_bp)
@@ -599,10 +602,10 @@ static void list(Parse *p)
     parse_error(p, bracket, true, "too many list items");
 }
 
-static void construct_body(Parse *p, Precedence prec)
+static void construct_body(Parse *p, Precedence prec, Associativity assoc)
 {
   consume(p, TK_COLON, "expect `:`");
-  int r_bp = (int)prec + (int)ASSOC_RIGHT;
+  int r_bp = (int)prec + (int)assoc;
   expr(p, r_bp);
 }
 
@@ -620,7 +623,7 @@ static void if_expr(Parse *p)
   size_t operand_idx = defer_op(code(p), if_tok.line, OP_IF);
 
   // Parse conditional value.
-  construct_body(p, PREC_IF);
+  construct_body(p, PREC_IF, ASSOC_LEFT);
 
   if (is_else(p)) {
     code(p)->instructions.data[operand_idx - 1] = OP_JMP_WHEN_FALSE;
@@ -657,7 +660,7 @@ static void else_elif(Parse *p, int min_bp)
   semantic(p)->if_else_chained = false;
 
   if (is_elif) if_expr(p);
-  else { next(p); construct_body(p, PREC_ELSE); }
+  else { next(p); construct_body(p, PREC_ELSE, ASSOC_RIGHT); }
 
   patch_jump(p, else_tok, operand_idx);
 }
@@ -769,7 +772,7 @@ static void loop_expr(Parse *p)
   }
 
   // Parse loop body
-  construct_body(p, PREC_TOP);
+  construct_body(p, PREC_TOP, ASSOC_RIGHT);
   loop->iter = code(p)->instructions.len;
 
   // Increment counter variable at the end of for
@@ -905,7 +908,7 @@ static void using(Parse *p)
     p->c->stack_slot_count++;
   } while (match(p, TK_COMMA));
 
-  construct_body(p, PREC_TOP);
+  construct_body(p, PREC_TOP, ASSOC_RIGHT);
 
   clear_local_scope(p);
   end_block(p, tok, native_count + 1, true);
@@ -1247,6 +1250,9 @@ static const ParseRule parse_rules[] =
     [TK_COLON]     = { NULL,       led_end    },
     [TK_SEMICOLON] = { NULL,       led_end    },
     [TK_COMMA]     = { NULL,       led_end    },
+
+    [TK_DOTDOT]    = { NULL,       infix_op   },
+    [TK_DOTDOTEQ]  = { NULL,       infix_op   },
 
     [TK_NUMERAL]   = { number,     NULL       },
 

@@ -29,6 +29,8 @@ Value _vm_less_than_or_eq(Varmint *vm, Value a, Value b);
 Value _vm_greater_than(Varmint *vm, Value a, Value b);
 Value _vm_greater_than_or_eq(Varmint *vm, Value a, Value b);
 
+Value _vm_range(Varmint *vm, Value left, Value right, bool inclusive);
+
 Value _vm_concat(Varmint *vm, Value head, Value tail);
 
 Value _vm_in(Varmint *vm, Value x, Value collection);

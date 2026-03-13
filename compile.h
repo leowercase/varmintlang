@@ -117,6 +117,7 @@ typedef enum {
   PREC_CMP,       // = != < > <= >=
   PREC_NOT,       // not
   PREC_IN,        // in notin
+  PREC_RANGE,     // .. ..=
   PREC_TERM,      // + -
   PREC_FACTOR,    // * / %
   PREC_CONCAT,    // ||

@@ -93,6 +93,8 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
   case_op(GEQ)
   case_op(IN)
   case_op(NOTIN)
+  case_op(RANGE)
+  case_op(RANGE_IN)
   case_op(CONCAT)
   }
 
