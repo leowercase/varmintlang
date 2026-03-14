@@ -187,23 +187,9 @@ static inline Value *index_list(Varmint *vm, List *list, Value idx)
   return &list->data[index_into(vm, list->len, idx)];
 }
 
-static inline float64_t *index_range(Varmint *vm, Range *range, Value idx)
-{
-  float64_t range_index = typechecked(vm, idx, number);
-  if (range_index == 0)
-    return &range->start;
-  else if (range_index == 1)
-    return &range->end;
-  else
-    runtime_error(vm, "invalid range index %g", range_index);
-  unreachable();
-}
-
 Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
 {
   switch (collection.type) {
-  case V_range:
-    return value_new(*index_range(vm, collection.as.range, idx), number);
   case V_string:
     {
       String *string = collection.as.string;
@@ -231,12 +217,6 @@ static Value set_string_idx(Varmint *vm, String *string, Value idx, Value val)
 Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
 {
   switch (collection.type) {
-  case V_range:
-    {
-      *index_range(vm, collection.as.range, idx) =
-        typechecked(vm, val, number);
-      return val;
-    }
   case V_string:
     return set_string_idx(vm, collection.as.string, idx, val);
   case V_list:

@@ -1,6 +1,0 @@
-using putln:
-{
-  let range := 9..=17;
-  range[1] +:= 1;
-  putln("Workin' \(range[0]) to \(range[1])")
-}
