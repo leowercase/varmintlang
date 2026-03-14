@@ -4,7 +4,6 @@
 #include "generic/dyn_array.h"
 #include "util.h"
 #include "val.h"
-#include "op.h"
 
 /*
  * Intermediate representation.
@@ -12,10 +11,34 @@
  */
 
 typedef enum {
-/*
-  OP_NOT, ...,
-  OP_ADD, ..., */
-  OP_CONST = NATIVE_OPERATOR_COUNT,
+  OP_NOT = 0,
+  OP_NEGATE,
+  OP_FACTORIAL,
+  OP_PERCENTAGE, // 100% a useful op
+  OP_UNWRAP,
+
+  OP_ADD,
+  OP_SUB,
+  OP_MUL,
+  OP_DIV,
+  OP_POW,
+  OP_MODULO,
+  OP_AND,
+  OP_OR,
+  OP_I9N,
+  OP_EQ,
+  OP_NEQ,
+  OP_LT,
+  OP_GT,
+  OP_LEQ,
+  OP_GEQ,
+  OP_IN,
+  OP_NOTIN,
+  OP_RANGE,
+  OP_RANGE_IN,
+  OP_CONCAT,
+
+  OP_CONST,
   OP_CONST16,
   OP_ZERO,
   OP_ONE,
@@ -27,7 +50,6 @@ typedef enum {
   OP_BUILD_STR16,
   OP_MAKE_SOME,
   OP_MAKE_NONE,
-  OP_UNWRAP,
   OP_GET,
   OP_GET16,
   OP_SET,
@@ -66,6 +88,9 @@ typedef enum {
 } Opcode;
 
 static_assert(OP_GC <= UINT8_MAX, "Oops! Too many opcodes.");
+
+static
+const Opcode OP_NONE = (Opcode)UINT8_MAX;
 
 typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
 #define T uint8_t

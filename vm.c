@@ -185,6 +185,19 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case OP_FACTORIAL:  UNARY(_vm_factorial(vm, operand))
   case OP_PERCENTAGE: UNARY(_vm_percentage(vm, operand))
 
+    // Unwrap optional, error if None.
+  case OP_UNWRAP:
+    {
+      Value unwrappee = pop(vm);
+      Maybe *optional = typechecked(vm, unwrappee, maybe);
+
+      if (optional == NULL)
+        runtime_error(vm, "unwrap of None\n");
+
+      push(vm, optional->raw);
+      break;
+    }
+
   case OP_ADD: BINARY(_vm_add(vm, lhs, rhs))
   case OP_SUB: BINARY(_vm_subtract(vm, lhs, rhs))
   case OP_MUL: BINARY(_vm_multiply(vm, lhs, rhs))
@@ -287,18 +300,6 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case OP_MAKE_NONE:
     push(vm, Maybe_none());
     break;
-    // Unwrap optional, error if None.
-  case OP_UNWRAP:
-    {
-      Value unwrappee = pop(vm);
-      Maybe *optional = typechecked(vm, unwrappee, maybe);
-
-      if (optional == NULL)
-        runtime_error(vm, "unwrap of None\n");
-
-      push(vm, optional->raw);
-      break;
-    }
 
     // Get a value on the stack.
   case_var_op(OP_GET, stack_slot,

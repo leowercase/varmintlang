@@ -71,11 +71,13 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
 
 #define case_op(name) case_(name, return offset + 1)
 
-  switch ((Op)instruction) {
+  switch ((Opcode)instruction) {
   case_op(NOT)
   case_op(NEGATE)
   case_op(FACTORIAL)
   case_op(PERCENTAGE)
+  case_op(UNWRAP)
+
   case_op(ADD)
   case_op(SUB)
   case_op(MUL)
@@ -96,9 +98,7 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
   case_op(RANGE)
   case_op(RANGE_IN)
   case_op(CONCAT)
-  }
 
-  switch ((Opcode)instruction) {
   case_var_op(CONST, constant)
   case_(ZERO,
     {
@@ -130,7 +130,6 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
   case_var_op(END_EMPTY_BLOCK, size)
   case_op(MAKE_SOME)
   case_op(MAKE_NONE)
-  case_op(UNWRAP)
   case_16_op(JMP, jump_fwd)
   case_16_op(JMP_WHEN_FALSE, jump_fwd)
   case_16_op(IF, jump_fwd)

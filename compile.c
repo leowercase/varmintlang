@@ -245,12 +245,12 @@ static inline bool is_expr(Parse *p)
 }
 
 typedef struct {
-  Op type;
+  Opcode type;
   Precedence precedence;
 } UnaryOp;
 
 typedef struct {
-  Op type;
+  Opcode type;
   Precedence precedence;
   Associativity associativity;
 } BinaryOp;
@@ -271,7 +271,7 @@ static void prefix_op(Parse *p)
 
 // Allows compound assignment shorthand +:=
 // https://en.cppreference.com/w/c/language/operator_assignment.html#Compound_assignment
-static inline void assignage(Parse *p, int min_bp, Op op_shorthand)
+static inline void assignage(Parse *p, int min_bp, Opcode op_shorthand)
 {
   if (PREC_ASSIGN < min_bp) {
     semantic(p)->led_fail = true;
