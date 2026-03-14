@@ -364,8 +364,9 @@ static inline bool is_prefix_and_infix(TokenType op)
 }
 
 static const UnaryOp postfix_ops[] = {
-  [TK_PERCENT] = { OP_PERCENTAGE, PREC_PERCENT   },
-  [TK_BANG]    = { OP_FACTORIAL,  PREC_FACTORIAL },
+  [TK_PERCENT]   = { OP_PERCENTAGE, PREC_PERCENT   },
+  [TK_BANG]      = { OP_FACTORIAL,  PREC_FACTORIAL },
+  [TK_UNWRAPPED] = { OP_UNWRAP,     PREC_ELSE      },
 };
 
 static void postfix_op(Parse *p, int min_bp)
@@ -634,7 +635,7 @@ static void if_expr(Parse *p)
   size_t operand_idx = defer_op(code(p), if_tok.line, OP_IF);
 
   // Parse conditional value.
-  construct_body(p, PREC_IF, ASSOC_LEFT);
+  construct_body(p, PREC_IF, 0);
 
   if (is_else(p)) {
     code(p)->instructions.data[operand_idx - 1] = OP_JMP_WHEN_FALSE;
@@ -783,7 +784,7 @@ static void loop_expr(Parse *p)
   }
 
   // Parse loop body
-  construct_body(p, PREC_TOP, ASSOC_RIGHT);
+  construct_body(p, PREC_TOP, 0);
   loop->iter = code(p)->instructions.len;
 
   // Increment counter variable at the end of for
@@ -919,7 +920,7 @@ static void using(Parse *p)
     p->c->stack_slot_count++;
   } while (match(p, TK_COMMA));
 
-  construct_body(p, PREC_TOP, ASSOC_RIGHT);
+  construct_body(p, PREC_TOP, 0);
 
   clear_local_scope(p);
   end_block(p, tok, native_count + 1, true);
@@ -1225,6 +1226,8 @@ static const ParseRule parse_rules[] =
     [TK_NOTIN]     = { NULL,       infix_op   },
 
     [TK_MOD]       = { NULL,       infix_op   },
+
+    [TK_UNWRAPPED] = { NULL,       postfix_op },
 
     [TK_IF]        = { if_expr,    NULL       },
     [TK_ELSE]      = { NULL,       else_elif  },

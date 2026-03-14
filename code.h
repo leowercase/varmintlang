@@ -27,6 +27,7 @@ typedef enum {
   OP_BUILD_STR16,
   OP_MAKE_SOME,
   OP_MAKE_NONE,
+  OP_UNWRAP,
   OP_GET,
   OP_GET16,
   OP_SET,

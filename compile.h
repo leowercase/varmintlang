@@ -106,9 +106,9 @@ typedef struct Compiler {
 typedef enum {
   PREC_NONE,
   PREC_ASSIGN,    // :=
-  PREC_TOP,       // loop: for x in iter: while P: using f, g, h:
-  PREC_ELSE,      // else: elif P:
-  PREC_IF,        // if P:
+  PREC_TOP,       // loop for while using
+  PREC_ELSE,      // else elif unwrapped
+  PREC_IF,        // if
   PREC_FLOW,      // break continue return
   PREC_MAPLET,    // =>
   PREC_OR,        // or
