@@ -2,6 +2,7 @@
 #define LANG_CODE_H
 
 #include "generic/dyn_array.h"
+#include "lex.h"
 #include "util.h"
 #include "val.h"
 
@@ -95,15 +96,16 @@ const Opcode OP_NONE = (Opcode)UINT8_MAX;
 typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
 #define T uint8_t
 #define ARR Instructions
+#define USE_GC
 #include "generic/dyn_array.inc"
 
 // The line of text a group of bytes come from.
 typedef struct { size_t line, nbytes; } LineBytes;
 
 typedef DYN_ARRAY_STRUCT(LineBytes) LineInfo;
-
 #define T LineBytes
 #define ARR LineInfo
+#define USE_GC
 #include "generic/dyn_array.inc"
 
 /*
@@ -114,9 +116,9 @@ typedef DYN_ARRAY_STRUCT(LineBytes) LineInfo;
 size_t get_line(LineInfo *l, size_t instruction_idx);
 
 typedef DYN_ARRAY_STRUCT(Value) Constants;
-
 #define T Value
 #define ARR Constants
+#define USE_GC
 #include "generic/dyn_array.inc"
 
 typedef struct {
@@ -125,40 +127,43 @@ typedef struct {
   LineInfo lines;
 } PCode;
 
-static inline
-PCode new_p_code(void)
-{
-  PCode code;
-  code.constants = Constants_init();
-  code.instructions = Instructions_init();
-  code.lines = LineInfo_init();
-  return code;
-}
-
-static inline
-void free_p_code(PCode *code)
-{
-  free(code->constants.data);
-  free(code->instructions.data);
-  free(code->lines.data);
-}
+struct Parse;
 
 // Record a byte into code.
-void emit_byte(PCode *code, size_t line, uint8_t byte);
+void emit_byte(struct Parse *p, size_t line, uint8_t byte);
 
 // For brevity.
-#define emit_bytes(code, line, n, ...) do { \
+#define emit_bytes(p, line, n, ...) do { \
   uint8_t b[] = {__VA_ARGS__}; \
-  for (int i = 0; i < (n); i++) \
-    emit_byte((code), (line), b[i]); \
+  for (int i = 0; i < (n); i++) emit_byte(p, (line), b[i]); \
 } while (false)
 
 // Returns the index of the (16-bit) operand in the code chunk.
-size_t defer_op(PCode *code, size_t line, Opcode op);
+size_t defer_op(struct Parse *p, size_t line, Opcode op);
 // Inserts operand of defer_op into code
-void patch_op(PCode *code, size_t operand_idx, uint16_t operand);
+void patch_op(struct Parse *p, size_t operand_idx, uint16_t operand);
 
 // Emit an operation that has a variable sized operand
-bool emit_var_op(PCode *code, size_t line, Opcode opcode, size_t operand);
+bool emit_var_op(struct Parse *p, size_t line, Opcode opcode, size_t operand);
+
+// Emit a code constant.
+Value *emit_constant(struct Parse *p, size_t line, Value value);
+
+// Patch a jumping instruction to a specific instruction index.
+void patch_jump_to(struct Parse *p, Token loop_tok,
+    size_t jmp_operand_idx, size_t jumpable_code);
+
+// Patch a jumping instruction.
+void patch_jump(struct Parse *p, Token jmp_tok, size_t jmp_operand_idx);
+
+// Get the topmost instruction index.
+size_t code_top(struct Parse *p);
+
+// Emit a looping instruction.
+void emit_loop(struct Parse *p, Token loop_tok, Opcode loopcode,
+    size_t loop_start);
+
+// Change the opcode of the preceding 16-bit operand.
+void change_opcode(struct Parse *p, size_t operand_idx, Opcode new_opcode);
 
 #endif

@@ -158,9 +158,15 @@ Str String_as_str(Value *val)
 Value Procedure_create(Varmint *vm, size_t arity)
 {
   Value val = *create_gc_obj(vm, V_procedure, sizeof(Procedure));
-  val.as.procedure->arity = arity;
-  val.as.procedure->code = new_p_code(); // Code allocation isn't GC'd.
-  val.as.procedure->name = NULL_STR;
+  Procedure *proc = val.as.procedure;
+
+  // Initialize p-code
+  proc->code.constants = Constants_init();
+  proc->code.instructions = Instructions_init();
+  proc->code.lines = LineInfo_init();
+
+  proc->arity = arity;
+  proc->name = NULL_STR;
   return val;
 }
 

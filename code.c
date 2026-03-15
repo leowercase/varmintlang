@@ -1,57 +1,7 @@
 #include "code.h"
 #include "util.h"
 
-void emit_byte(PCode *code, size_t line, uint8_t byte)
-{
-  Instructions_push(&code->instructions, byte);
-
-  if (code->lines.data != NULL) {
-    LineBytes *last = LineInfo_top(&code->lines);
-
-    if (last->line == line) {
-      // Increment the number of bytes in that line.
-      last->nbytes++;
-      return;
-    }
-  }
-
-  // Else, record new line.
-  LineBytes l = {line, 1};
-  LineInfo_push(&code->lines, l);
-}
-
-size_t defer_op(PCode *code, size_t line, Opcode opcode)
-{
-  emit_bytes(code, line, 3, (uint8_t)opcode, 0xff, 0xff);
-  return code->instructions.len - 2;
-}
-
-void patch_op(PCode *code, size_t operand_idx, uint16_t operand)
-{
-  uint8_t *i = code->instructions.data;
-
-  uint8_t bytes[2] = uint16_to_8(operand);
-  i[operand_idx] = bytes[0];
-  i[operand_idx + 1] = bytes[1];
-}
-
-// We make use of the fact that an 8-bit and a 16-bit op
-// reside next to each other in the enum.
-bool emit_var_op(PCode *code, size_t line, Opcode opcode, size_t operand)
-{
-  if (operand <= UINT8_MAX)
-    emit_bytes(code, line, 2, (uint8_t)opcode, (uint8_t)operand);
-
-  else if (operand <= UINT16_MAX) {
-    uint8_t bytes[2] = uint16_to_8((uint16_t)operand);
-    emit_bytes(code, line, 3, (uint8_t)opcode + 1, bytes[0], bytes[1]);
-  }
-
-  else
-    return false;
-
-  return true;
-}
+#include "compile.h"
 
 size_t get_line(LineInfo *lines, size_t offset)
 {
@@ -64,4 +14,110 @@ size_t get_line(LineInfo *lines, size_t offset)
     offset -= l.nbytes;
   };
   unreachable(); // Unreachable, assuming well-formed line info
+}
+
+static inline PCode *code(Parse *p)
+{
+  return &p->c->procedure->code;
+}
+
+void emit_byte(Parse *p, size_t line, uint8_t byte)
+{
+  Instructions_push(p->vm, &code(p)->instructions, byte);
+
+  if (code(p)->lines.data != NULL) {
+    LineBytes *last = LineInfo_top(&code(p)->lines);
+
+    if (last->line == line) {
+      // Increment the number of bytes in that line.
+      last->nbytes++;
+      return;
+    }
+  }
+
+  // Else, record new line.
+  LineBytes l = {line, 1};
+  LineInfo_push(p->vm, &code(p)->lines, l);
+}
+
+size_t defer_op(Parse *p, size_t line, Opcode opcode)
+{
+  emit_bytes(p, line, 3, (uint8_t)opcode, 0xff, 0xff);
+  return code(p)->instructions.len - 2;
+}
+
+void patch_op(Parse *p, size_t operand_idx, uint16_t operand)
+{
+  uint8_t *i = code(p)->instructions.data;
+
+  uint8_t bytes[2] = uint16_to_8(operand);
+  i[operand_idx] = bytes[0];
+  i[operand_idx + 1] = bytes[1];
+}
+
+// We make use of the fact that an 8-bit and a 16-bit op
+// reside next to each other in the enum.
+bool emit_var_op(Parse *p, size_t line, Opcode opcode, size_t operand)
+{
+  if (operand <= UINT8_MAX)
+    emit_bytes(p, line, 2, (uint8_t)opcode, (uint8_t)operand);
+
+  else if (operand <= UINT16_MAX) {
+    uint8_t bytes[2] = uint16_to_8((uint16_t)operand);
+    emit_bytes(p, line, 3, (uint8_t)opcode + 1, bytes[0], bytes[1]);
+  }
+
+  else
+    return false;
+
+  return true;
+}
+
+Value *emit_constant(Parse *p, size_t line, Value value)
+{
+  Value *constant = Constants_push(p->vm, &code(p)->constants, value);
+  size_t idx = code(p)->constants.len - 1;
+
+  if (!emit_var_op(p, line, OP_CONST, idx))
+    parse_error(p, p->current, true, "too many constants");
+
+  return constant;
+}
+
+void patch_jump_to(Parse *p, Token loop_tok,
+    size_t jmp_operand_idx, size_t jumpable_code)
+{
+  if (jumpable_code > UINT16_MAX)
+    parse_error(p, loop_tok, true, "Too much code to jump over");
+
+  patch_op(p, jmp_operand_idx, (uint16_t)jumpable_code);
+}
+
+void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
+{
+  // 2 slots account for the 16-bit operand.
+  size_t jumpable_code = code(p)->instructions.len - jmp_operand_idx - 2;
+  patch_jump_to(p, jmp_tok, jmp_operand_idx, jumpable_code);
+}
+
+size_t code_top(Parse *p)
+{
+  return code(p)->instructions.len;
+}
+
+void emit_loop(Parse *p, Token loop_tok, Opcode loopcode,
+    size_t loop_start)
+{
+  size_t op_idx = defer_op(p, loop_tok.line, loopcode);
+  size_t jumpable_code = code(p)->instructions.len - loop_start;
+
+  if (jumpable_code > UINT16_MAX)
+    parse_error(p, loop_tok, true, "too much code to loop over");
+
+  patch_op(p, op_idx, (uint16_t)jumpable_code);
+}
+
+void change_opcode(Parse *p, size_t operand_idx, Opcode new_opcode)
+{
+  code(p)->instructions.data[operand_idx - 1] = (uint8_t)new_opcode;
 }

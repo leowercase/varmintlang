@@ -103,6 +103,9 @@ typedef struct Compiler {
   Procedure *procedure;
 } Compiler;
 
+void parse_error(Parse *p, Token offending_tok, bool pointer,
+    char *const msg, ...);
+
 typedef enum {
   PREC_NONE,
   PREC_ASSIGN,    // :=

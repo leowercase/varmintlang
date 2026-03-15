@@ -195,7 +195,12 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
   case V_procedure:
     {
       PCode *code = &((Procedure *)data)->code;
-      free_p_code(code); // Code is not GC'd
+
+      // Free p-code
+      Constants_free(vm, &code->constants);
+      Instructions_free(vm, &code->instructions);
+      LineInfo_free(vm, &code->lines);
+
       FREE(Procedure);
       break;
     }

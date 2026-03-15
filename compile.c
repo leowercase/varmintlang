@@ -6,11 +6,6 @@
 
 #include <stdio.h>
 
-static inline PCode *code(Parse *p)
-{
-  return &p->c->procedure->code;
-}
-
 static inline SemanticDatum *semantic(Parse *p)
 {
   return SemanticData_top(&p->semantic);
@@ -64,7 +59,7 @@ static Procedure *return_compiler(Parse *p)
   GCList_pop(&p->vm->compiler_roots);
 
   // Return from procedure.
-  emit_byte(code(p), p->current.line, OP_RETURN);
+  emit_byte(p, p->current.line, OP_RETURN);
 
   Compiler *enclosing = p->c->enclosing;
   free(p->c->locals.data);
@@ -75,7 +70,7 @@ static Procedure *return_compiler(Parse *p)
 }
 
 // Issue a parsing error and enter panic mode in the imminent semantic scope.
-static void parse_error(Parse *p, Token offending_tok, bool pointer,
+void parse_error(Parse *p, Token offending_tok, bool pointer,
     char *const msg, ...)
 {
   if (semantic(p)->panic) return;
@@ -94,48 +89,6 @@ static void parse_error(Parse *p, Token offending_tok, bool pointer,
   semantic(p)->panic = true;
 }
 
-// Emit a code constant.
-static Value *emit_constant(Parse *p, size_t line, Value value)
-{
-  Value *constant = Constants_push(&code(p)->constants, value);
-  size_t idx = code(p)->constants.len - 1;
-
-  if (!emit_var_op(code(p), line, OP_CONST, idx))
-    parse_error(p, p->current, true, "too many constants");
-
-  return constant;
-}
-
-static void patch_jump_to(Parse *p, Token loop_tok,
-    size_t jmp_operand_idx, size_t jumpable_code)
-{
-  if (jumpable_code > UINT16_MAX)
-    parse_error(p, loop_tok, true, "Too much code to jump over");
-
-  patch_op(code(p), jmp_operand_idx, (uint16_t)jumpable_code);
-}
-
-// Patch a jumping instruction
-static void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
-{
-  // 2 slots account for the 16-bit operand.
-  size_t jumpable_code = code(p)->instructions.len - jmp_operand_idx - 2;
-  patch_jump_to(p, jmp_tok, jmp_operand_idx, jumpable_code);
-}
-
-// Emit a looping instruction
-static void emit_loop(Parse *p, Token loop_tok, Opcode loopcode,
-    size_t loop_start)
-{
-  size_t op_idx = defer_op(code(p), loop_tok.line, loopcode);
-  size_t jumpable_code = code(p)->instructions.len - loop_start;
-
-  if (jumpable_code > UINT16_MAX)
-    parse_error(p, loop_tok, true, "too much code to loop over");
-
-  patch_op(code(p), op_idx, (uint16_t)jumpable_code);
-}
-
 // Emit the end of a block
 static void end_block(Parse *p, Token block_tok, size_t slots, bool has_result)
 {
@@ -144,7 +97,7 @@ static void end_block(Parse *p, Token block_tok, size_t slots, bool has_result)
 
   Opcode opcode = has_result ? OP_END_BLOCK : OP_END_EMPTY_BLOCK;
 
-  if (!emit_var_op(code(p), block_tok.line, opcode, slots))
+  if (!emit_var_op(p, block_tok.line, opcode, slots))
     parse_error(p, block_tok, true, "block occupies too many stack slots");
 }
 
@@ -266,7 +219,7 @@ static void prefix_op(Parse *p)
   UnaryOp op = prefix_ops[op_tok.type];
 
   expr(p, (int)op.precedence); // Parse and emit right operand.
-  emit_byte(code(p), op_tok.line, (uint8_t)op.type);
+  emit_byte(p, op_tok.line, (uint8_t)op.type);
 }
 
 // Allows compound assignment shorthand +:=
@@ -290,7 +243,7 @@ static inline void assignage(Parse *p, int min_bp, Opcode op_shorthand)
 
   if (compound)
     // Emit compound opcode
-    emit_byte(code(p), line, (uint8_t)op_shorthand);
+    emit_byte(p, line, (uint8_t)op_shorthand);
 
   // Emit assigning instruction.
   if (semantic(p)->assign_fn != NULL)
@@ -354,7 +307,7 @@ static void infix_op(Parse *p, int min_bp)
   int r_bp = (int)l_bp + (int)op.associativity;
   expr(p, r_bp);
 
-  emit_byte(code(p), op_token.line, (uint8_t)op.type);
+  emit_byte(p, op_token.line, (uint8_t)op.type);
 }
 
 static inline bool is_prefix_and_infix(TokenType op)
@@ -381,7 +334,7 @@ static void postfix_op(Parse *p, int min_bp)
   }
 
   next(p); // Consume op_token
-  emit_byte(code(p), op_token.line, (uint8_t)op.type);
+  emit_byte(p, op_token.line, (uint8_t)op.type);
 }
 
 static bool led_op_is_infix(TokenType op, TokenType next)
@@ -421,7 +374,7 @@ static void led_op(Parse *p, int min_bp)
 
 static void indexed_assign(Parse *p)
 {
-  emit_byte(code(p), p->current.line, OP_INDEXED_SET);
+  emit_byte(p, p->current.line, OP_INDEXED_SET);
 }
 
 // a[i]
@@ -442,10 +395,10 @@ static void subscript(Parse *p, int min_bp)
 
     if (compound)
       // Compound assign.
-      emit_byte(code(p), brack_tok.line, OP_DUP_2);
+      emit_byte(p, brack_tok.line, OP_DUP_2);
 
     // Access.
-    emit_byte(code(p), brack_tok.line, OP_INDEXED_GET);
+    emit_byte(p, brack_tok.line, OP_INDEXED_GET);
 
     if (!compound) return;
   }
@@ -603,7 +556,7 @@ static void invocation(Parse *p, int min_bp)
   size_t arity = delimited_listing(p,
       TK_LPAREN, TK_COMMA, TK_RPAREN, false); // Parse argument list.
 
-  if (!emit_var_op(code(p), paren.line, OP_CALL, arity))
+  if (!emit_var_op(p, paren.line, OP_CALL, arity))
     parse_error(p, paren, true, "too many parameters to function");
 }
 
@@ -613,7 +566,7 @@ static void list(Parse *p)
   Token bracket = p->current;
   size_t list_len = delimited_listing(p, TK_LBRACK, TK_COMMA, TK_RBRACK, true);
 
-  if (!emit_var_op(code(p), bracket.line, OP_BUILD_LIST, list_len))
+  if (!emit_var_op(p, bracket.line, OP_BUILD_LIST, list_len))
     parse_error(p, bracket, true, "too many list items");
 }
 
@@ -635,20 +588,20 @@ static void if_expr(Parse *p)
 
   // Parse condition.
   expr(p, PREC_NONE);
-  size_t operand_idx = defer_op(code(p), if_tok.line, OP_IF);
+  size_t operand_idx = defer_op(p, if_tok.line, OP_IF);
 
   // Parse conditional value.
   construct_body(p, PREC_IF, 0);
 
   if (is_else(p)) {
-    code(p)->instructions.data[operand_idx - 1] = OP_JMP_WHEN_FALSE;
+    change_opcode(p, operand_idx, OP_JMP_WHEN_FALSE);
 
     semantic(p)->if_else_chained = true;
     semantic(p)->if_jmp_op_idx = operand_idx;
   }
   else {
     // Create an optional value.
-    emit_byte(code(p), p->current.line, OP_MAKE_SOME);
+    emit_byte(p, p->current.line, OP_MAKE_SOME);
     patch_jump(p, if_tok, operand_idx);
   }
 }
@@ -667,7 +620,7 @@ static void else_elif(Parse *p, int min_bp)
     semantic(p)->if_else_chained ? OP_JMP
                                  : (is_elif ? OP_ELIF : OP_ELSE);
   size_t operand_idx =
-    defer_op(code(p), else_tok.line, opcode);
+    defer_op(p, else_tok.line, opcode);
 
   if (semantic(p)->if_else_chained)
     patch_jump(p, else_tok, semantic(p)->if_jmp_op_idx);
@@ -701,7 +654,7 @@ static inline Loop *init_loop(Parse *p)
 
   loop.breaks = JumpIndices_init();
   loop.continues = JumpIndices_init();
-  loop.start = code(p)->instructions.len;
+  loop.start = code_top(p);
 
   loop.stack_slot = p->c->stack_slot_count;
 
@@ -746,17 +699,17 @@ static void loop_expr(Parse *p)
     consume(p, TK_IN, "expect `in`");
 
     expr(p, PREC_NONE); // Iterable
-    emit_byte(code(p), line, OP_ZERO); // Counter
+    emit_byte(p, line, OP_ZERO); // Counter
     for_counter_slot = p->c->stack_slot_count += 2;
   }
 
   // Initial value for the result of the last cycle.
   // Either an empty slot, or an empty list ready for comprehension
   if (is_list_compre) {
-    emit_byte(code(p), line, OP_LIST_COMPREHEND);
+    emit_byte(p, line, OP_LIST_COMPREHEND);
     p->c->stack_slot_count++;
   }
-  else emit_byte(code(p), line, OP_RESERVE_SLOT);
+  else emit_byte(p, line, OP_RESERVE_SLOT);
 
   // Loop start
   Loop *loop = init_loop(p);
@@ -768,19 +721,19 @@ static void loop_expr(Parse *p)
   switch (type) {
   case TK_LOOP:
     // No conditional jump, but discard what the last cycle evaluated to
-    if (!is_list_compre) emit_byte(code(p), line, OP_POP);
+    if (!is_list_compre) emit_byte(p, line, OP_POP);
     jmp_idx = false; break;
 
   case TK_WHILE:
     expr(p, PREC_NONE); // Condition
-    jmp_idx = defer_op(code(p), line,
+    jmp_idx = defer_op(p, line,
         is_list_compre ? OP_WHILE_LIST : OP_WHILE); break;
 
   case TK_FOR:
     // Create loop variable
     create_local_var(p, for_var_ident)->initialized = true;
     p->c->stack_slot_count++;
-    jmp_idx = defer_op(code(p), line,
+    jmp_idx = defer_op(p, line,
         is_list_compre ? OP_FOR_LIST : OP_FOR); break;
 
   default: unreachable();
@@ -788,11 +741,11 @@ static void loop_expr(Parse *p)
 
   // Parse loop body
   construct_body(p, PREC_TOP, 0);
-  loop->iter = code(p)->instructions.len;
+  loop->iter = code_top(p);
 
   // Increment counter variable at the end of for
   if (type == TK_FOR)
-    emit_var_op(code(p), p->current.line, OP_FOR_INCREMENT, for_counter_slot);
+    emit_var_op(p, p->current.line, OP_FOR_INCREMENT, for_counter_slot);
 
   // Emit the looping instruction
   emit_loop(p, tok,
@@ -842,7 +795,7 @@ static void control_flow_result(Parse *p)
   const int r_bp = (int)PREC_FLOW + (int)ASSOC_LEFT;
   if (has_result) expr(p, r_bp); // Parse resulting value.
 
-  else emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
+  else emit_byte(p, p->current.line, OP_RESERVE_SLOT);
 }
 
 // break [value]
@@ -866,7 +819,7 @@ static void loop_flow(Parse *p)
     slots--; // Don't discard the loop variable yet.
 
   // Discard the stack slots occupied.
-  if (!emit_var_op(code(p), tok.line, OP_END_BLOCK, slots))
+  if (!emit_var_op(p, tok.line, OP_END_BLOCK, slots))
     parse_error(p, tok, true, "loop occupies too many stack slots");
 
   if (tok.type == TK_BREAK) {
@@ -874,7 +827,7 @@ static void loop_flow(Parse *p)
     opcode = loop->is_list_compre ? OP_BREAK_LIST : OP_BREAK;
 
     if (loop->is_for)
-      emit_byte(code(p), tok.line,
+      emit_byte(p, tok.line,
           loop->is_list_compre ? OP_DISCARD_FOR_LIST : OP_DISCARD_FOR);
   }
   else {
@@ -882,7 +835,7 @@ static void loop_flow(Parse *p)
     opcode = OP_JMP;
   }
 
-  size_t jmp_idx = defer_op(code(p), tok.line, opcode);
+  size_t jmp_idx = defer_op(p, tok.line, opcode);
   JumpIndices_push(worklist, jmp_idx);
 }
 
@@ -891,7 +844,7 @@ static void returnage(Parse *p)
 {
   Token return_tok = eat(p);
   control_flow_result(p);
-  emit_byte(code(p), return_tok.line, OP_RETURN);
+  emit_byte(p, return_tok.line, OP_RETURN);
 }
 
 // using f, g, h: ...
@@ -945,12 +898,12 @@ static void maybe_some(Parse *p)
   expr(p, PREC_NONE);
 
   consume(p, TK_RPAREN, "expect `)` after `Some`");
-  emit_byte(code(p), line, OP_MAKE_SOME);
+  emit_byte(p, line, OP_MAKE_SOME);
 }
 
 static void maybe_none(Parse *p)
 {
-  emit_byte(code(p), eat(p).line, OP_MAKE_NONE);
+  emit_byte(p, eat(p).line, OP_MAKE_NONE);
 }
 
 static void number(Parse *p)
@@ -994,14 +947,14 @@ static void metastring(Parse *p)
     }
   }
 
-  if (!emit_var_op(code(p), tok.line, OP_BUILD_STR, metas))
+  if (!emit_var_op(p, tok.line, OP_BUILD_STR, metas))
     parse_error(p, tok, true, "too many metastrings");
 }
 
 static void assign_local(Parse *p)
 {
   Local *local = semantic(p)->assignable_local;
-  emit_var_op(code(p), p->current.line, OP_SET, local->stack_slot);
+  emit_var_op(p, p->current.line, OP_SET, local->stack_slot);
   local->initialized = true;
 }
 
@@ -1023,7 +976,7 @@ static void ident_str(Parse *p, Token ident_tok)
   if (p->current.type != TK_ASSIGN) {
     // Access.
     if (local->initialized)
-      emit_var_op(code(p), ident_tok.line, OP_GET, local->stack_slot);
+      emit_var_op(p, ident_tok.line, OP_GET, local->stack_slot);
     else
       parse_error(p, ident_tok, true, "variable %.*s has not been initialized",
           (int)ident.len, ident.s);
@@ -1080,7 +1033,7 @@ static void let_stmt(Parse *p, size_t *stmt_count)
         local->initialized = true;
       }
       else
-        emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
+        emit_byte(p, p->current.line, OP_RESERVE_SLOT);
     }
 
     (*stmt_count)++;

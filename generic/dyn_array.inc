@@ -36,6 +36,7 @@
 // Forward declaration.
 struct Varmint;
 void *gc_alloc(struct Varmint *vm, void *ptr, size_t old_size, size_t new_size);
+void gc_free(struct Varmint *vm, void *ptr, size_t size);
 #endif
 
 #define METHOD(name) JOIN(ARR, name)
@@ -137,6 +138,19 @@ ARR METHOD(_concat)ALLOCS(ARR *head, ARR *tail)
   memcpy(dyn_array.data + head->len, tail->data, tail->len);
 
   return dyn_array;
+}
+#endif
+
+#ifndef CAP
+// Free dynamic array.
+static inline
+void METHOD(_free)ALLOCS(ARR *dyn_array)
+{
+#ifndef USE_GC
+  free(dyn_array->data);
+#else
+  gc_free(vm, dyn_array->data, dyn_array->len * sizeof(T));
+#endif
 }
 #endif
 
