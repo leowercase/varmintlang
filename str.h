@@ -3,6 +3,10 @@
 
 #include "util.h"
 
+#include <string.h>
+// https://github.com/Cyan4973/xxHash
+#include <xxhash.h>
+
 // Lightweight length-prefixed string.
 // Not garbage collected.
 typedef struct {
@@ -22,7 +26,20 @@ const Str str_new(const char *s, const size_t len)
 
 static const Str NULL_STR = {NULL, 0};
 
-uint64_t str_hash(Str str);
-bool strs_eq(Str a, Str b);
+// Return the 64-bit hash of a string.
+static inline
+uint64_t str_hash(Str str)
+{
+  return XXH3_64bits(str.s, str.len);
+}
+
+static inline
+bool strs_eq(Str a, Str b)
+{
+  if (a.len != b.len)
+    return false;
+
+  return memcmp(a.s, b.s, a.len) == 0;
+}
 
 #endif
