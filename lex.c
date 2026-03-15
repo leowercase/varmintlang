@@ -201,6 +201,28 @@ static void skip_rest_line(Lex *lex)
   lex->line++;
 }
 
+static void block_comment(Lex *lex)
+{
+  next(lex); next(lex); // "#["
+  size_t comment_nesting = 1;
+
+  do {
+    switch (*lex->current) {
+    case '\0': return;
+    case '\n': next(lex); lex->line++; continue;
+    }
+
+    if (match(lex, ']') && match(lex, '#'))
+      comment_nesting--;
+    else if (match(lex, '#') && match(lex, '['))
+      comment_nesting++;
+
+    next(lex);
+  } while (comment_nesting > 0);
+
+  if (*lex->current == '\n') lex->line++;
+}
+
 static void skip_redundant_space(Lex *lex)
 {
   for (;;) {
@@ -211,7 +233,10 @@ static void skip_redundant_space(Lex *lex)
 
     else if (c == '#') {
       // Comment.
-      skip_rest_line(lex);
+      if (peek(lex) == '[')
+        block_comment(lex);
+      else
+        skip_rest_line(lex);
       continue;
     }
 
