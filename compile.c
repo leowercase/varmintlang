@@ -1053,43 +1053,52 @@ static void fn_decl(Parse *p, Token ident_tok)
 }
 
 // let ...
-static void let(Parse *p)
+static void let_stmt(Parse *p, size_t *stmt_count)
 {
   new_semantic_scope(p);
 
   next(p); // let token
-  Token ident_tok = consume(p, TK_WORD,
-      "expect identifier after `let`");
 
-  if (p->current.type == TK_LPAREN) {
-    // Argument list for function definition.
-    fn_decl(p, ident_tok);
-    return;
-  }
+  do {
+    Token ident_tok = consume(p, TK_WORD,
+        "expect identifier after `let`");
 
-  Local *local = create_local_var(p, ident_tok.slice);
+    if (p->current.type == TK_LPAREN) {
+      // Argument list for function definition.
+      fn_decl(p, ident_tok);
+      return;
+    }
 
-  if (p->current.type == TK_EQ)
-    parse_error(p, p->current, true, "did you mean `:=`?");
+    Local *local = create_local_var(p, ident_tok.slice);
 
-  if (match(p, TK_ASSIGN)) {
-    const int assign_r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
-    expr(p, assign_r_bp);
-    local->initialized = true;
-  }
-  else
-    emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
+    if (p->current.type == TK_EQ)
+      parse_error(p, p->current, true, "did you mean `:=`?");
+
+    if (match(p, TK_ASSIGN)) {
+      const int assign_r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
+      expr(p, assign_r_bp);
+      local->initialized = true;
+    }
+    else
+      emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
+
+    (*stmt_count)++;
+    p->c->stack_slot_count++;
+  } while(match(p, TK_COMMA));
 
   end_semantic_scope(p);
 }
 
-static void stmt(Parse *p)
+static void stmt(Parse *p, size_t *stmt_count)
 {
   if (p->current.type == TK_LET)
     // let is a statement, as it requires stack semantics.
-    let(p);
-  else
+    let_stmt(p, stmt_count);
+  else {
     expr(p, PREC_NONE);
+    (*stmt_count)++;
+    p->c->stack_slot_count++;
+  }
 }
 
 // A block is a series of statements.
@@ -1107,13 +1116,12 @@ static void block(Parse *p)
   p->c->depth++;
   bool block_has_result = true;
 
+  size_t stmt_count = 0;
   // Consume first statement
-  stmt(p);
-  size_t stmts = 1;
-  p->c->stack_slot_count++;
+  stmt(p, &stmt_count);
 
   // Consume statements ...;
-  for (; !match(p, TK_RCURLY); stmts++, p->c->stack_slot_count++) {
+  while (!match(p, TK_RCURLY)) {
     // Consume tokens until a semicolon is found.
     while (!match(p, TK_SEMICOLON) && !semantic(p)->insert_semicolon) {
       Token tok = eat(p);
@@ -1132,12 +1140,12 @@ static void block(Parse *p)
 
     if (match(p, TK_RCURLY)) break;
 
-    stmt(p);
+    stmt(p, &stmt_count);
   }
 
 end:
   clear_local_scope(p);
-  end_block(p, curly_tok, stmts, block_has_result);
+  end_block(p, curly_tok, stmt_count, block_has_result);
   p->c->depth--;
 
   end_semantic_scope(p);
