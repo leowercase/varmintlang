@@ -36,18 +36,18 @@ static inline void end_semantic_scope(Parse *p)
     old_scope.insert_semicolon;
 }
 
-static void init_compiler(Parse *p, Locals args)
+static void init_compiler(Parse *p, Locals arg_list)
 {
   Compiler *c = allocate(NULL, sizeof(Compiler));
   c->depth = 0;
 
-  Value proc_val = Procedure_create(p->vm, args.len);
+  Value proc_val = Procedure_create(p->vm, arg_list.len - 1);
   GCList_push(&p->vm->compiler_roots, proc_val);
 
   c->procedure = proc_val.as.procedure;
 
-  c->locals = args;
-  c->stack_slot_count = args.len;
+  c->locals = arg_list;
+  c->stack_slot_count = arg_list.len;
 
   c->loops = LoopStack_init();
 
@@ -468,35 +468,37 @@ static bool consume_arg_list_start(Parse *p)
 }
 
 // Returns argument locals
-static Locals consume_arg_list(Parse *p)
+static Locals consume_arg_list(Parse *p, Str name)
 {
-  Locals args = Locals_init();
+  Locals arg_list = Locals_with_cap(1);
+  create_local(&arg_list, name, 0, true); // Local representing the fn itself.
 
   // Parameters take up the first few stack slots of the frame.
   while (p->current.type == TK_WORD
       && (peek(p).type == TK_RPAREN || peek(p).type == TK_COMMA)) {
-    size_t arg_slot = args.len;
+    size_t arg_slot = arg_list.len;
     // Create argument local.
-    create_local(&args, eat(p).slice, 0, true)
+    create_local(&arg_list, eat(p).slice, 0, true)
       ->stack_slot = arg_slot;
 
     if (!match(p, TK_COMMA)) break;
   }
 
-  return args;
+  return arg_list;
 }
 
-// Parses a function body and creates a new fn.
-static void function(Parse *p, size_t line, Str name, Locals args)
+// Parses a function body and creates a new function.
+static void function(Parse *p, size_t line, Str name, Locals arg_list)
 {
+  // Reserve first stack slot for the function value
   Value *fn_constant = emit_constant(p, line, NO_VALUE);
 
-  init_compiler(p, args);
+  init_compiler(p, arg_list);
+
   expr(p, PREC_NONE);
 
   Procedure *proc = return_compiler(p);
   proc->name = name;
-  // Functions are values, too!
   *fn_constant = value_new(proc, procedure);
 }
 
@@ -507,20 +509,21 @@ static void ident_str(Parse *p, Token ident_tok);
 static void maplet(Parse *p)
 {
   size_t line = p->current.line;
-  Locals args = consume_arg_list(p);
+  Locals arg_list = consume_arg_list(p, NULL_STR);
 
   if (peek(p).type != TK_MAPS_TO) {
     // Doesn't match a maplet.
+    size_t argc = arg_list.len - 1;
 
-    if (args.len == 0)
+    if (argc == 0)
       // Need to parse expr inside grouping.
       expr(p, PREC_NONE);
 
-    else if (args.len == 1) {
+    else if (argc == 1) {
       // Consumed a single identifier in paretheses - that needs to be emitted.
       // We already pushed it into locals in consume_arg_list
       Token ident_tok = {.line = p->current.line,
-                         .slice = Locals_pop(&args).name};
+                         .slice = Locals_pop(&arg_list).name};
       ident_str(p, ident_tok);
     }
 
@@ -529,14 +532,14 @@ static void maplet(Parse *p)
       parse_error(p, p->current, true,
           "expect maplet arrow after argument list");
 
-    free(args.data);
+    free(arg_list.data);
     consume(p, TK_RPAREN, "expect grouping end");
     return;
   }
 
   consume(p, TK_RPAREN, "expect argument list end");
   next(p); // =>
-  function(p, line, NULL_STR, args);
+  function(p, line, NULL_STR, arg_list);
 }
 
 // (...)
@@ -1035,21 +1038,19 @@ static void ident(Parse *p)
 
 // Function declaration.
 // let f(x, y) := ...
-static void fn_decl(Parse *p, Token ident_tok)
+static void fn_decl(Parse *p, Str name)
 {
   if (!consume_arg_list_start(p))
     parse_error(p, p->current, true, "expect argument list");
 
-  Str name = ident_tok.slice;
-  Locals args = consume_arg_list(p);
+  Locals arg_list = consume_arg_list(p, name);
   consume(p, TK_RPAREN, "expect argument list end");
 
   consume(p, TK_ASSIGN, "function requires a body");
+  function(p, p->current.line, name, arg_list);
 
   Local *fn_local = create_local_var(p, name);
   fn_local->initialized = true;
-
-  function(p, p->current.line, name, args);
 }
 
 // let ...
@@ -1063,24 +1064,24 @@ static void let_stmt(Parse *p, size_t *stmt_count)
     Token ident_tok = consume(p, TK_WORD,
         "expect identifier after `let`");
 
-    if (p->current.type == TK_LPAREN) {
+    if (p->current.type == TK_LPAREN)
       // Argument list for function definition.
-      fn_decl(p, ident_tok);
-      return;
+      fn_decl(p, ident_tok.slice);
+
+    else {
+      Local *local = create_local_var(p, ident_tok.slice);
+
+      if (p->current.type == TK_EQ)
+        parse_error(p, p->current, true, "did you mean `:=`?");
+
+      if (match(p, TK_ASSIGN)) {
+        const int assign_r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
+        expr(p, assign_r_bp);
+        local->initialized = true;
+      }
+      else
+        emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
     }
-
-    Local *local = create_local_var(p, ident_tok.slice);
-
-    if (p->current.type == TK_EQ)
-      parse_error(p, p->current, true, "did you mean `:=`?");
-
-    if (match(p, TK_ASSIGN)) {
-      const int assign_r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
-      expr(p, assign_r_bp);
-      local->initialized = true;
-    }
-    else
-      emit_byte(code(p), p->current.line, OP_RESERVE_SLOT);
 
     (*stmt_count)++;
     p->c->stack_slot_count++;
@@ -1300,8 +1301,12 @@ static Parse init_parse(Varmint *vm, char *source)
   p.had_error = false;
   p.semantic = SemanticData_init();
 
+  Locals initial_locals = Locals_with_cap(1);
+  // Reserve first stack slot for the program value.
+  create_local(&initial_locals, NULL_STR, 0, false);
+
   p.c = NULL;
-  init_compiler(&p, Locals_init());
+  init_compiler(&p, initial_locals);
   return p;
 }
 

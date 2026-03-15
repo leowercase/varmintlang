@@ -39,9 +39,14 @@ static void call(Varmint *vm, Procedure *procedure, size_t argc)
   frame.ip = procedure->code.instructions.data;
 
   if (vm->op_stack.len > 0)
-    frame.op_stack = &vm->op_stack.data[vm->op_stack.len - argc];
-  else                                          // `argc` slots for parameters
+    // (`argc` + 1) slots for parameters and the fn itself
+    frame.op_stack = &vm->op_stack.data[vm->op_stack.len - argc - 1];
+
+  else {
+    // Begin program.
     frame.op_stack = &vm->op_stack.data[0];
+    OpStack_push(&vm->op_stack, value_new(procedure, procedure));
+  }
 
   vm->frame = CallStack_push(&vm->call_stack, frame);
 }
@@ -545,21 +550,22 @@ static inline bool execute_instruction(Varmint *restrict vm)
       Value return_val = pop(vm);
       CallFrame frame = CallStack_pop(&vm->call_stack);
 
+      // Pop function parameters
+      popn(vm, (size_t)frame.procedure->arity);
+      // Pop the function itself off the stack.
+      pop(vm);
+
+      // Ensure a balanced stack after the call!
+      assert(&vm->op_stack.data[vm->op_stack.len] == frame.op_stack);
+
       if (vm->call_stack.len == 0) {
         // Return from program.
         vm->result = return_val;
         return false;
       }
 
-      // Pop function parameters
-      popn(vm, (size_t)frame.procedure->arity);
-      // Pop the function itself off the stack.
-      pop(vm);
       // Push return value
       push(vm, return_val);
-
-      // Ensure a balanced stack after the call!
-      assert(vm->op_stack.data + vm->op_stack.len == frame.op_stack);
 
       vm->frame = CallStack_top(&vm->call_stack);
       break;
@@ -589,7 +595,6 @@ static inline bool execute_instruction(Varmint *restrict vm)
 
 void execute(Varmint *vm, Procedure *program)
 {
-  OpStack_push(&vm->op_stack, value_new(program, procedure));
   call(vm, program, 0);
 
   bool running;
