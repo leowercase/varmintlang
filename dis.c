@@ -1,8 +1,7 @@
-#include "code.h"
+#include "info.h"
 #include "dis.h"
 #include "util.h"
 #include "val.h"
-#include "proc.h"
 
 #include <stdio.h>
 
@@ -76,7 +75,7 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
   case_op(NEGATE)
   case_op(FACTORIAL)
   case_op(PERCENTAGE)
-  case_op(UNWRAP)
+  case_op(UNWRAPPED)
 
   case_op(ADD)
   case_op(SUB)

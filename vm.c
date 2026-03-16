@@ -1,4 +1,4 @@
-#include "error.h"
+#include "info.h"
 #include "internal.h"
 #include "util.h"
 #include "val.h"
@@ -191,7 +191,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case OP_PERCENTAGE: UNARY(_vm_percentage(vm, operand))
 
     // Unwrap optional, error if None.
-  case OP_UNWRAP:
+  case OP_UNWRAPPED:
     {
       Value unwrappee = pop(vm);
       Maybe *optional = typechecked(vm, unwrappee, maybe);

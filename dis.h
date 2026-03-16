@@ -1,7 +1,7 @@
 #ifndef LANG_DEBUG_H
 #define LANG_DEBUG_H
 
-#include "proc.h"
+#include "code.h"
 
 // Disassemble a program.
 void dis(FILE *restrict stream, Procedure *program);

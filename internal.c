@@ -1,4 +1,4 @@
-#include "error.h"
+#include "info.h"
 #include "val.h"
 
 #include <ctype.h>

@@ -1,6 +1,6 @@
-#include "error.h"
+#include "code.h"
+#include "info.h"
 #include "gc.h"
-#include "proc.h"
 #include "val.h"
 #include "varmint.h"
 

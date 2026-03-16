@@ -3,7 +3,7 @@
 
 #include "generic/dyn_array.h"
 #include "lex.h"
-#include "proc.h"
+#include "code.h"
 #include "varmint.h"
 
 /*

@@ -2,7 +2,6 @@
 #define LANG_CODE_H
 
 #include "generic/dyn_array.h"
-#include "lex.h"
 #include "util.h"
 #include "val.h"
 
@@ -16,7 +15,7 @@ typedef enum {
   OP_NEGATE,
   OP_FACTORIAL,
   OP_PERCENTAGE, // 100% a useful op
-  OP_UNWRAP,
+  OP_UNWRAPPED,
 
   OP_ADD,
   OP_SUB,
@@ -108,13 +107,6 @@ typedef DYN_ARRAY_STRUCT(LineBytes) LineInfo;
 #define USE_GC
 #include "generic/dyn_array.inc"
 
-/*
- * Lines are run-length encoded to save memory.
- * This makes line info a bit slow to emit, but it only happens on errors.
- * https://en.wikipedia.org/wiki/Run-length_encoding
- */
-size_t get_line(LineInfo *l, size_t instruction_idx);
-
 typedef DYN_ARRAY_STRUCT(Value) Constants;
 #define T Value
 #define ARR Constants
@@ -127,43 +119,16 @@ typedef struct {
   LineInfo lines;
 } PCode;
 
-struct Parse;
-
-// Record a byte into code.
-void emit_byte(struct Parse *p, size_t line, uint8_t byte);
-
-// For brevity.
-#define emit_bytes(p, line, n, ...) do { \
-  uint8_t b[] = {__VA_ARGS__}; \
-  for (int i = 0; i < (n); i++) emit_byte(p, (line), b[i]); \
-} while (false)
-
-// Returns the index of the (16-bit) operand in the code chunk.
-size_t defer_op(struct Parse *p, size_t line, Opcode op);
-// Inserts operand of defer_op into code
-void patch_op(struct Parse *p, size_t operand_idx, uint16_t operand);
-
-// Emit an operation that has a variable sized operand
-bool emit_var_op(struct Parse *p, size_t line, Opcode opcode, size_t operand);
-
-// Emit a code constant.
-Value *emit_constant(struct Parse *p, size_t line, Value value);
-
-// Patch a jumping instruction to a specific instruction index.
-void patch_jump_to(struct Parse *p, Token loop_tok,
-    size_t jmp_operand_idx, size_t jumpable_code);
-
-// Patch a jumping instruction.
-void patch_jump(struct Parse *p, Token jmp_tok, size_t jmp_operand_idx);
-
-// Get the topmost instruction index.
-size_t code_top(struct Parse *p);
-
-// Emit a looping instruction.
-void emit_loop(struct Parse *p, Token loop_tok, Opcode loopcode,
-    size_t loop_start);
-
-// Change the opcode of the preceding 16-bit operand.
-void change_opcode(struct Parse *p, size_t operand_idx, Opcode new_opcode);
+/*
+ * Procedure - a tool for abstraction.
+ * Can be a program, can be a function in said program.
+ * https://en.wikipedia.org/wiki/Function_(computer_programming)
+ */
+typedef struct Procedure {
+  GCData gc_data;
+  Str name;
+  size_t arity;
+  PCode code;
+} Procedure;
 
 #endif

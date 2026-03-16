@@ -1,5 +1,6 @@
-#include "error.h"
+#include "info.h"
 #include "lex.h"
+#include "code_gen.h"
 #include "compile.h"
 #include "val.h"
 #include "stdarg.h"
@@ -319,7 +320,7 @@ static inline bool is_prefix_and_infix(TokenType op)
 static const UnaryOp postfix_ops[] = {
   [TK_PERCENT]   = { OP_PERCENTAGE, PREC_PERCENT   },
   [TK_BANG]      = { OP_FACTORIAL,  PREC_FACTORIAL },
-  [TK_UNWRAPPED] = { OP_UNWRAP,     PREC_ELSE      },
+  [TK_UNWRAPPED] = { OP_UNWRAPPED,  PREC_ELSE      },
 };
 
 static void postfix_op(Parse *p, int min_bp)

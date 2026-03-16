@@ -1,9 +1,9 @@
 #ifndef LANG_STATE_H
 #define LANG_STATE_H
 
+#include "code.h"
 #include "generic/dyn_array.h"
 #include "generic/table.h"
-#include "proc.h"
 #include "val.h"
 
 // Maximum op stack size, fairly arbitrarily picked.

@@ -4,6 +4,19 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+size_t get_line(LineInfo *lines, size_t offset)
+{
+  for (size_t i = 0; i < lines->len; i++) {
+    LineBytes l = lines->data[i];
+
+    if (offset <= l.nbytes)
+      return l.line;
+
+    offset -= l.nbytes;
+  };
+  unreachable(); // Unreachable, assuming well-formed line info
+}
+
 void v_error_out(const char *fmt, va_list args)
 {
   fprintf(stderr, ANSI_RED);

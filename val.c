@@ -1,7 +1,7 @@
-#include "error.h"
+#include "info.h"
 #include "gc.h"
 #include "val.h"
-#include "proc.h"
+#include "code.h"
 
 #include <stdio.h>
 #include <readline/readline.h>

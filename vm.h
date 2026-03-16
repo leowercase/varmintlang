@@ -2,7 +2,7 @@
 #define LANG_VM_H
 
 #include "varmint.h"
-#include "proc.h"
+#include "code.h"
 
 // Execute a procedure
 void execute(Varmint *vm, Procedure *program);

@@ -1,4 +1,4 @@
-#include "error.h"
+#include "info.h"
 #include "mem.h"
 
 void *allocate(void *ptr, size_t size)

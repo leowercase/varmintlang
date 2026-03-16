@@ -1,10 +1,17 @@
-#ifndef LANG_ERROR_H
-#define LANG_ERROR_H
+#ifndef LANG_INFO_H
+#define LANG_INFO_H
 
 #include "val.h"
 #include "varmint.h"
 
 #include <stdarg.h>
+
+/*
+ * Lines are run-length encoded to save memory.
+ * This makes line info a bit slow to emit, but it only happens on errors.
+ * https://en.wikipedia.org/wiki/Run-length_encoding
+ */
+size_t get_line(LineInfo *l, size_t instruction_idx);
 
 // Helper function for errors.
 void error_out(const char *fmt, ...);
