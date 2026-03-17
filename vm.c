@@ -97,6 +97,14 @@ static void call_val(Varmint *vm, Value callee, size_t argc)
       value_type_cstring(callee.type));
 }
 
+static inline Value *get_stack_slot(Varmint *vm, size_t stack_slot)
+{
+  Value *slot = &vm->frame->op_stack[stack_slot];
+  // Ensure valid index
+  assert(slot < &vm->op_stack.data[vm->op_stack.len]);
+  return slot;
+}
+
 static void loop_result(Varmint *vm, Value result)
 {
   push(vm, result.type == V_no
@@ -309,7 +317,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     // Get a value on the stack.
   case_var_op(OP_GET, stack_slot,
     {
-      push(vm, vm->frame->op_stack[stack_slot]);
+      push(vm, *get_stack_slot(vm, stack_slot));
       break;
     })
     // Set a value on the stack.
@@ -320,7 +328,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
       if (val.type == V_no)
         runtime_error(vm, "invalid assign to expression without value\n");
 
-      vm->frame->op_stack[stack_slot] = val;
+      *get_stack_slot(vm, stack_slot) = val;
       break;
     })
 
@@ -495,8 +503,9 @@ static inline bool execute_instruction(Varmint *restrict vm)
       Value result = pop(vm);
       pop(vm); // Loop variable
 
-      assert(vm->op_stack.data[stack_slot].type == V_number);
-      vm->op_stack.data[stack_slot].as.number++;
+      Value *counter = get_stack_slot(vm, stack_slot);
+      assert(counter->type == V_number);
+      counter->as.number++;
 
       push(vm, result);
       break;
