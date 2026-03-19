@@ -213,23 +213,20 @@ void sweep(Varmint *vm)
 {
   if (vm->gc_objects == NULL) return;
 
-  for (Value *head = NULL, *obj = vm->gc_objects; obj != NULL;) {
+  for (Value **head = &vm->gc_objects, *obj = vm->gc_objects; obj != NULL;) {
     GCData *data = obj->as.gc_data;
 
     if (data->is_safe) {
       // Reset "safe" status for the next GC run.
       data->is_safe = false;
       // Next.
-      head = obj;
+      head = &obj;
       obj = data->next;
     }
     else {
       Value *next = data->next;
       // Remove from objects.
-      if (head == NULL)
-        vm->gc_objects = next;
-      else
-        head->as.gc_data->next = next;
+      (*head)->as.gc_data->next = next;
 
       // Free.
       free_obj_data(vm, obj->type, data);
