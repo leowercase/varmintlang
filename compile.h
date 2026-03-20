@@ -71,6 +71,8 @@ typedef struct SemanticDatum {
   bool in_stmt; // {}
   bool insert_semicolon;
 
+  bool in_let_expr;
+
   // if..else..elif chains are optimized a bit to avoid useless shuffling
   bool if_else_chained;
   size_t if_jmp_op_idx;

@@ -1,0 +1,5 @@
+let
+  x := "math",
+  y := "stuff"
+in:
+  x || y

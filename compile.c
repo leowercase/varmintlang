@@ -17,6 +17,7 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
   SemanticDatum sem;
   sem.assign_fn = semantic(p)->assign_fn;
   sem.in_stmt = semantic(p)->in_stmt;
+  sem.in_let_expr = semantic(p)->in_let_expr;
   sem.insert_semicolon = false;
   sem.if_else_chained = false;
   sem.led_fail = false;
@@ -1081,16 +1082,14 @@ static void fn_decl(Parse *p, Str name)
   fn_local->initialized = true;
 }
 
-// let ...
-static void let_stmt(Parse *p, size_t *stmt_count)
+// Returns the number of let clauses consumed.
+static size_t consume_lets(Parse *p)
 {
+  size_t ndecls = 0;
   new_semantic_scope(p);
 
-  next(p); // let token
-
   do {
-    Token ident_tok = consume(p, TK_WORD,
-        "expect identifier after `let`");
+    Token ident_tok = consume(p, TK_WORD, "expect identifier in `let`");
 
     if (p->current.type == TK_LPAREN)
       // Argument list for function definition.
@@ -1111,22 +1110,53 @@ static void let_stmt(Parse *p, size_t *stmt_count)
         emit_byte(p, OP_RESERVE_SLOT);
     }
 
-    (*stmt_count)++;
     p->c->stack_slot_count++;
-  } while(match(p, TK_COMMA));
+    ndecls++;
+  } while (match(p, TK_COMMA));
 
   end_semantic_scope(p);
+  return ndecls;
 }
 
-static void stmt(Parse *p, size_t *stmt_count)
+// The more functional and mathsy cousin of let.
+// https://en.wikipedia.org/wiki/Let_expression
+static void let_expr(Parse *p)
 {
-  if (p->current.type == TK_LET)
+  p->c->depth++;
+  Token let_tok = eat(p);
+
+  new_semantic_scope(p)->in_let_expr = true;
+  size_t ndecls = consume_lets(p);
+  end_semantic_scope(p);
+
+  consume(p, TK_IN, "expect `in` after `let` expression");
+  construct_body(p, PREC_TOP, 0);
+
+  clear_local_scope(p);
+  end_block(p, let_tok, ndecls + 1, true);
+  p->c->depth--;
+}
+
+// The `in` keyword is a bit of an ambiguous parse.
+// It can denote an operator or the end of a `let` expression.
+static void in_keyword(Parse *p, int min_bp)
+{
+  if (semantic(p)->in_let_expr && peek(p).type == TK_COLON)
+    semantic(p)->led_fail = true;
+
+  else infix_op(p, min_bp);
+}
+
+static size_t stmt(Parse *p)
+{
+  if (match(p, TK_LET))
     // let is a statement, as it requires stack semantics.
-    let_stmt(p, stmt_count);
+    return consume_lets(p);
+
   else {
     expr(p, PREC_NONE);
-    (*stmt_count)++;
     p->c->stack_slot_count++;
+    return 1;
   }
 }
 
@@ -1145,9 +1175,8 @@ static void block(Parse *p)
   p->c->depth++;
   bool block_has_result = true;
 
-  size_t stmt_count = 0;
   // Consume first statement
-  stmt(p, &stmt_count);
+  size_t stmt_count = stmt(p);
 
   // Consume statements ...;
   while (!match(p, TK_RCURLY)) {
@@ -1169,13 +1198,13 @@ static void block(Parse *p)
 
     if (match(p, TK_RCURLY)) break;
 
-    stmt(p, &stmt_count);
+    stmt_count += stmt(p);
   }
 
 end:
-  clear_local_scope(p);
-  end_block(p, curly_tok, stmt_count, block_has_result);
-  p->c->depth--;
+clear_local_scope(p);
+end_block(p, curly_tok, stmt_count, block_has_result);
+p->c->depth--;
 
   end_semantic_scope(p);
 }
@@ -1254,12 +1283,12 @@ static const ParseRule parse_rules[] =
     [TK_GEQ]       = { NULL,       infix_op   },
 
     [TK_ASSIGN]    = { NULL,       assign     },
-    [TK_LET]       = { NULL,       NULL       },
+    [TK_LET]       = { let_expr,   NULL       },
 
     [TK_NOT]       = { prefix_op,  NULL       },
     [TK_AND]       = { NULL,       infix_op   },
     [TK_OR]        = { NULL,       infix_op   },
-    [TK_IN]        = { NULL,       infix_op   },
+    [TK_IN]        = { NULL,       in_keyword },
     [TK_NOTIN]     = { NULL,       infix_op   },
 
     [TK_MOD]       = { NULL,       infix_op   },
@@ -1350,6 +1379,7 @@ Procedure *compile(Varmint *vm, char *source)
   SemanticDatum sem;
   sem.assign_fn = NULL;
   sem.in_stmt = false;
+  sem.in_let_expr = false;
   sem.insert_semicolon = false;
   sem.if_else_chained = false;
   sem.led_fail = false;
