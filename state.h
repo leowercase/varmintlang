@@ -31,6 +31,8 @@ typedef struct {
   const uint8_t *ip; // Instruction Ptr
   Procedure *procedure;
   Value *op_stack; // A handle to the call frame's own memory on the stack
+  // Closure data.
+  size_t upvalue_count; struct Upval **upvalues;
 } CallFrame;
 
 // Maximum call depth for functions.

@@ -25,6 +25,7 @@ Varmint varmint_start(void)
 
   vm.op_stack = OpStack_init();
   vm.call_stack = CallStack_init();
+  vm.open_upvalues = NULL;
 
   vm.natives = Natives_init();
   vm.natives_table = NativesTable_init();
@@ -81,8 +82,7 @@ Value varmint_run(Varmint *vm, char *source)
 
 #ifdef VARMINT_DEBUG
   fprintf(stderr, "*** INSTRUCTIONS ***\n");
-  dis(stderr, program);
-  fprintf(stderr, "\n");
+  dis(stderr, program, "program");
 #endif
 
   execute(vm, program);

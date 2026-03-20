@@ -14,7 +14,7 @@ size_t get_line(LineInfo *lines, size_t offset)
 
     offset -= l.nbytes;
   };
-  unreachable(); // Unreachable, assuming well-formed line info
+  abort(); // Unreachable, assuming well-formed line info
 }
 
 void v_error_out(const char *fmt, va_list args)

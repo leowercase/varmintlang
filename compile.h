@@ -22,9 +22,11 @@ typedef struct Parse Parse;
 // Local going out of scope gets its value pushed off the stack.
 typedef struct Local {
   Str name;
+  size_t stack_slot;
   int depth;
   bool initialized;
-  size_t stack_slot;
+  // Whether the local is captured by an upvalue
+  bool is_captured;
 } Local;
 
 // Stack structure implementing a dictionary for local variable lookup.
@@ -61,7 +63,10 @@ typedef DYN_ARRAY_STRUCT(Loop) LoopStack;
 // Info about the current expression being parsed.
 typedef struct SemanticDatum {
   void (*assign_fn)(Parse *p); // Assignment function for left hand side
-  Local *assignable_local;
+  union {
+    Local *local;
+    size_t upval_idx;
+  } assignable;
 
   bool in_stmt; // {}
   bool insert_semicolon;

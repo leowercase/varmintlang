@@ -36,7 +36,7 @@ Value List_create(Varmint *vm, size_t cap)
   return val;
 }
 
-Value Range_create(struct Varmint *vm, float64_t start, float64_t end,
+Value Range_create(Varmint *vm, float64_t start, float64_t end,
                                        bool end_inclusive)
 {
   Value val = *create_gc_obj(vm, V_range, sizeof(Range));
@@ -165,8 +165,26 @@ Value Procedure_create(Varmint *vm, size_t arity)
   proc->code.instructions = Instructions_init();
   proc->code.lines = LineInfo_init();
 
+  // Initialize closure description
+  proc->closure_desc = ClosureDesc_init();
+
   proc->arity = arity;
   proc->name = NULL_STR;
+  return val;
+}
+
+// Allocate a closure and its upvalues.
+Value Closure_create(Varmint *vm, Procedure *procedure)
+{
+  ClosureDesc desc = procedure->closure_desc;
+
+  size_t size = sizeof(Closure) + desc.len * sizeof(Upval *);
+  Value val = *create_gc_obj(vm, V_closure, size);
+
+  Closure *c = val.as.closure;
+  c->upvalue_count = desc.len;
+  c->procedure = procedure;
+
   return val;
 }
 
@@ -175,7 +193,7 @@ bool values_eq(Value a, Value b)
   if (a.type != b.type) return false;
   else {
     switch (a.type) {
-    case V_no:
+    case V_no: case V_upval:
       unreachable();
     case V_number:
       return a.as.number == b.as.number;
@@ -198,6 +216,7 @@ bool values_eq(Value a, Value b)
       return strs_eq(String_as_str(&a), String_as_str(&b));
     case V_list:
     case V_procedure:
+    case V_closure:
       // "Shallow" equivalence
       return a.as.gc_data == b.as.gc_data;
     }
@@ -228,6 +247,8 @@ const char *value_type_cstring(Typetag type)
   case_(string)
   case_(list)
   case_(procedure)
+  case_(upval)
+  case_(closure)
   }
 
 #undef case_
@@ -244,12 +265,14 @@ static Value fn_to_string(Varmint *vm, const char *moniker, Str name)
 Value value_to_string(Varmint *vm, Value val)
 {
   switch (val.type) {
-  case V_no:
+  case V_no: case V_upval:
     unreachable();
   case V_number:
     return String_fmt(vm, "%g", val.as.number);
   case V_boolean:
     return val.as.boolean ? String_from(vm, "True") : String_from(vm, "False");
+  case V_native:
+    return fn_to_string(vm, "native fn", vm->natives.data[val.as.native].name);
   case V_maybe:
     if (val.as.maybe == NULL)
       return String_from(vm, "");
@@ -263,9 +286,19 @@ Value value_to_string(Varmint *vm, Value val)
     return String_from(vm, "<list>");
   case V_procedure:
     return fn_to_string(vm, "fn", val.as.procedure->name);
-  case V_native:
-    return fn_to_string(vm, "native fn", vm->natives.data[val.as.native].name);
+  case V_closure:
+    return fn_to_string(vm, "closure", val.as.closure->procedure->name);
   }
+}
+
+static void print_fn(FILE *restrict stream, const char *moniker, Str name)
+{
+  fprintf(stream, ANSI_GREEN);
+  if (name.s != NULL)
+    fprintf(stream, "<%s %.*s>", moniker, (int)name.len, name.s);
+  else
+    fprintf(stream, "<%s>", moniker);
+  fprintf(stream, ANSI_RESET);
 }
 
 void print_value(FILE *restrict stream, Value val)
@@ -314,16 +347,13 @@ void print_value(FILE *restrict stream, Value val)
       break;
     }
   case V_procedure:
-    {
-      Str name = val.as.procedure->name;
-      fprintf(stream, ANSI_GREEN);
-      if (name.s != NULL)
-        fprintf(stream, "<fn %.*s>", (int)name.len, name.s);
-      else
-        fprintf(stream, "<fn>");
-      fprintf(stream, ANSI_RESET);
-      break;
-    }
+    print_fn(stream, "fn", val.as.procedure->name);
+    break;
+  case V_upval:
+    unreachable();
+  case V_closure:
+    print_fn(stream, "closure", val.as.closure->procedure->name);
+    break;
   }
 }
 
@@ -331,6 +361,7 @@ uint64_t hash_value(Value val)
 {
   switch (val.type) {
   case V_no:
+  case V_upval:
     unreachable();
   case V_number:
     return XXH3_64bits(&val.as.number, sizeof(float64_t));
@@ -349,6 +380,7 @@ uint64_t hash_value(Value val)
     return XXH3_64bits(val.as.string->s, val.as.string->len);
   case V_list:
   case V_procedure:
+  case V_closure:
     return XXH3_64bits(&val.as.gc_data, sizeof(GCData *));
   }
 }

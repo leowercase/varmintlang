@@ -5,48 +5,59 @@
 
 #include <stdio.h>
 
-static void constant(FILE *restrict stream, PCode *code, size_t _, size_t idx)
+static void constant(FILE *restrict stream, Procedure *p, size_t _, size_t idx)
 {
   fprintf(stream, "  [%li] = ", idx);
-  print_value(stream, code->constants.data[idx]);
+  print_value(stream, p->code.constants.data[idx]);
   fprintf(stream, ANSI_CYAN);
 }
 
-static void size(FILE *restrict stream, PCode *code, size_t _, size_t s)
+static void size(FILE *restrict stream, Procedure *p, size_t _, size_t s)
 {
   fprintf(stream, " " ANSI_YELLOW "(%li)" ANSI_CYAN, s);
 }
 
-static void jump(FILE *restrict stream, PCode *code, size_t offset,
+static void jump(FILE *restrict stream, Procedure *p, size_t offset,
     size_t jumpable_code, int sign)
 {
-  size(stream, code, offset, (size_t)jumpable_code);
+  size(stream, p, offset, (size_t)jumpable_code);
   fprintf(stream, " -> ");
   // +3 accounts for the instruction and its operands
   size_t dest = (size_t)((long)offset + 3 + sign * (long)jumpable_code);
-  dis_instruction(stream, code, dest);
+  dis_instruction(stream, p, dest);
 }
 
-static void jump_fwd(FILE *restrict stream, PCode *code, size_t offset,
+static void jump_fwd(FILE *restrict stream, Procedure *p, size_t offset,
     size_t jumpable_code)
 {
-  jump(stream, code, offset, jumpable_code, +1);
+  jump(stream, p, offset, jumpable_code, +1);
 }
 
-static void jump_bkwd(FILE *restrict stream, PCode *code, size_t offset,
+static void jump_bkwd(FILE *restrict stream, Procedure *p, size_t offset,
     size_t jumpable_code)
 {
-  jump(stream, code, offset, jumpable_code, -1);
+  jump(stream, p, offset, jumpable_code, -1);
+}
+
+static void upval(FILE *restrict stream, Procedure *p, size_t offset,
+    size_t upval_idx)
+{
+  UpvalDesc *desc = &p->closure_desc.data[upval_idx];
+  fprintf(stream, "  [%li] = %.*s -> %s [%li]",
+      upval_idx,
+      (int)desc->name.len, desc->name.s,
+      desc->captures_local ? "local" : "upvalue",
+      desc->idx);
 }
 
 // Returns the offset where the instruction ends.
-size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
+size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
 {
-  Opcode instruction = code->instructions.data[offset];
+  Opcode instruction = p->code.instructions.data[offset];
 
 #define case_(name, stmt) \
   case OP_##name: { \
-      fprintf(stream, "%.2i " #name, (int)get_line(&code->lines, offset)); \
+      fprintf(stream, "%.2i " #name, (int)get_line(&p->code.lines, offset)); \
       stmt; \
   }
 
@@ -54,8 +65,8 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
 #define case_16_op(name, fn) \
   case_(name, \
     { \
-        uint8_t *ip = code->instructions.data + offset + 1; \
-        fn(stream, code, offset, uint8_to_16(ip)); \
+        uint8_t *ip = p->code.instructions.data + offset + 1; \
+        fn(stream, p, offset, uint8_to_16(ip)); \
         return offset + 3; \
     })
 
@@ -63,7 +74,7 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
 #define case_var_op(name, fn) \
   case_(name, \
     { \
-        fn(stream, code, offset, code->instructions.data[offset + 1]); \
+        fn(stream, p, offset, p->code.instructions.data[offset + 1]); \
         return offset + 2; \
     }) \
   case_16_op(name##16, fn)
@@ -121,6 +132,8 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
   case_op(DUP_2)
   case_var_op(GET, size)
   case_var_op(SET, size)
+  case_var_op(GET_UPVALUE, upval)
+  case_var_op(SET_UPVALUE, upval)
   case_op(INDEXED_GET)
   case_op(INDEXED_SET)
   case_op(POP)
@@ -146,6 +159,8 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
   case_16_op(BREAK_LIST, jump_fwd)
   case_op(DISCARD_FOR)
   case_op(DISCARD_FOR_LIST)
+  case_op(CLOSURE)
+  case_op(HOIST_UPVALUE)
   case_var_op(CALL, size)
   case_op(RETURN)
   case OP_GC:
@@ -160,22 +175,21 @@ size_t dis_instruction(FILE *restrict stream, PCode *code, size_t offset)
 #undef case_op
 }
 
-static void dis_code(FILE *restrict stream, PCode *code)
+void dis(FILE *restrict stream, Procedure *procedure, const char *name)
 {
+  PCode *code = &procedure->code;
+
+  if (name != NULL) fprintf(stream, "-- %s --\n", name);
   fprintf(stream, ANSI_CYAN);
 
   for (size_t offset = 0; offset < code->instructions.len;) {
-    offset = dis_instruction(stream, code, offset);
+    offset = dis_instruction(stream, procedure, offset);
     fprintf(stream, "\n");
   }
 
-  fprintf(stream, ANSI_RESET);
-}
+  fprintf(stream, ANSI_RESET "\n");
 
-void dis(FILE *restrict stream, Procedure *program)
-{
-  PCode *code = &program->code;
-
+  // Disassemble any functions inside the procedure.
   for (size_t i = 0; i < code->constants.len; i++) {
     Value *c = &code->constants.data[i];
 
@@ -188,11 +202,8 @@ void dis(FILE *restrict stream, Procedure *program)
       else
         fprintf(stream, "-- function %.*s [%li] --\n",
             (int)fn->name.len, fn->name.s, fn->arity);
-      dis_code(stream, &c->as.procedure->code);
-      fprintf(stream, "\n");
+
+      dis(stream, fn, NULL);
     }
   }
-
-  fprintf(stream, "-- program --\n");
-  dis_code(stream, code);
 }

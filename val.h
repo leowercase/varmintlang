@@ -25,6 +25,8 @@ typedef enum {
   V_string,
   V_list,
   V_procedure,
+  V_upval,
+  V_closure,
 } Typetag;
 
 // Union of Varmint values.
@@ -39,6 +41,8 @@ typedef union {
   struct String *string;
   struct List *list;
   struct Procedure *procedure;
+  struct Upval *upval;
+  struct Closure *closure;
 } Valueu;
 
 typedef struct {
@@ -70,6 +74,7 @@ bool is_heaped_value(Value val)
     ? val.as.maybe != NULL : val.type >= V_string;
 }
 
+// Optional or nullable type.
 // None is represented as (Maybe *)NULL
 typedef struct Maybe {
   GCData gc_data;
@@ -120,6 +125,8 @@ Value String_readline(struct Varmint *vm, const char *prompt);
 Str String_as_str(Value *val);
 
 Value Procedure_create(struct Varmint *vm, size_t arity);
+
+Value Closure_create(struct Varmint *vm, struct Procedure *procedure);
 
 bool values_eq(Value a, Value b);
 bool value_is_falsey(Value val);

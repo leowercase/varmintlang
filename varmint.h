@@ -13,6 +13,9 @@ typedef struct Varmint {
   CallStack call_stack;
   CallFrame *frame;
   OpStack op_stack;
+  // Linked list of upvalues that capture a value on the stack.
+  // Sorted so it reflects the order of the stack.
+  Upval *open_upvalues;
 
   Natives natives;
   NativesTable natives_table;

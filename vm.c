@@ -28,7 +28,9 @@ static inline Value peek(Varmint *vm, size_t idx)
 }
 
 // Call a procedure.
-static void call(Varmint *vm, Procedure *procedure, size_t argc)
+static void call(Varmint *vm,
+    Procedure *procedure,
+    Upval **upvalues, size_t upvalue_count)
 {
   if (vm->call_stack.len >= CALL_STACK_MAX)
     runtime_error(vm, "maximum call depth exceeded.\n");
@@ -37,6 +39,11 @@ static void call(Varmint *vm, Procedure *procedure, size_t argc)
   CallFrame frame;
   frame.procedure = procedure;
   frame.ip = procedure->code.instructions.data;
+
+  frame.upvalues = upvalues;
+  frame.upvalue_count = upvalue_count;
+
+  size_t argc = procedure->arity;
 
   if (vm->op_stack.len > 0)
     // (`argc` + 1) slots for parameters and the fn itself
@@ -79,22 +86,36 @@ static void check_fn_argc(Varmint *vm, size_t arity, Str name, size_t argc)
 
 static void call_val(Varmint *vm, Value callee, size_t argc)
 {
-  if (callee.type == V_procedure) {
-    Procedure *fn = callee.as.procedure;
-    check_fn_argc(vm, fn->arity, fn->name, argc);
+  switch (callee.type) {
+  case V_native:
+    {
+      Native *fn = &vm->natives.data[callee.as.native];
+      check_fn_argc(vm, fn->arity, fn->name, argc);
 
-    call(vm, fn, argc);
+      call_native(vm, fn);
+      break;
+    }
+  case V_procedure:
+    {
+      Procedure *fn = callee.as.procedure;
+      check_fn_argc(vm, fn->arity, fn->name, argc);
+
+      call(vm, fn, NULL, 0);
+      break;
+    }
+  case V_closure:
+    {
+      Closure *c = callee.as.closure;
+      Procedure *fn = c->procedure;
+      check_fn_argc(vm, fn->arity, fn->name, argc);
+
+      call(vm, fn, c->upvalues, c->upvalue_count);
+      break;
+    }
+  default:
+    runtime_error(vm, "cannot call value of type %s\n",
+        value_type_cstring(callee.type));
   }
-
-  else if (callee.type == V_native) {
-    Native *fn = &vm->natives.data[callee.as.native];
-    check_fn_argc(vm, fn->arity, fn->name, argc);
-
-    call_native(vm, fn);
-  }
-
-  else runtime_error(vm, "cannot call value of type %s\n",
-      value_type_cstring(callee.type));
 }
 
 static inline Value *get_stack_slot(Varmint *vm, size_t stack_slot)
@@ -103,6 +124,46 @@ static inline Value *get_stack_slot(Varmint *vm, size_t stack_slot)
   // Ensure valid index
   assert(slot < &vm->op_stack.data[vm->op_stack.len]);
   return slot;
+}
+
+static inline Value *get_upvalue(Varmint *vm, size_t upval_idx)
+{
+  // Ensure valid index
+  assert(upval_idx < vm->frame->upvalue_count);
+  return vm->frame->upvalues[upval_idx]->loc;
+}
+
+// Capture a local stack slot.
+static inline Upval *capture_upvalue(Varmint *vm, size_t stack_slot)
+{
+  Value *slot = &vm->frame->op_stack[stack_slot];
+
+  Upval *upval = vm->open_upvalues,
+        **prev = &vm->open_upvalues;
+  // Find the right gap to insert the upvalue.
+  while (upval != NULL && upval->loc > slot) {
+    *prev = upval;
+    upval = upval->next;
+  }
+
+  if (upval != NULL && upval->loc == slot)
+    // This upvalue points exactly to the slot we're capturing - reuse it.
+    return upval;
+
+  // Create a new upvalue.
+  Upval *new_upval = create_gc_obj(vm, V_upval, sizeof(Upval))->as.upval;
+  new_upval->loc = &vm->frame->op_stack[stack_slot];
+
+  // Insert into open upvalues list (at the right location).
+  new_upval->next = upval;
+  *prev = new_upval;
+  return new_upval;
+}
+
+static inline void validate_assign(Varmint *vm, Value val)
+{
+  if (val.type == V_no)
+    runtime_error(vm, "invalid assign to expression without value\n");
 }
 
 static void loop_result(Varmint *vm, Value result)
@@ -324,11 +385,23 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case_var_op(OP_SET, stack_slot,
     {
       Value val = peek(vm, 0);
-
-      if (val.type == V_no)
-        runtime_error(vm, "invalid assign to expression without value\n");
-
+      validate_assign(vm, val);
       *get_stack_slot(vm, stack_slot) = val;
+      break;
+    })
+
+    // Get an upvalue
+  case_var_op(OP_GET_UPVALUE, upval_idx,
+    {
+      push(vm, *get_upvalue(vm, upval_idx));
+      break;
+    })
+    // Set an upvalue
+  case_var_op(OP_SET_UPVALUE, upval_idx,
+    {
+      Value val = peek(vm, 0);
+      validate_assign(vm, val);
+      *get_upvalue(vm, upval_idx) = val;
       break;
     })
 
@@ -346,10 +419,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
       Value val = pop(vm),
             idx = pop(vm),
             collection = pop(vm);
-
-      if (val.type == V_no)
-        runtime_error(vm, "invalid list assign to expression without value\n");
-
+      validate_assign(vm, val);
       push(vm, _vm_set_elem(vm, collection, idx, val));
       break;
     }
@@ -547,6 +617,38 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     }
 
+    // Wrap a function into a closure.
+  case OP_CLOSURE:
+    {
+      Procedure *proc = pop(vm).as.procedure;
+      Value c = Closure_create(vm, proc);
+
+      // Capture and initialize upvalues from enclosing function.
+      for (size_t i = 0; i < proc->closure_desc.len; i++) {
+        UpvalDesc *upval = &proc->closure_desc.data[i];
+
+        c.as.closure->upvalues[i] =
+          upval->captures_local
+            ? capture_upvalue(vm, upval->idx) // stack slot
+            : vm->frame->upvalues[upval->idx]; // captured upvalue
+      }
+
+      push(vm, c);
+      break;
+    }
+    // Hoist an upvalue to the heap on scope end.
+  case OP_HOIST_UPVALUE:
+    {
+      assert(vm->open_upvalues != NULL);
+
+      Upval *upval = vm->open_upvalues;
+      vm->open_upvalues = upval->next;
+
+      upval->hoisted = *upval->loc;
+      upval->loc = &upval->hoisted;
+      break;
+    }
+
     // Call a value
   case_var_op(OP_CALL, argc,
     {
@@ -604,7 +706,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
 
 void execute(Varmint *vm, Procedure *program)
 {
-  call(vm, program, 0);
+  call(vm, program, NULL, 0);
 
   bool running;
   do

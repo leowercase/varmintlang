@@ -53,9 +53,14 @@ static void init_compiler(Parse *p, Locals arg_list)
   p->c = c;
 }
 
+static void clear_local_scope(Parse *p);
+
 // Return from compiler.
 static Procedure *return_compiler(Parse *p)
 {
+  // End arg list
+  clear_local_scope(p);
+
   Procedure *procedure = p->c->procedure;
   GCList_pop(&p->vm->compiler_roots);
 
@@ -103,13 +108,14 @@ static void end_block(Parse *p, Token block_tok, size_t slots, bool has_result)
 }
 
 // Local lookup.
-static Local *resolve_local(Parse *p, Str name)
+static Local *resolve_local(Compiler *c, Str name)
 {
-  if (p->c->locals.len == 0)
+  if (c->locals.len == 0)
     return NULL;
 
-  for (Local *local = Locals_top(&p->c->locals);
-      local >= p->c->locals.data;
+  // Try to find a local in the current function.
+  for (Local *local = Locals_top(&c->locals);
+      local >= c->locals.data;
       local--)
     if (strs_eq(local->name, name))
       return local;
@@ -117,10 +123,48 @@ static Local *resolve_local(Parse *p, Str name)
   return NULL;
 }
 
+static UpvalDesc *add_upval(Parse *p, Compiler *c,
+    Str name, bool captures_local, size_t idx)
+{
+  UpvalDesc upval = {name, captures_local, idx};
+  return ClosureDesc_push(p->vm, &c->procedure->closure_desc, upval);
+}
+
+static inline size_t upval_idx(Compiler *c, UpvalDesc *upval)
+{
+  return (size_t)(upval - c->procedure->closure_desc.data);
+}
+
+// Upvalue lookup.
+static UpvalDesc *resolve_upval(Parse *p, Compiler *c, Str name)
+{
+  if (c->enclosing == NULL)
+    return NULL;
+
+  // Look at the enclosing function's locals.
+  Local *local = resolve_local(c->enclosing, name);
+
+  if (local != NULL) {
+    local->is_captured = true;
+    // Create new upvalue to that slot.
+    return add_upval(p, c, name, true, local->stack_slot);
+  }
+
+  // Look at the enclosing function's upvalues.
+  UpvalDesc *upval = resolve_upval(p, c->enclosing, name);
+  if (upval == NULL) return NULL;
+
+  // Create a new upvalue to that upvalue
+  return add_upval(p, c, name, false, upval_idx(c->enclosing, upval));
+}
+
 static Local *create_local(Locals *locals,
     Str name, int depth, bool initialized)
 {
-  Local local = {name, depth, initialized, 0};
+  Local local = {
+    name, .stack_slot = 0, depth,
+    initialized, .is_captured = false
+  };
   return Locals_push(locals, local);
 }
 
@@ -141,8 +185,13 @@ static void clear_local_scope(Parse *p)
 
   for (Local *local = Locals_top(&p->c->locals);
       local >= p->c->locals.data && local->depth == p->c->depth;
-      local--)
+      local--) {
+    if (local->is_captured)
+      // Hoist upvalue.
+      emit_byte(p, OP_HOIST_UPVALUE);
+
     Locals_pop(&p->c->locals);
+  }
 }
 
 static inline Token peek(Parse *p)
@@ -454,6 +503,9 @@ static void function(Parse *p, Str name, Locals arg_list)
   Procedure *proc = return_compiler(p);
   proc->name = name;
   *fn_constant = value_new(proc, procedure);
+
+  if (proc->closure_desc.len > 0)
+    emit_byte(p, OP_CLOSURE); // Close function.
 }
 
 static void ident_str(Parse *p, Token ident_tok);
@@ -954,9 +1006,14 @@ static void metastring(Parse *p)
 
 static void assign_local(Parse *p)
 {
-  Local *local = semantic(p)->assignable_local;
+  Local *local = semantic(p)->assignable.local;
   emit_var_op(p, OP_SET, local->stack_slot);
   local->initialized = true;
+}
+
+static void assign_upval(Parse *p)
+{
+  emit_var_op(p, OP_SET_UPVALUE, semantic(p)->assignable.upval_idx);
 }
 
 // Emit p-code based on an identifier occurrence.
@@ -964,20 +1021,37 @@ static void ident_str(Parse *p, Token ident_tok)
 {
   Str ident = ident_tok.slice;
 
-  Local *local = resolve_local(p, ident);
-  if (!local) {
-    parse_error(p, ident_tok, true, "use of undeclared variable %.*s",
-        (int)ident.len, ident.s);
-    return;
+  size_t idx;
+  Opcode get_op;
+  bool initialized;
+
+  Local *local = resolve_local(p->c, ident);
+  if (local != NULL) {
+    semantic(p)->assign_fn = assign_local;
+    semantic(p)->assignable.local = local;
+    idx = local->stack_slot;
+    get_op = OP_GET;
+    initialized = local->initialized;
   }
 
-  semantic(p)->assign_fn = assign_local;
-  semantic(p)->assignable_local = local;
+  else {
+    UpvalDesc *upval = resolve_upval(p, p->c, ident);
+    if (upval == NULL) {
+      parse_error(p, ident_tok, true, "use of undeclared variable %.*s",
+          (int)ident.len, ident.s);
+      return;
+    }
+
+    semantic(p)->assign_fn = assign_upval;
+    semantic(p)->assignable.upval_idx = idx = upval_idx(p->c, upval);
+    get_op = OP_GET_UPVALUE;
+    initialized = true;
+  }
 
   if (p->current.type != TK_ASSIGN) {
     // Access.
-    if (local->initialized)
-      emit_var_op(p, OP_GET, local->stack_slot);
+    if (initialized)
+      emit_var_op(p, get_op, idx);
     else
       parse_error(p, ident_tok, true, "variable %.*s has not been initialized",
           (int)ident.len, ident.s);

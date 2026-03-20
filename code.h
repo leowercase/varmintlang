@@ -54,6 +54,10 @@ typedef enum {
   OP_GET16,
   OP_SET,
   OP_SET16,
+  OP_GET_UPVALUE,
+  OP_GET_UPVALUE16,
+  OP_SET_UPVALUE,
+  OP_SET_UPVALUE16,
   OP_INDEXED_GET,
   OP_INDEXED_SET,
   OP_POP,
@@ -80,6 +84,8 @@ typedef enum {
   OP_BREAK_LIST,
   OP_DISCARD_FOR,
   OP_DISCARD_FOR_LIST,
+  OP_CLOSURE,
+  OP_HOIST_UPVALUE,
   OP_CALL,
   OP_CALL16,
   OP_RETURN,
@@ -87,6 +93,7 @@ typedef enum {
   OP_GC,
 } Opcode;
 
+// Ensure that all opcodes fit into 8 bits.
 static_assert(OP_GC <= UINT8_MAX, "Oops! Too many opcodes.");
 
 static
@@ -98,7 +105,7 @@ typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
 #define USE_GC
 #include "generic/dyn_array.inc"
 
-// The line of text a group of bytes come from.
+// The line of text a group of bytes comes from.
 typedef struct { size_t line, nbytes; } LineBytes;
 
 typedef DYN_ARRAY_STRUCT(LineBytes) LineInfo;
@@ -119,6 +126,18 @@ typedef struct {
   LineInfo lines;
 } PCode;
 
+typedef struct {
+  Str name;
+  bool captures_local;
+  size_t idx; // Index to local stack slot or the fn's upvalues.
+} UpvalDesc;
+
+typedef DYN_ARRAY_STRUCT(UpvalDesc) ClosureDesc;
+#define T UpvalDesc
+#define ARR ClosureDesc
+#define USE_GC
+#include "generic/dyn_array.inc"
+
 /*
  * Procedure - a tool for abstraction.
  * Can be a program, can be a function in said program.
@@ -129,6 +148,39 @@ typedef struct Procedure {
   Str name;
   size_t arity;
   PCode code;
+  ClosureDesc closure_desc;
 } Procedure;
+
+/*
+ * Functions are by default pure - they can only access and do computation on
+ * the parameters they're given. This fits mathematical notions.
+ *
+ * Sometimes though, there are variables in the function body that aren't
+ * arguments or any bindings apparent in the function. These are called
+ * "free variables".
+ * We need to close any free variables in order to make sense of a computation,
+ * so we refer to the function scope above for these "upvalues".
+ *
+ * https://en.wikipedia.org/wiki/Closure_(computer_programming)
+ * https://stackoverflow.com/a/36878651
+ * https://mrevelle.blogspot.com/2006/10/closure-on-closures.html
+ */
+typedef struct Closure {
+  GCData gc_data;
+  Procedure *procedure;
+  size_t upvalue_count;
+  struct Upval *upvalues[]; // Flexible array member
+} Closure;
+
+// Upvalues can be referenced even after their lifetime ends;
+// they're hoisted onto the heap when the scope ends.
+typedef struct Upval {
+  GCData gc_data;
+  Value *loc;
+  union {
+    struct Upval *next; // Singly linked list of upvalues on the stack
+    Value hoisted; // `loc` points to `hoisted` after the value exits the stack.
+  };
+} Upval;
 
 #endif

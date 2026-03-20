@@ -299,7 +299,7 @@ Value _to_number(Varmint *vm, Value *args)
   Value val = args[0];
 
   switch (val.type) {
-  case V_no:
+  case V_no: case V_upval:
     unreachable();
   case V_number:
     n = val.as.number;
@@ -338,6 +338,7 @@ Value _to_number(Varmint *vm, Value *args)
   case V_maybe:
   case V_list:
   case V_procedure:
+  case V_closure:
     goto no_num;
   }
 

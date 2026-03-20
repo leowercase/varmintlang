@@ -92,6 +92,18 @@ static inline void add_grey(Varmint *vm, Value obj)
   GCList_push(&vm->grey_worklist, obj);
 }
 
+static void mark_obj(Varmint *vm, Value obj);
+
+static inline void mark_procedure(Varmint *vm, Procedure *procedure)
+{
+  Constants *constants = &procedure->code.constants;
+
+  for (size_t i = 0; i < constants->len; i++) {
+    Value c = constants->data[i];
+    if (is_heaped_value(c)) mark_obj(vm, c);
+  }
+}
+
 static void mark_obj(Varmint *vm, Value obj)
 {
   Typetag t = obj.type;
@@ -125,14 +137,18 @@ static void mark_obj(Varmint *vm, Value obj)
     }
     break;
   case V_procedure:
+    mark_procedure(vm, obj.as.procedure);
+    break;
+  case V_upval:
     {
-      Constants *constants = &obj.as.procedure->code.constants;
-      for (size_t i = 0; i < constants->len; i++) {
-        Value c = constants->data[i];
-        if (is_heaped_value(c)) mark_obj(vm, c);
-      }
+      Upval *upval = obj.as.upval;
+      if (upval->loc == &upval->hoisted && is_heaped_value(upval->hoisted))
+        mark_obj(vm, upval->hoisted);
       break;
     }
+  case V_closure:
+    mark_procedure(vm, obj.as.closure->procedure);
+    break;
   }
 }
 
@@ -169,15 +185,11 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
   case V_native:
     unreachable();
   case V_maybe:
-    {
-      FREE(Maybe);
-      break;
-    }
+    FREE(Maybe);
+    break;
   case V_range:
-    {
-      FREE(Range);
-      break;
-    }
+    FREE(Range);
+    break;
   case V_string:
     {
       String *string = (String *)data;
@@ -201,9 +213,18 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
       Instructions_free(vm, &code->instructions);
       LineInfo_free(vm, &code->lines);
 
+      // Free closure description
+      ClosureDesc_free(vm, &((Procedure *)data)->closure_desc);
+
       FREE(Procedure);
       break;
     }
+  case V_upval:
+    FREE(Upval);
+    break;
+  case V_closure:
+    FREE(Closure);
+    break;
   }
 
 #undef FREE
@@ -230,7 +251,7 @@ void sweep(Varmint *vm)
 
       // Free.
       free_obj_data(vm, obj->type, data);
-      free(obj);
+      gc_free(vm, obj, sizeof(Value));
 
       // Next.
       obj = next;

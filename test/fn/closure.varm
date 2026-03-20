@@ -1,0 +1,6 @@
+{
+  let adder(x) := (y) => x + y; # closes over x
+
+  let teen := adder(10);
+  teen(4) # 14
+}
