@@ -1,0 +1,5 @@
+{
+  let x := "value";
+  x := { "empty block"; };
+}
+# invalid assign to expression without value

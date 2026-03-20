@@ -1,0 +1,3 @@
+using put:
+  put({ "empty block"; })
+# cannot pass in parameter with no value
