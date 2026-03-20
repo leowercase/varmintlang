@@ -63,8 +63,13 @@ static void call_native(Varmint *vm, Native *native)
 {
   Value *params = allocate(NULL, (size_t)native->arity * sizeof(Value));
   // Get parameters
-  for (size_t i = 1; i <= native->arity; i++)
-    params[native->arity - i] = pop(vm);
+  for (size_t i = 1; i <= native->arity; i++) {
+    Value param = pop(vm);
+    if (param.type == V_no)
+      runtime_error(vm, "cannot pass in parameter with no value\n");
+
+    params[native->arity - i] = param;
+  }
 
   // Call native function.
   Value result = native->fn(vm, params);
