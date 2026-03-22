@@ -61,6 +61,12 @@ bool is_infix_op(TokenType t)
 }
 
 static inline
+bool is_cmp_op(TokenType t)
+{
+  return TK_EQ <= t && t <= TK_GEQ;
+}
+
+static inline
 bool is_ident_beginning(char c)
 {
   return isalpha(c) || c == '_';

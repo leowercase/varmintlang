@@ -336,12 +336,13 @@ static const BinaryOp infix_ops[] = {
   [TK_PERCENT]  = { OP_MODULO,   PREC_FACTOR, ASSOC_LEFT  },
   [TK_2PIPE]    = { OP_CONCAT,   PREC_CONCAT, ASSOC_LEFT  },
 
-  [TK_EQ]       = { OP_EQ,       PREC_CMP,    ASSOC_LEFT  },
-  [TK_NEQ]      = { OP_NEQ,      PREC_CMP,    ASSOC_LEFT  },
-  [TK_LT]       = { OP_LT,       PREC_CMP,    ASSOC_LEFT  },
-  [TK_LEQ]      = { OP_LEQ,      PREC_CMP,    ASSOC_LEFT  },
-  [TK_GT]       = { OP_GT,       PREC_CMP,    ASSOC_LEFT  },
-  [TK_GEQ]      = { OP_GEQ,      PREC_CMP,    ASSOC_LEFT  },
+  // Comparison is handled by `cmp`, not `infix_op`
+  [TK_EQ]       = { OP_EQ,       PREC_CMP,    ASSOC_LEFT },
+  [TK_NEQ]      = { OP_NEQ,      PREC_CMP,    ASSOC_LEFT },
+  [TK_LT]       = { OP_LT,       PREC_CMP,    ASSOC_LEFT },
+  [TK_LEQ]      = { OP_LEQ,      PREC_CMP,    ASSOC_LEFT },
+  [TK_GT]       = { OP_GT,       PREC_CMP,    ASSOC_LEFT },
+  [TK_GEQ]      = { OP_GEQ,      PREC_CMP,    ASSOC_LEFT },
 
   [TK_AND]      = { OP_AND,      PREC_AND,    ASSOC_LEFT  },
   [TK_OR]       = { OP_OR,       PREC_OR,     ASSOC_LEFT  },
@@ -440,6 +441,57 @@ static void led_op(Parse *p, int min_bp)
     infix_op(p, min_bp);
   else
     postfix_op(p, min_bp);
+}
+
+static void cmp_chain(Parse *p, bool is_continuation)
+{
+  Opcode op = infix_ops[eat(p).type].type;
+
+  // Parse right operand.
+  const int r_bp = (int)PREC_CMP + (int)ASSOC_LEFT;
+  expr(p, r_bp);
+
+  bool is_chain = is_cmp_op(p->current.type);
+
+  if (is_chain)
+    // The rhs of this cmp acts as an lhs for the next one.
+    // -> Duplicate rhs and swap it behind the current operands.
+    emit_byte(p, OP_SWAP_MOVE_OVER);
+
+  // Emit operation.
+  emit_byte(p, (uint8_t)op);
+
+  if (is_continuation) {
+    // Move duplicate rhs to the background
+    if (is_chain) emit_byte(p, OP_SWAP_NEATH);
+
+    // Comparisons are chained, logically conjunct.
+    emit_byte(p, OP_AND);
+  }
+
+  if (is_chain) {
+    // Switch the places of the result and the swapped rhs.
+    emit_byte(p, OP_SWAP);
+    cmp_chain(p, true);
+  }
+}
+
+// Chained comparison operators.
+// a > b >= c != d
+static void cmp(Parse *p, int min_bp)
+{
+  if (PREC_CMP < min_bp) {
+    semantic(p)->led_fail = true;
+    return;
+  }
+
+  // Assignment shorthand
+  if (peek(p).type == TK_ASSIGN) {
+    assignage(p, min_bp, infix_ops[p->current.type].type);
+    return;
+  }
+
+  cmp_chain(p, false);
 }
 
 static void indexed_assign(Parse *p)
@@ -1345,12 +1397,13 @@ static const ParseRule parse_rules[] =
     [TK_PERCENT]   = { NULL,       led_op     },
     [TK_BANG]      = { NULL,       postfix_op },
     [TK_2PIPE]     = { NULL,       infix_op   },
-    [TK_EQ]        = { NULL,       infix_op   },
-    [TK_NEQ]       = { NULL,       infix_op   },
-    [TK_LT]        = { NULL,       infix_op   },
-    [TK_GT]        = { NULL,       infix_op   },
-    [TK_LEQ]       = { NULL,       infix_op   },
-    [TK_GEQ]       = { NULL,       infix_op   },
+
+    [TK_EQ]        = { NULL,       cmp        },
+    [TK_NEQ]       = { NULL,       cmp        },
+    [TK_LT]        = { NULL,       cmp        },
+    [TK_GT]        = { NULL,       cmp        },
+    [TK_LEQ]       = { NULL,       cmp        },
+    [TK_GEQ]       = { NULL,       cmp        },
 
     [TK_ASSIGN]    = { NULL,       assign     },
     [TK_LET]       = { let_expr,   NULL       },

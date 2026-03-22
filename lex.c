@@ -316,9 +316,9 @@ Token lex_token(Lex *lex)
 
   case '+': return token(lex, TK_PLUS);
   case '*': return token(lex, TK_STAR);
-  case '/': return token(lex, TK_SLASH);
   case '^': return token(lex, TK_CARET);
   case '%': return token(lex, TK_PERCENT);
+  case '!': return token(lex, TK_BANG);
   case '[': return token(lex, TK_LBRACK);
   case ']': return token(lex, TK_RBRACK);
   case ';': return token(lex, TK_SEMICOLON);
@@ -332,9 +332,9 @@ Token lex_token(Lex *lex)
     return token(lex,
         match(lex, '>') ? TK_MAPS_TO : TK_EQ);
 
-  case '!':
+  case '/':
     return token(lex,
-        match(lex, '=') ? TK_NEQ : TK_BANG);
+        match(lex, '=') ? TK_NEQ : TK_SLASH);
 
   case '<':
     return token(lex,

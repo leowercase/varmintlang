@@ -326,16 +326,33 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     }
 
-    // Chains the right hand side of an op to be the left hand of another.
-    // The good ol' switcheroo.
-  case OP_CHAIN_BINOP:
+    // Swap stack slots.
+  case OP_SWAP:
     {
-      Value rhs = peek(vm, 0);
-      bool running = execute_instruction(vm);
-      push(vm, rhs);
-      return running;
+      Value top = peek(vm, 0), bot = peek(vm, 1);
+      OpStack_top(&vm->op_stack)[0] = bot;
+      OpStack_top(&vm->op_stack)[-1] = top;
+      break;
     }
+    // ( a b c -- b a c )
+  case OP_SWAP_NEATH:
+    {
+      Value below_top = peek(vm, 1), below_bot = peek(vm, 2);
+      OpStack_top(&vm->op_stack)[-1] = below_bot;
+      OpStack_top(&vm->op_stack)[-2] = below_top;
+      break;
+    }
+    // ( a b -- b a b )
+  case OP_SWAP_MOVE_OVER:
+    {
+      Value top = peek(vm, 0),
+            bot = peek(vm, 1);
+      OpStack_top(&vm->op_stack)[-1] = top;
 
+      OpStack_top(&vm->op_stack)[0] = bot;
+      push(vm, top);
+      break;
+    }
     // Duplicate two stack slots.
   case OP_DUP_2:
     {
