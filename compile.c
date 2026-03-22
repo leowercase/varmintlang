@@ -568,19 +568,22 @@ static void maplet(Parse *p)
   function(p, NULL_STR, arg_list, false);
 }
 
+static inline void grouping_end(Parse *p)
+{
+  new_semantic_scope(p)->in_stmt = false;
+  expr(p, PREC_NONE);
+  end_semantic_scope(p);
+
+  consume(p, TK_RPAREN, "expect grouping end"); // )
+}
+
 // (...)
 static void grouping(Parse *p)
 {
   if (consume_arg_list_start(p)) // (
     maplet(p);
-
-  else {
-    new_semantic_scope(p)->in_stmt = false;
-    expr(p, PREC_NONE);
-    end_semantic_scope(p);
-
-    consume(p, TK_RPAREN, "expect grouping end"); // )
-  }
+  else
+    grouping_end(p);
 }
 
 // Returns the length of the listing
@@ -1000,6 +1003,8 @@ static void string(Parse *p)
       String_create(p->vm, strtok.slice.s, strtok.slice.len));
 }
 
+static void block(Parse *p);
+
 static void metastring(Parse *p)
 {
   size_t metas = 0;
@@ -1016,8 +1021,10 @@ static void metastring(Parse *p)
       }
       else string(p);
       break;
+    case TK_LPAREN: next(p); grouping_end(p); break;
+    case TK_LCURLY: block(p); break;
     default:
-      expr(p, PREC_NONE); // \(...)
+      unreachable();
     }
   }
 
