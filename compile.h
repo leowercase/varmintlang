@@ -60,6 +60,18 @@ typedef DYN_ARRAY_STRUCT(Loop) LoopStack;
 #define ARR LoopStack
 #include "generic/dyn_array.inc"
 
+// To ease creating mutually recursive fns (among other things), we allow
+// deferred name resolution in a multiple `let` until the end of the clauses.
+typedef struct {
+  UpvalDesc *upval;
+  Token tok;
+} DeferredLookup;
+
+typedef DYN_ARRAY_STRUCT(DeferredLookup) DeferredLet;
+#define T DeferredLookup
+#define ARR DeferredLet
+#include "generic/dyn_array.inc"
+
 // Info about the current expression being parsed.
 typedef struct SemanticDatum {
   void (*assign_fn)(Parse *p); // Assignment function for left hand side
@@ -107,6 +119,8 @@ typedef struct Compiler {
   size_t stack_slot_count;
   LoopStack loops;
   int depth; // Current block depth { { ... } }
+  bool let_declaration; // Whether is a function being declared with `let`.
+  DeferredLet deferred_let;
   Procedure *procedure;
 } Compiler;
 

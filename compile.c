@@ -48,6 +48,9 @@ static void init_compiler(Parse *p, Locals arg_list)
 
   c->loops = LoopStack_init();
 
+  c->let_declaration = false;
+  c->deferred_let = DeferredLet_init();
+
   // Switch compilers.
   // We're one function nesting level deeper.
   c->enclosing = p->c;
@@ -157,6 +160,22 @@ static UpvalDesc *resolve_upval(Parse *p, Compiler *c, Str name)
 
   // Create a new upvalue to that upvalue
   return add_upval(p, c, name, false, upval_idx(c->enclosing, upval));
+}
+
+// Hoisted `let` declaration lookup.
+static size_t resolve_deferred_let(Parse *p, Token tok)
+{
+  DeferredLet *deferred = &p->c->enclosing->deferred_let;
+
+  // Try to recycle an existing declaration
+  for (size_t i = 0; i < deferred->len; i++)
+    if (strs_eq(deferred->data[i].tok.slice, tok.slice))
+      return upval_idx(p->c, deferred->data[i].upval);
+
+  // Else, create a new upvalue.
+  UpvalDesc *upval = add_upval(p, p->c, tok.slice, true, 0);
+  DeferredLet_push(deferred, (DeferredLookup){upval, tok});
+  return upval_idx(p->c, upval);
 }
 
 static Local *create_local(Locals *locals,
@@ -492,12 +511,13 @@ static Locals consume_arg_list(Parse *p, Str name)
 }
 
 // Parses a function body and creates a new function.
-static void function(Parse *p, Str name, Locals arg_list)
+static void function(Parse *p, Str name, Locals arg_list, bool let_declaration)
 {
   // Reserve first stack slot for the function value
   Value *fn_constant = emit_constant(p, NO_VALUE);
 
   init_compiler(p, arg_list);
+  p->c->let_declaration = let_declaration;
 
   expr(p, PREC_NONE);
 
@@ -545,7 +565,7 @@ static void maplet(Parse *p)
 
   consume(p, TK_RPAREN, "expect argument list end");
   next(p); // =>
-  function(p, NULL_STR, arg_list);
+  function(p, NULL_STR, arg_list, false);
 }
 
 // (...)
@@ -1022,12 +1042,14 @@ static void ident_str(Parse *p, Token ident_tok)
 {
   Str ident = ident_tok.slice;
 
+  Local *local;
+  UpvalDesc *upval;
+
   size_t idx;
   Opcode get_op;
   bool initialized;
 
-  Local *local = resolve_local(p->c, ident);
-  if (local != NULL) {
+  if ((local = resolve_local(p->c, ident)) != NULL) {
     semantic(p)->assign_fn = assign_local;
     semantic(p)->assignable.local = local;
     idx = local->stack_slot;
@@ -1035,22 +1057,30 @@ static void ident_str(Parse *p, Token ident_tok)
     initialized = local->initialized;
   }
 
-  else {
-    UpvalDesc *upval = resolve_upval(p, p->c, ident);
-    if (upval == NULL) {
-      parse_error(p, ident_tok, true, "use of undeclared variable %.*s",
-          (int)ident.len, ident.s);
-      return;
-    }
-
+  else if ((upval = resolve_upval(p, p->c, ident)) != NULL) {
     semantic(p)->assign_fn = assign_upval;
-    semantic(p)->assignable.upval_idx = idx = upval_idx(p->c, upval);
+    semantic(p)->assignable.upval_idx = idx
+      = upval_idx(p->c, upval);
     get_op = OP_GET_UPVALUE;
     initialized = true;
   }
 
+  else if (p->c->let_declaration) {
+    // Assume the variable is further defined in the `let`.
+    semantic(p)->assign_fn = assign_upval;
+    semantic(p)->assignable.upval_idx = idx
+      = resolve_deferred_let(p, ident_tok);
+    get_op = OP_GET_UPVALUE;
+    initialized = true;
+  }
+
+  else {
+    parse_error(p, ident_tok, true, "use of undeclared variable %.*s",
+        (int)ident.len, ident.s);
+    return;
+  }
+
   if (p->current.type != TK_ASSIGN) {
-    // Access.
     if (initialized)
       emit_var_op(p, get_op, idx);
     else
@@ -1076,23 +1106,24 @@ static void fn_decl(Parse *p, Str name)
   consume(p, TK_RPAREN, "expect argument list end");
 
   consume(p, TK_ASSIGN, "function requires a body");
-  function(p, name, arg_list);
+  function(p, name, arg_list, true);
 
   Local *fn_local = create_local_var(p, name);
   fn_local->initialized = true;
 }
 
-// Returns the number of let clauses consumed.
+// Returns the number of `let` clauses consumed.
 static size_t consume_lets(Parse *p)
 {
   size_t ndecls = 0;
   new_semantic_scope(p);
 
+  Local *first_local_decl = Locals_top(&p->c->locals) + 1;
   do {
     Token ident_tok = consume(p, TK_WORD, "expect identifier in `let`");
 
     if (p->current.type == TK_LPAREN)
-      // Argument list for function definition.
+      // Matches an argument list for function declaration.
       fn_decl(p, ident_tok.slice);
 
     else {
@@ -1114,11 +1145,37 @@ static size_t consume_lets(Parse *p)
     ndecls++;
   } while (match(p, TK_COMMA));
 
+  // Deferred name resolution.
+  for (size_t i = 0; i < p->c->deferred_let.len; i++) {
+    DeferredLookup *l = &p->c->deferred_let.data[i];
+    Str ident = l->tok.slice;
+
+    Local *deferred_local = NULL;
+    // Resolve from bottom up.
+    for (Local *local = first_local_decl, *top = Locals_top(&p->c->locals);
+        local <= top;
+        local++)
+      if (strs_eq(ident, local->name)) {
+        deferred_local = local;
+        break;
+      }
+
+    if (deferred_local == NULL) {
+      parse_error(p, l->tok, true, "use of undeclared variable %.*s",
+          (int)ident.len, ident.s);
+      continue;
+    }
+
+    l->upval->idx = deferred_local->stack_slot;
+    l->upval->captures_local = deferred_local->is_captured = true;
+  }
+  p->c->deferred_let.len = 0;
+
   end_semantic_scope(p);
   return ndecls;
 }
 
-// The more functional and mathsy cousin of let.
+// The more functional and mathsy cousin of `let`.
 // https://en.wikipedia.org/wiki/Let_expression
 static void let_expr(Parse *p)
 {

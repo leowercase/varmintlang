@@ -139,7 +139,7 @@ static inline Value *get_upvalue(Varmint *vm, size_t upval_idx)
 }
 
 // Capture a local stack slot.
-static inline Upval *capture_upvalue(Varmint *vm, size_t stack_slot)
+static inline Upval *capture_local(Varmint *vm, size_t stack_slot)
 {
   Value *slot = &vm->frame->op_stack[stack_slot];
 
@@ -147,7 +147,7 @@ static inline Upval *capture_upvalue(Varmint *vm, size_t stack_slot)
         **prev = &vm->open_upvalues;
   // Find the right gap to insert the upvalue.
   while (upval != NULL && upval->loc > slot) {
-    *prev = upval;
+    prev = &(*prev)->next;
     upval = upval->next;
   }
 
@@ -157,7 +157,7 @@ static inline Upval *capture_upvalue(Varmint *vm, size_t stack_slot)
 
   // Create a new upvalue.
   Upval *new_upval = create_gc_obj(vm, V_upval, sizeof(Upval))->as.upval;
-  new_upval->loc = &vm->frame->op_stack[stack_slot];
+  new_upval->loc = slot;
 
   // Insert into open upvalues list (at the right location).
   new_upval->next = upval;
@@ -634,7 +634,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
 
         c.as.closure->upvalues[i] =
           upval->captures_local
-            ? capture_upvalue(vm, upval->idx) // stack slot
+            ? capture_local(vm, upval->idx) // stack slot
             : vm->frame->upvalues[upval->idx]; // captured upvalue
       }
 
