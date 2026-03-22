@@ -1119,8 +1119,14 @@ static size_t consume_lets(Parse *p)
   new_semantic_scope(p);
 
   Local *first_local_decl = Locals_top(&p->c->locals) + 1;
+
+  if (p->current.type != TK_WORD) {
+    parse_error(p, p->current, true, "expect identifier");
+    return 0;
+  }
+
   do {
-    Token ident_tok = consume(p, TK_WORD, "expect identifier in `let`");
+    Token ident_tok = eat(p);
 
     if (p->current.type == TK_LPAREN)
       // Matches an argument list for function declaration.
@@ -1143,7 +1149,7 @@ static size_t consume_lets(Parse *p)
 
     p->c->stack_slot_count++;
     ndecls++;
-  } while (match(p, TK_COMMA));
+  } while (match(p, TK_COMMA) && p->current.type == TK_WORD);
 
   // Deferred name resolution.
   for (size_t i = 0; i < p->c->deferred_let.len; i++) {
