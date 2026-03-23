@@ -114,10 +114,10 @@ TBL_ENTRY *METHOD(_probe_entry)(TBL *table, K key)
 
 // Resize table to a new capacity.
 static inline
-void METHOD(_resize)ALLOCS(TBL *table)
+void METHOD(_resize)ALLOCS(TBL *table, size_t required_cap)
 {
   size_t old_cap = table->cap;
-  table->cap = grow_cap(table->cap);
+  table->cap = cap_to(required_cap);
 
   TBL_ENTRY *old_entries = table->entries;
   table->entries =
@@ -155,6 +155,15 @@ void METHOD(_resize)ALLOCS(TBL *table)
 #endif
 }
 
+// Pre-allocate size for entries.
+static inline
+void METHOD(_reserve_size)ALLOCS(TBL *table, size_t entry_count)
+{
+  size_t required_cap = (size_t)((double)entry_count * MAX_LOAD_FACTOR);
+  if (table->cap < required_cap)
+    METHOD(_resize)CALLS_ALLOC(table, required_cap);
+}
+
 // Get table value.
 static inline
 V *METHOD(_get)(TBL *table, K key)
@@ -177,7 +186,7 @@ bool METHOD(_set)ALLOCS(TBL *table, K key, V value)
 {
   if ((double)table->entry_count >= (double)table->cap * MAX_LOAD_FACTOR)
     // α >= α_max or table is empty, should resize.
-    METHOD(_resize)CALLS_ALLOC(table);
+    METHOD(_resize)CALLS_ALLOC(table, table->cap * 2);
 
   TBL_ENTRY *entry = METHOD(_probe_entry)(table, key);
   bool is_new_entry = IS_EMPTY_KEY(entry->key);
@@ -204,9 +213,9 @@ V METHOD(_delete)(TBL *table, K key)
 
 #undef MAX_LOAD_FACTOR
 #undef METHOD
-#undef ALLOC_PARAMS
-#undef ALLOC_ARGS
-#undef ALLOC
+#undef CALLS_ALLOC
+#undef ALLOCS
+#undef USE_GC
 #undef KEYS_EQ
 #undef EMPTY_KEY
 #undef IS_EMPTY_KEY

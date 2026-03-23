@@ -494,12 +494,15 @@ static void cmp(Parse *p, int min_bp)
   cmp_chain(p, false);
 }
 
-static void indexed_assign(Parse *p)
+static void elem_assign(Parse *p)
 {
-  emit_byte(p, OP_INDEXED_SET);
+  emit_byte(p, OP_ELEM_SET);
 }
 
+static void table_ident_key(Parse *p);
+
 // a[i]
+// tb.key
 static void subscript(Parse *p, int min_bp)
 {
   if (PREC_CALL < min_bp) {
@@ -507,9 +510,18 @@ static void subscript(Parse *p, int min_bp)
     return;
   }
 
-  Token brack_tok = eat(p); // [
-  expr(p, PREC_NONE);
-  consume(p, TK_RBRACK, "unterminated subscript"); // ]
+  Token op_tok = eat(p); // [
+  switch (op_tok.type) {
+  case TK_LBRACK:
+    expr(p, PREC_NONE);
+    consume(p, TK_RBRACK, "unterminated subscript"); // ]
+    break;
+  case TK_DOT:
+    table_ident_key(p);
+    break;
+  default:
+    unreachable();
+  }
 
   if (p->current.type != TK_ASSIGN) {
     bool compound =
@@ -520,16 +532,16 @@ static void subscript(Parse *p, int min_bp)
       emit_byte(p, OP_DUP_2);
 
     // Access.
-    emit_byte(p, OP_INDEXED_GET);
+    emit_byte(p, OP_ELEM_GET);
 
     if (!compound) return;
   }
 
   // Assign.
   if (semantic(p)->assign_fn == NULL)
-    parse_error(p, brack_tok, true, "invalid list assign");
+    parse_error(p, op_tok, true, "invalid element assign");
 
-  semantic(p)->assign_fn = indexed_assign;
+  semantic(p)->assign_fn = elem_assign;
 }
 
 static bool consume_arg_list_start(Parse *p)
@@ -696,6 +708,125 @@ static void list(Parse *p)
 
   if (!emit_var_op(p, OP_BUILD_LIST, list_len))
     parse_error(p, bracket, true, "too many list items");
+}
+
+// Consume identifier syntax for table initialization
+static void table_ident_key(Parse *p)
+{
+  Str key = consume(p, TK_WORD, "expect table key").slice;
+  emit_constant(p, String_create(p->vm, key.s, key.len));
+}
+
+// Using curly braces for tables _and_ code blocks can bring ambiguity.
+static bool consume_table_start(Parse *p)
+{
+  next(p); // {
+
+  // Empty table {}
+  if (p->current.type == TK_RCURLY)
+    return true;
+
+  Token tok = p->current;
+
+  // .key
+  if (match(p, TK_DOT)) {
+    table_ident_key(p);
+    return true;
+  }
+
+  size_t list_len = 0;
+
+  // ["key"]
+  if (match(p, TK_LBRACK)) {
+    expr(p, PREC_NONE);
+
+    if (match(p, TK_RBRACK)) {
+      if (p->current.type == TK_ASSIGN)
+        return true;
+      else
+        // Consumed a list with a single element.
+        list_len = 1;
+    }
+    else
+      // Must be a list.
+      list_len = delimited_listing(p, TK_COMMA, TK_COMMA, TK_RBRACK, true) + 1;
+  }
+
+  if (list_len > 0)
+    // Emit the list we consumed.
+    if (!emit_var_op(p, OP_BUILD_LIST, list_len))
+      parse_error(p, tok, true, "too many list items");
+
+  return false;
+}
+
+static void table_key(Parse *p)
+{
+  switch (eat(p).type) {
+  case TK_DOT:
+    // Identifier syntax.
+    table_ident_key(p);
+    break;
+  case TK_LBRACK:
+    // Subscript syntax.
+    expr(p, PREC_NONE);
+    consume(p, TK_RBRACK, "expect `]`");
+    break;
+  default:
+    unreachable();
+  }
+}
+
+static inline void table_value(Parse *p)
+{
+  consume(p, TK_ASSIGN, "expect `:=` after table key");
+
+  const int r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
+  expr(p, r_bp);
+}
+
+static inline void table_entry(Parse *p, bool consumed_first_key)
+{
+  size_t key_nesting =
+    consumed_first_key ? 1 : 0;
+  for (; p->current.type == TK_LBRACK || p->current.type == TK_DOT;
+      key_nesting++)
+    table_key(p);
+
+  table_value(p);
+
+  // Emit nested entries.
+  // .a.b["c"] := value
+  if (key_nesting > 1)
+    emit_var_op(p, OP_NESTED_TABLE_ENTRIES, key_nesting - 1);
+}
+
+// {.key := value}
+static void table(Parse *p)
+{
+  if (match(p, TK_RCURLY)) {
+    emit_byte(p, OP_EMPTY_TABLE); // {}
+    return;
+  }
+
+  // The first key has already been consumed.
+  table_entry(p, true);
+  size_t entry_count = 1;
+
+  // Consume entries.
+  if (match(p, TK_COMMA)) {
+    do {
+      if (p->current.type == TK_RCURLY)
+        break; // Trailing comma.
+
+      table_entry(p, false);
+      entry_count++;
+    } while (match(p, TK_COMMA));
+  }
+
+  consume(p, TK_RCURLY, "expect `}`");
+  // Emit table
+  emit_var_op(p, OP_BUILD_TABLE, entry_count);
 }
 
 static void construct_body(Parse *p, Precedence prec, Associativity assoc)
@@ -1055,7 +1186,7 @@ static void string(Parse *p)
       String_create(p->vm, strtok.slice.s, strtok.slice.len));
 }
 
-static void block(Parse *p);
+static void stmt_block_end(Parse *p, Token curly_tok);
 
 static void metastring(Parse *p)
 {
@@ -1074,7 +1205,7 @@ static void metastring(Parse *p)
       else string(p);
       break;
     case TK_LPAREN: next(p); grouping_end(p); break;
-    case TK_LCURLY: block(p); break;
+    case TK_LCURLY: stmt_block_end(p, eat(p)); break;
     default:
       unreachable();
     }
@@ -1283,15 +1414,9 @@ static size_t stmt(Parse *p)
 }
 
 // A block is a series of statements.
-static void block(Parse *p)
+// (The '{' has already been consumed.)
+static void stmt_block_end(Parse *p, Token curly_tok)
 {
-  Token curly_tok = eat(p); // {
-
-  if (p->current.type == TK_RCURLY) {
-    parse_error(p, eat(p), true, "illegal empty block");
-    return;
-  }
-
   new_semantic_scope(p)->in_stmt = true;
 
   p->c->depth++;
@@ -1329,6 +1454,17 @@ end_block(p, curly_tok, stmt_count, block_has_result);
 p->c->depth--;
 
   end_semantic_scope(p);
+}
+
+// { ... }
+static void block(Parse *p)
+{
+  Token curly_tok = p->current;
+
+  if (consume_table_start(p))
+    table(p);
+  else
+    stmt_block_end(p, curly_tok);
 }
 
 // An impl of Pratt parsing.
@@ -1453,6 +1589,8 @@ static const ParseRule parse_rules[] =
     [TK_COLON]     = { NULL,       led_end    },
     [TK_SEMICOLON] = { NULL,       led_end    },
     [TK_COMMA]     = { NULL,       led_end    },
+
+    [TK_DOT]       = { NULL,       subscript  },
 
     [TK_DOTDOT]    = { NULL,       infix_op   },
     [TK_DOTDOTEQ]  = { NULL,       infix_op   },

@@ -1,0 +1,16 @@
+using putln:
+{
+  let tb := {
+    .key := "value",
+    ["nope"] := { [True] := False },
+    [-0.09] := "negative zero point oh niner",
+  };
+
+  putln(tb.key);
+
+  if not tb.nope[True]:
+    putln("yep, nope.");
+
+  if -0.09 in tb:
+    putln(tb[-0.09]);
+}

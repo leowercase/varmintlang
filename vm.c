@@ -165,10 +165,19 @@ static inline Upval *capture_local(Varmint *vm, size_t stack_slot)
   return new_upval;
 }
 
-static inline void validate_assign(Varmint *vm, Value val)
+static inline void validate_assign(Varmint *vm, Typetag value_type)
 {
-  if (val.type == V_no)
+  if (value_type == V_no)
     runtime_error(vm, "invalid assign to expression without value\n");
+}
+
+static inline Value validate_table_key(Varmint *vm, Value key)
+{
+  if (!value_is_hashable(key.type)) {
+    String *s = value_to_string(vm, key).as.string;
+    runtime_error(vm, "table key %.*s is not hashable\n", (int)s->len, s->s);
+  }
+  return key;
 }
 
 static void loop_result(Varmint *vm, Value result)
@@ -257,7 +266,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     case_op(op_name,     uint8_t ident,  *vm->frame->ip,             1, stmt) \
     case_op(op_name##16, uint16_t ident, uint8_to_16(vm->frame->ip), 2, stmt)
 
-  switch ((int)instruction) {
+  switch ((Opcode)instruction) {
   case OP_NOT:    UNARY(value_new((int)value_is_falsey(operand), boolean))
   case OP_NEGATE: UNARY(_vm_negate(vm, operand))
 
@@ -389,6 +398,40 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     })
 
+    // Constructs a table from keys and values.
+  case_var_op(OP_BUILD_TABLE, entry_count,
+    {
+      Value tb = Table_create(vm, entry_count);
+
+      for (size_t i = 0; i < entry_count; i++) {
+        Value value = pop(vm);
+        Value key = validate_table_key(vm, pop(vm));
+
+        Table_set(vm, tb.as.table, key, value);
+      }
+
+      push(vm, tb);
+      break;
+    })
+    // Just an empty table.
+  case OP_EMPTY_TABLE:
+    push(vm, Table_create(vm, 0));
+    break;
+    // Wrap nested entries
+  case_var_op(OP_NESTED_TABLE_ENTRIES, nested_entries,
+    {
+      for (size_t i = 0; i < nested_entries; i++) {
+        Value nested_tb = Table_create(vm, 1);
+
+        Value value = pop(vm);
+        Value key = validate_table_key(vm, pop(vm));
+
+        Table_set(vm, nested_tb.as.table, key, value);
+        push(vm, nested_tb);
+      }
+      break;
+    })
+
     // Create optional values
   case OP_MAKE_SOME:
     push(vm, Maybe_some(vm, pop(vm)));
@@ -407,7 +450,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case_var_op(OP_SET, stack_slot,
     {
       Value val = peek(vm, 0);
-      validate_assign(vm, val);
+      validate_assign(vm, val.type);
       *get_stack_slot(vm, stack_slot) = val;
       break;
     })
@@ -422,13 +465,13 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case_var_op(OP_SET_UPVALUE, upval_idx,
     {
       Value val = peek(vm, 0);
-      validate_assign(vm, val);
+      validate_assign(vm, val.type);
       *get_upvalue(vm, upval_idx) = val;
       break;
     })
 
     // Get an element from a collection.
-  case OP_INDEXED_GET:
+  case OP_ELEM_GET:
     {
       Value idx = pop(vm),
             collection = pop(vm);
@@ -436,12 +479,12 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     }
     // Set an element of a collection.
-  case OP_INDEXED_SET:
+  case OP_ELEM_SET:
     {
       Value val = pop(vm),
             idx = pop(vm),
             collection = pop(vm);
-      validate_assign(vm, val);
+      validate_assign(vm, val.type);
       push(vm, _vm_set_elem(vm, collection, idx, val));
       break;
     }

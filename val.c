@@ -36,6 +36,18 @@ Value List_create(Varmint *vm, size_t cap)
   return val;
 }
 
+Value Table_create(Varmint *vm, size_t entry_count)
+{
+  Value val = *create_gc_obj(vm, V_table, sizeof(Table));
+
+  Table *tb = val.as.table;
+  tb->entry_count = tb->cap = 0;
+  tb->entries = NULL;
+
+  if (entry_count > 0) Table_reserve_size(vm, tb, entry_count);
+  return val;
+}
+
 Value Range_create(Varmint *vm, float64_t start, float64_t end,
                                        bool end_inclusive)
 {
@@ -215,6 +227,7 @@ bool values_eq(Value a, Value b)
     case V_string:
       return strs_eq(String_as_str(&a), String_as_str(&b));
     case V_list:
+    case V_table:
     case V_procedure:
     case V_closure:
       // "Shallow" equivalence
@@ -246,6 +259,7 @@ const char *value_type_cstring(Typetag type)
   case_(range)
   case_(string)
   case_(list)
+  case_(table)
   case_(procedure)
   case_(upval)
   case_(closure)
@@ -284,6 +298,8 @@ Value value_to_string(Varmint *vm, Value val)
     return String_copy(vm, &val);
   case V_list:
     return String_from(vm, "<list>");
+  case V_table:
+    return String_from(vm, "<table>");
   case V_procedure:
     return fn_to_string(vm, "fn", val.as.procedure->name);
   case V_closure:
@@ -338,12 +354,44 @@ void print_value(FILE *restrict stream, Value val)
     {
       List *list = val.as.list;
       fprintf(stream, ANSI_MAGENTA "[");
+
       for (size_t i = 0; i < list->len; i++) {
         print_value(stream, list->data[i]);
+
         if (i < list->len - 1)
           fprintf(stream, ", ");
       }
+
       fprintf(stream, ANSI_MAGENTA "]" ANSI_RESET);
+      break;
+    }
+  case V_table:
+    {
+      Table *table = val.as.table;
+      fprintf(stream, ANSI_MAGENTA "{" ANSI_RESET);
+      for (size_t i = 0, ents = 0; i < table->cap; i++) {
+        TableEntry ent = table->entries[i];
+        if (ent.is_tomb || ent.key.type == V_no) continue;
+        ents++;
+
+        if (ent.key.type == V_string) {
+          fprintf(stream, ".");
+          String *key = ent.key.as.string;
+          fprintf(stream, "%.*s", (int)key->len, key->s);
+        }
+        else {
+          fprintf(stream, "[");
+          print_value(stream, ent.key);
+          fprintf(stream, "]");
+        }
+
+        fprintf(stream, " := ");
+        print_value(stream, ent.value);
+
+        if (ents < table->entry_count)
+          fprintf(stream, ", ");
+      }
+      fprintf(stream, ANSI_MAGENTA "}" ANSI_RESET);
       break;
     }
   case V_procedure:
@@ -360,9 +408,6 @@ void print_value(FILE *restrict stream, Value val)
 uint64_t hash_value(Value val)
 {
   switch (val.type) {
-  case V_no:
-  case V_upval:
-    unreachable();
   case V_number:
     return XXH3_64bits(&val.as.number, sizeof(float64_t));
   case V_boolean:
@@ -378,9 +423,25 @@ uint64_t hash_value(Value val)
     }
   case V_string:
     return XXH3_64bits(val.as.string->s, val.as.string->len);
-  case V_list:
-  case V_procedure:
-  case V_closure:
-    return XXH3_64bits(&val.as.gc_data, sizeof(GCData *));
+  default:
+    unreachable(); // Call `value_is_hashable` first!
+  }
+}
+
+bool value_is_hashable(Typetag t)
+{
+  switch (t) {
+  case V_no:
+  case V_upval:
+    unreachable();
+  case V_number:
+  case V_boolean:
+  case V_native:
+  case V_maybe:
+  case V_range:
+  case V_string:
+    return true;
+  default:
+    return false;
   }
 }

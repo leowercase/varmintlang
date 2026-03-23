@@ -348,15 +348,15 @@ Token lex_token(Lex *lex)
     return token(lex,
         match(lex, '=') ? TK_ASSIGN : TK_COLON);
 
+  case '.':
+    return token(lex,
+      match(lex, '.')
+        ? (match(lex, '=') ? TK_DOTDOTEQ : TK_DOTDOT)
+        : TK_DOT);
+
   case '|':
     if (match(lex, '|'))
       return token(lex, TK_2PIPE);
-    break;
-
-  case '.':
-    if (match(lex, '.'))
-      return token(lex,
-        match(lex, '=') ? TK_DOTDOTEQ : TK_DOTDOT);
     break;
   }
 
@@ -396,6 +396,7 @@ char *const token_cstring(const TokenType type)
   case_(LBRACK) case_(RBRACK)
   case_(LCURLY) case_(RCURLY)
   case_(COLON) case_(SEMICOLON) case_(COMMA)
+  case_(DOT)
   case_(DOTDOT) case_(DOTDOTEQ)
   case_(NUMERAL)
   case_(STRCONT) case_(STREND)

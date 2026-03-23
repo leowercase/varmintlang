@@ -123,14 +123,6 @@ Value _vm_in(Varmint *vm, Value x, Value collection)
           : range->start <= n && n < range->end;
       break;
     }
-  case V_list:
-    for (size_t i = 0; i < collection.as.list->len; i++) {
-      Value elem = collection.as.list->data[i];
-      if (values_eq(x, elem)) {
-        contains = true; break;
-      }
-    }
-    break;
   case V_string:
     {
       String *string = collection.as.string;
@@ -150,6 +142,17 @@ Value _vm_in(Varmint *vm, Value x, Value collection)
       }
       break;
     }
+  case V_list:
+    for (size_t i = 0; i < collection.as.list->len; i++) {
+      Value elem = collection.as.list->data[i];
+      if (values_eq(x, elem)) {
+        contains = true; break;
+      }
+    }
+    break;
+  case V_table:
+    contains = Table_get(collection.as.table, x) != NULL;
+    break;
   default:
     runtime_error(vm, "`in`: expect collection, got %s\n",
         value_type_cstring(collection.type));
@@ -187,6 +190,22 @@ static inline Value *index_list(Varmint *vm, List *list, Value idx)
   return &list->data[index_into(vm, list->len, idx)];
 }
 
+static inline Value *index_table(Varmint *vm, Table *table, Value key)
+{
+  if (!value_is_hashable(key.type))
+    runtime_error(vm, "expect hashable key type, got %s\n",
+        value_type_cstring(key.type));
+
+  Value *result = Table_get(table, key);
+
+  if (result == NULL) {
+    String *s = value_to_string(vm, key).as.string;
+    runtime_error(vm, "no value matching [%s] in table\n", (int)s->len, s->s);
+  }
+
+  return result;
+}
+
 Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
 {
   switch (collection.type) {
@@ -198,6 +217,8 @@ Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
     }
   case V_list:
     return *index_list(vm, collection.as.list, idx);
+  case V_table:
+    return *index_table(vm, collection.as.table, idx);
   default:
     runtime_error(vm, "cannot index into %s\n",
         value_type_cstring(collection.type));
@@ -220,11 +241,9 @@ Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
   case V_string:
     return set_string_idx(vm, collection.as.string, idx, val);
   case V_list:
-    {
-      Value *elem = index_list(vm, collection.as.list, idx);
-      *elem = val;
-      return val;
-    }
+    return *index_list(vm, collection.as.list, idx) = val;
+  case V_table:
+    return *index_table(vm, collection.as.table, idx) = val;
   default:
     runtime_error(vm, "cannot index into %s\n",
         value_type_cstring(collection.type));
@@ -254,6 +273,8 @@ Value _lenof(Varmint *vm, Value *args)
     return value_new((float64_t)collection.as.string->len, number);
   case V_list:
     return value_new((float64_t)collection.as.list->len, number);
+  case V_table:
+    return value_new((float64_t)collection.as.table->entry_count, number);
   default:
     runtime_error(vm, "expect collection type, got %s",
         value_type_cstring(collection.type));
@@ -337,6 +358,7 @@ Value _to_number(Varmint *vm, Value *args)
   case V_native:
   case V_maybe:
   case V_list:
+  case V_table:
   case V_procedure:
   case V_closure:
     goto no_num;

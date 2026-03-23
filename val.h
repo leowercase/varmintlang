@@ -2,6 +2,7 @@
 #define LANG_VAL_H
 
 #include "generic/dyn_array.h"
+#include "generic/table.h"
 #include "str.h"
 #include "util.h"
 
@@ -24,6 +25,7 @@ typedef enum {
   V_range,
   V_string,
   V_list,
+  V_table,
   V_procedure,
   V_upval,
   V_closure,
@@ -40,6 +42,7 @@ typedef union {
   struct Range *range;
   struct String *string;
   struct List *list;
+  struct Table *table;
   struct Procedure *procedure;
   struct Upval *upval;
   struct Closure *closure;
@@ -61,6 +64,13 @@ Value __value_new(Valueu raw, Typetag tag)
 
 static const Value NO_VALUE = {V_no, {0}};
 
+bool values_eq(Value a, Value b);
+bool value_is_falsey(Value val);
+
+// Obtain the 64-bit hash of a value.
+uint64_t hash_value(Value val);
+bool value_is_hashable(Typetag t);
+
 // GC'd values have the same initial sequence, GCData.
 typedef struct GCData {
   Value *next;
@@ -71,7 +81,7 @@ static inline
 bool is_heaped_value(Value val)
 {
   return val.type == V_maybe
-    ? val.as.maybe != NULL : val.type >= V_string;
+    ? val.as.maybe != NULL : val.type > V_maybe;
 }
 
 // Optional or nullable type.
@@ -105,12 +115,30 @@ typedef struct List {
 #define USE_GC
 #include "generic/dyn_array.inc"
 
+typedef TABLE_ENTRY_STRUCT(Value, Value) TableEntry;
+typedef struct Table {
+  GCData gc_data;
+  TABLE(TableEntry)
+} Table;
+#define K Value
+#define V Value
+#define TBL_ENTRY TableEntry
+#define TBL Table
+#define HASH(key) hash_value(key)
+#define EMPTY_KEY NO_VALUE
+#define IS_EMPTY_KEY(key) (key.type == V_no)
+#define KEYS_EQ(a, b) values_eq(a, b)
+#define USE_GC
+#include "generic/table.inc"
+
 struct Varmint;
 
 Value Maybe_some(struct Varmint *vm, Value value);
 Value Maybe_none(void);
 
 Value List_create(struct Varmint *vm, size_t cap);
+
+Value Table_create(struct Varmint *vm, size_t cap);
 
 Value Range_create(struct Varmint *vm, float64_t start, float64_t end,
                                        bool end_inclusive);
@@ -128,14 +156,8 @@ Value Procedure_create(struct Varmint *vm, size_t arity);
 
 Value Closure_create(struct Varmint *vm, struct Procedure *procedure);
 
-bool values_eq(Value a, Value b);
-bool value_is_falsey(Value val);
-
 const char *value_type_cstring(Typetag type);
 Value value_to_string(struct Varmint *vm, Value val);
 void print_value(FILE *restrict stream, Value val);
-
-// Obtain the 64-bit hash of a value.
-uint64_t hash_value(Value val);
 
 #endif

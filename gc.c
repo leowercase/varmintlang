@@ -136,6 +136,13 @@ static void mark_obj(Varmint *vm, Value obj)
       if (is_heaped_value(elem)) mark_obj(vm, elem);
     }
     break;
+  case V_table:
+    for (size_t i = 0; i < obj.as.table->cap; i++) {
+      TableEntry ent = obj.as.table->entries[i];
+      if (!ent.is_tomb && ent.key.type != V_no && is_heaped_value(ent.value))
+        mark_obj(vm, ent.value);
+    }
+    break;
   case V_procedure:
     mark_procedure(vm, obj.as.procedure);
     break;
@@ -200,8 +207,15 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
   case V_list:
     {
       List *list = (List *)data;
-      gc_free(vm, list->data, list->len * sizeof(Value));
+      gc_free(vm, list->data, list->cap * sizeof(Value));
       FREE(List);
+      break;
+    }
+  case V_table:
+    {
+      Table *table = (Table *)data;
+      gc_free(vm, table->entries, table->cap * sizeof(TableEntry));
+      FREE(Table);
       break;
     }
   case V_procedure:

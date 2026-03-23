@@ -46,7 +46,7 @@ static inline
 void METHOD(_adjust_cap)ALLOCS(ARR *dyn_array, size_t required_cap)
 {
   if (dyn_array->cap < required_cap) {
-    size_t new_cap = grow_cap(dyn_array->cap);
+    size_t new_cap = cap_to(required_cap);
 
     dyn_array->data =
 #ifndef USE_GC
