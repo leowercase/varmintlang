@@ -77,6 +77,7 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
   va_start(args, fmt);
   v_error_out(fmt, args);
   va_end(args);
+  error_out("\n");
 
   for (CallFrame *frame = CallStack_top(&vm->call_stack);
       frame >= vm->call_stack.data; frame--) {

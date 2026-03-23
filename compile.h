@@ -79,6 +79,7 @@ typedef struct SemanticDatum {
     Local *local;
     size_t upval_idx;
   } assignable;
+  Token assigned_tok;
 
   bool in_stmt; // {}
   bool insert_semicolon;

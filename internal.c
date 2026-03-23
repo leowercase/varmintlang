@@ -103,7 +103,7 @@ Value _vm_range(Varmint *vm, Value left, Value right, bool inclusive)
 Value _vm_concat(Varmint *vm, Value head, Value tail)
 {
   if (head.type != V_string || tail.type != V_string)
-    runtime_error(vm, "invalid operand types to concatenation\n");
+    runtime_error(vm, "invalid operand types to concatenation");
 
   return String_concat(vm, &head, &tail);
 }
@@ -154,7 +154,7 @@ Value _vm_in(Varmint *vm, Value x, Value collection)
     contains = Table_get(collection.as.table, x) != NULL;
     break;
   default:
-    runtime_error(vm, "`in`: expect collection, got %s\n",
+    runtime_error(vm, "`in`: expect collection, got %s",
         value_type_cstring(collection.type));
   }
 
@@ -180,7 +180,7 @@ static size_t index_into(Varmint *vm, size_t len, Value idx)
     actual_idx = (size_t)_idx;
 
   if (actual_idx >= len)
-    runtime_error(vm, "index [%li] out of range (length %li)\n", _idx, len);
+    runtime_error(vm, "index [%li] out of range (length %li)", _idx, len);
 
   return actual_idx;
 }
@@ -193,14 +193,14 @@ static inline Value *index_list(Varmint *vm, List *list, Value idx)
 static inline Value *index_table(Varmint *vm, Table *table, Value key)
 {
   if (!value_is_hashable(key.type))
-    runtime_error(vm, "expect hashable key type, got %s\n",
+    runtime_error(vm, "expect hashable key type, got %s",
         value_type_cstring(key.type));
 
   Value *result = Table_get(table, key);
 
   if (result == NULL) {
     String *s = value_to_string(vm, key).as.string;
-    runtime_error(vm, "no value matching [%s] in table\n", (int)s->len, s->s);
+    runtime_error(vm, "no value matching [%s] in table", (int)s->len, s->s);
   }
 
   return result;
@@ -220,7 +220,7 @@ Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
   case V_table:
     return *index_table(vm, collection.as.table, idx);
   default:
-    runtime_error(vm, "cannot index into %s\n",
+    runtime_error(vm, "cannot index into %s",
         value_type_cstring(collection.type));
     unreachable();
   }
@@ -229,7 +229,7 @@ Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
 static Value set_string_idx(Varmint *vm, String *string, Value idx, Value val)
 {
   if (val.type != V_string || val.as.string->len - 1 != 1)
-    runtime_error(vm, "string index assignment must be a single character\n");
+    runtime_error(vm, "string index assignment must be a single character");
 
   string->s[index_into(vm, string->len, idx)] = val.as.string->s[0];
   return val;
@@ -245,7 +245,7 @@ Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
   case V_table:
     return *index_table(vm, collection.as.table, idx) = val;
   default:
-    runtime_error(vm, "cannot index into %s\n",
+    runtime_error(vm, "cannot index into %s",
         value_type_cstring(collection.type));
     unreachable();
   }

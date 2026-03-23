@@ -69,7 +69,7 @@ static Procedure *return_compiler(Parse *p)
   GCList_pop(&p->vm->compiler_roots);
 
   // Return from procedure.
-  emit_byte(p, OP_RETURN);
+  emit_byte(p, p->current, OP_RETURN);
 
   Compiler *enclosing = p->c->enclosing;
   free(p->c->locals.data);
@@ -107,8 +107,7 @@ static void end_block(Parse *p, Token block_tok, size_t slots, bool has_result)
 
   Opcode opcode = has_result ? OP_END_BLOCK : OP_END_EMPTY_BLOCK;
 
-  if (!emit_var_op(p, opcode, slots))
-    parse_error(p, block_tok, true, "block occupies too many stack slots");
+  emit_var_op(p, block_tok, opcode, slots);
 }
 
 // Local lookup.
@@ -208,7 +207,7 @@ static void clear_local_scope(Parse *p)
       local--) {
     if (local->is_captured)
       // Hoist upvalue.
-      emit_byte(p, OP_HOIST_UPVALUE);
+      emit_byte(p, p->current, OP_HOIST_UPVALUE);
 
     Locals_pop(&p->c->locals);
   }
@@ -289,7 +288,7 @@ static void prefix_op(Parse *p)
   UnaryOp op = prefix_ops[op_tok.type];
 
   expr(p, (int)op.precedence); // Parse and emit right operand.
-  emit_byte(p, (uint8_t)op.type);
+  emit_byte(p, op_tok, (uint8_t)op.type);
 }
 
 // Allows compound assignment shorthand +:=
@@ -301,7 +300,7 @@ static inline void assignage(Parse *p, int min_bp, Opcode op_shorthand)
     return;
   }
 
-  next(p); // op
+  Token tok = eat(p); // op
   bool compound = op_shorthand != OP_NONE;
 
   if (compound)
@@ -313,7 +312,7 @@ static inline void assignage(Parse *p, int min_bp, Opcode op_shorthand)
 
   if (compound)
     // Emit compound opcode
-    emit_byte(p, (uint8_t)op_shorthand);
+    emit_byte(p, tok, (uint8_t)op_shorthand);
 
   // Emit assigning instruction.
   if (semantic(p)->assign_fn != NULL)
@@ -378,7 +377,7 @@ static void infix_op(Parse *p, int min_bp)
   int r_bp = (int)l_bp + (int)op.associativity;
   expr(p, r_bp);
 
-  emit_byte(p, (uint8_t)op.type);
+  emit_byte(p, op_token, (uint8_t)op.type);
 }
 
 static inline bool is_prefix_and_infix(TokenType op)
@@ -405,7 +404,7 @@ static void postfix_op(Parse *p, int min_bp)
   }
 
   next(p); // Consume op_token
-  emit_byte(p, (uint8_t)op.type);
+  emit_byte(p, op_token, (uint8_t)op.type);
 }
 
 static bool led_op_is_infix(TokenType op, TokenType next)
@@ -445,7 +444,8 @@ static void led_op(Parse *p, int min_bp)
 
 static void cmp_chain(Parse *p, bool is_continuation)
 {
-  Opcode op = infix_ops[eat(p).type].type;
+  Token tok = eat(p);
+  Opcode op = infix_ops[tok.type].type;
 
   // Parse right operand.
   const int r_bp = (int)PREC_CMP + (int)ASSOC_LEFT;
@@ -456,22 +456,22 @@ static void cmp_chain(Parse *p, bool is_continuation)
   if (is_chain)
     // The rhs of this cmp acts as an lhs for the next one.
     // -> Duplicate rhs and swap it behind the current operands.
-    emit_byte(p, OP_SWAP_MOVE_OVER);
+    emit_byte(p, tok, OP_SWAP_MOVE_OVER);
 
   // Emit operation.
-  emit_byte(p, (uint8_t)op);
+  emit_byte(p, tok, (uint8_t)op);
 
   if (is_continuation) {
     // Move duplicate rhs to the background
-    if (is_chain) emit_byte(p, OP_SWAP_NEATH);
+    if (is_chain) emit_byte(p, tok, OP_SWAP_NEATH);
 
     // Comparisons are chained, logically conjunct.
-    emit_byte(p, OP_AND);
+    emit_byte(p, tok, OP_AND);
   }
 
   if (is_chain) {
     // Switch the places of the result and the swapped rhs.
-    emit_byte(p, OP_SWAP);
+    emit_byte(p, tok, OP_SWAP);
     cmp_chain(p, true);
   }
 }
@@ -496,7 +496,7 @@ static void cmp(Parse *p, int min_bp)
 
 static void elem_assign(Parse *p)
 {
-  emit_byte(p, OP_ELEM_SET);
+  emit_byte(p, semantic(p)->assigned_tok, OP_ELEM_SET);
 }
 
 static void table_ident_key(Parse *p);
@@ -511,6 +511,7 @@ static void subscript(Parse *p, int min_bp)
   }
 
   Token op_tok = eat(p); // [
+
   switch (op_tok.type) {
   case TK_LBRACK:
     expr(p, PREC_NONE);
@@ -529,10 +530,10 @@ static void subscript(Parse *p, int min_bp)
 
     if (compound)
       // Compound assign.
-      emit_byte(p, OP_DUP_2);
+      emit_byte(p, op_tok, OP_DUP_2);
 
     // Access.
-    emit_byte(p, OP_ELEM_GET);
+    emit_byte(p, op_tok, OP_ELEM_GET);
 
     if (!compound) return;
   }
@@ -542,6 +543,7 @@ static void subscript(Parse *p, int min_bp)
     parse_error(p, op_tok, true, "invalid element assign");
 
   semantic(p)->assign_fn = elem_assign;
+  semantic(p)->assigned_tok = op_tok;
 }
 
 static bool consume_arg_list_start(Parse *p)
@@ -578,7 +580,7 @@ static Locals consume_arg_list(Parse *p, Str name)
 static void function(Parse *p, Str name, Locals arg_list, bool let_declaration)
 {
   // Reserve first stack slot for the function value
-  Value *fn_constant = emit_constant(p, NO_VALUE);
+  Value *fn_constant = emit_constant(p, p->current, NO_VALUE);
 
   init_compiler(p, arg_list);
   p->c->let_declaration = let_declaration;
@@ -590,7 +592,7 @@ static void function(Parse *p, Str name, Locals arg_list, bool let_declaration)
   *fn_constant = value_new(proc, procedure);
 
   if (proc->closure_desc.len > 0)
-    emit_byte(p, OP_CLOSURE); // Close function.
+    emit_byte(p, p->current, OP_CLOSURE); // Close function.
 }
 
 static void ident_str(Parse *p, Token ident_tok);
@@ -696,8 +698,7 @@ static void invocation(Parse *p, int min_bp)
   size_t arity = delimited_listing(p,
       TK_LPAREN, TK_COMMA, TK_RPAREN, false); // Parse argument list.
 
-  if (!emit_var_op(p, OP_CALL, arity))
-    parse_error(p, paren, true, "too many parameters to function");
+  emit_var_op(p, paren, OP_CALL, arity);
 }
 
 // [a, b, c]
@@ -706,15 +707,14 @@ static void list(Parse *p)
   Token bracket = p->current;
   size_t list_len = delimited_listing(p, TK_LBRACK, TK_COMMA, TK_RBRACK, true);
 
-  if (!emit_var_op(p, OP_BUILD_LIST, list_len))
-    parse_error(p, bracket, true, "too many list items");
+  emit_var_op(p, bracket, OP_BUILD_LIST, list_len);
 }
 
 // Consume identifier syntax for table initialization
 static void table_ident_key(Parse *p)
 {
-  Str key = consume(p, TK_WORD, "expect table key").slice;
-  emit_constant(p, String_create(p->vm, key.s, key.len));
+  Token key = consume(p, TK_WORD, "expect table key");
+  emit_constant(p, key, String_create(p->vm, key.slice.s, key.slice.len));
 }
 
 // Using curly braces for tables _and_ code blocks can bring ambiguity.
@@ -754,8 +754,7 @@ static bool consume_table_start(Parse *p)
 
   if (list_len > 0)
     // Emit the list we consumed.
-    if (!emit_var_op(p, OP_BUILD_LIST, list_len))
-      parse_error(p, tok, true, "too many list items");
+    emit_var_op(p, tok, OP_BUILD_LIST, list_len);
 
   return false;
 }
@@ -798,14 +797,16 @@ static inline void table_entry(Parse *p, bool consumed_first_key)
   // Emit nested entries.
   // .a.b["c"] := value
   if (key_nesting > 1)
-    emit_var_op(p, OP_NESTED_TABLE_ENTRIES, key_nesting - 1);
+    emit_var_op(p, p->current, OP_NESTED_TABLE_ENTRIES, key_nesting - 1);
 }
 
 // {.key := value}
 static void table(Parse *p)
 {
+  Token tok = p->current;
+
   if (match(p, TK_RCURLY)) {
-    emit_byte(p, OP_EMPTY_TABLE); // {}
+    emit_byte(p, tok, OP_EMPTY_TABLE); // {}
     return;
   }
 
@@ -826,7 +827,7 @@ static void table(Parse *p)
 
   consume(p, TK_RCURLY, "expect `}`");
   // Emit table
-  emit_var_op(p, OP_BUILD_TABLE, entry_count);
+  emit_var_op(p, tok, OP_BUILD_TABLE, entry_count);
 }
 
 static void construct_body(Parse *p, Precedence prec, Associativity assoc)
@@ -847,7 +848,7 @@ static void if_expr(Parse *p)
 
   // Parse condition.
   expr(p, PREC_NONE);
-  size_t operand_idx = defer_op(p, OP_IF);
+  size_t operand_idx = defer_op(p, if_tok, OP_IF);
 
   // Parse conditional value.
   construct_body(p, PREC_IF, 0);
@@ -860,7 +861,7 @@ static void if_expr(Parse *p)
   }
   else {
     // Create an optional value.
-    emit_byte(p, OP_MAKE_SOME);
+    emit_byte(p, p->current, OP_MAKE_SOME);
     patch_jump(p, if_tok, operand_idx);
   }
 }
@@ -879,7 +880,7 @@ static void else_elif(Parse *p, int min_bp)
     semantic(p)->if_else_chained ? OP_JMP
                                  : (is_elif ? OP_ELIF : OP_ELSE);
   size_t operand_idx =
-    defer_op(p, opcode);
+    defer_op(p, else_tok, opcode);
 
   if (semantic(p)->if_else_chained)
     patch_jump(p, else_tok, semantic(p)->if_jmp_op_idx);
@@ -958,17 +959,17 @@ static void loop_expr(Parse *p)
     consume(p, TK_IN, "expect `in`");
 
     expr(p, PREC_NONE); // Iterable
-    emit_byte(p, OP_ZERO); // Counter
+    emit_byte(p, tok, OP_ZERO); // Counter
     for_counter_slot = p->c->stack_slot_count += 2;
   }
 
   // Initial value for the result of the last cycle.
   // Either an empty slot, or an empty list ready for comprehension
   if (is_list_compre) {
-    emit_byte(p, OP_LIST_COMPREHEND);
+    emit_byte(p, tok, OP_LIST_COMPREHEND);
     p->c->stack_slot_count++;
   }
-  else emit_byte(p, OP_RESERVE_SLOT);
+  else emit_byte(p, tok, OP_RESERVE_SLOT);
 
   // Loop start
   Loop *loop = init_loop(p);
@@ -980,19 +981,19 @@ static void loop_expr(Parse *p)
   switch (type) {
   case TK_LOOP:
     // No conditional jump, but discard what the last cycle evaluated to
-    if (!is_list_compre) emit_byte(p, OP_POP);
+    if (!is_list_compre) emit_byte(p, tok, OP_POP);
     jmp_idx = false; break;
 
   case TK_WHILE:
     expr(p, PREC_NONE); // Condition
-    jmp_idx = defer_op(p,
+    jmp_idx = defer_op(p, tok,
         is_list_compre ? OP_WHILE_LIST : OP_WHILE); break;
 
   case TK_FOR:
     // Create loop variable
     create_local_var(p, for_var_ident)->initialized = true;
     p->c->stack_slot_count++;
-    jmp_idx = defer_op(p,
+    jmp_idx = defer_op(p, tok,
         is_list_compre ? OP_FOR_LIST : OP_FOR); break;
 
   default: unreachable();
@@ -1004,7 +1005,7 @@ static void loop_expr(Parse *p)
 
   // Increment counter variable at the end of for
   if (type == TK_FOR)
-    emit_var_op(p, OP_FOR_INCREMENT, for_counter_slot);
+    emit_var_op(p, tok, OP_FOR_INCREMENT, for_counter_slot);
 
   // Emit the looping instruction
   emit_loop(p, tok,
@@ -1054,7 +1055,7 @@ static void control_flow_result(Parse *p)
   const int r_bp = (int)PREC_FLOW + (int)ASSOC_LEFT;
   if (has_result) expr(p, r_bp); // Parse resulting value.
 
-  else emit_byte(p, OP_RESERVE_SLOT);
+  else emit_byte(p, p->current, OP_RESERVE_SLOT);
 }
 
 // break [value]
@@ -1078,15 +1079,14 @@ static void loop_flow(Parse *p)
     slots--; // Don't discard the loop variable yet.
 
   // Discard the stack slots occupied.
-  if (!emit_var_op(p, OP_END_BLOCK, slots))
-    parse_error(p, tok, true, "loop occupies too many stack slots");
+  emit_var_op(p, tok, OP_END_BLOCK, slots);
 
   if (tok.type == TK_BREAK) {
     worklist = &loop->breaks;
     opcode = loop->is_list_compre ? OP_BREAK_LIST : OP_BREAK;
 
     if (loop->is_for)
-      emit_byte(p,
+      emit_byte(p, tok,
           loop->is_list_compre ? OP_DISCARD_FOR_LIST : OP_DISCARD_FOR);
   }
   else {
@@ -1094,16 +1094,16 @@ static void loop_flow(Parse *p)
     opcode = OP_JMP;
   }
 
-  size_t jmp_idx = defer_op(p, opcode);
+  size_t jmp_idx = defer_op(p, tok, opcode);
   JumpIndices_push(worklist, jmp_idx);
 }
 
 // return [value]
 static void returnage(Parse *p)
 {
-  next(p);
+  Token tok = eat(p);
   control_flow_result(p);
-  emit_byte(p, OP_RETURN);
+  emit_byte(p, tok, OP_RETURN);
 }
 
 // using f, g, h: ...
@@ -1128,7 +1128,7 @@ static void using(Parse *p)
       parse_error(p, ident_tok, true,
           "no native function named %.*s", (int)name.len, name.s);
     else
-      emit_constant(p, value_new(*native_idx, native));
+      emit_constant(p, ident_tok, value_new(*native_idx, native));
 
     // Native function values occupy space too.
     native_count++;
@@ -1146,24 +1146,23 @@ static void boolean(Parse *p)
 {
   Token booltok = eat(p);
   int P = booltok.type == TK_TRUE;
-  emit_constant(p, value_new(P, boolean));
+  emit_constant(p, booltok, value_new(P, boolean));
 }
 
 static void maybe_some(Parse *p)
 {
-  next(p);
+  Token some_tok = eat(p);
   consume(p, TK_LPAREN, "expect `(` after `Some`");
 
   expr(p, PREC_NONE);
 
   consume(p, TK_RPAREN, "expect `)` after `Some`");
-  emit_byte(p, OP_MAKE_SOME);
+  emit_byte(p, some_tok, OP_MAKE_SOME);
 }
 
 static void maybe_none(Parse *p)
 {
-  next(p);
-  emit_byte(p, OP_MAKE_NONE);
+  emit_byte(p, eat(p), OP_MAKE_NONE);
 }
 
 static void number(Parse *p)
@@ -1175,14 +1174,14 @@ static void number(Parse *p)
       ntok.slice.s, ntok.slice.len).as.string;
   float64_t n = strtod(nstring->s, NULL);
 
-  emit_constant(p, value_new(n, number));
+  emit_constant(p, ntok, value_new(n, number));
 }
 
 static void string(Parse *p)
 {
   Token strtok = eat(p);
 
-  emit_constant(p,
+  emit_constant(p, strtok,
       String_create(p->vm, strtok.slice.s, strtok.slice.len));
 }
 
@@ -1211,20 +1210,20 @@ static void metastring(Parse *p)
     }
   }
 
-  if (!emit_var_op(p, OP_BUILD_STR, metas))
-    parse_error(p, tok, true, "too many metastrings");
+  emit_var_op(p, tok, OP_BUILD_STR, metas);
 }
 
 static void assign_local(Parse *p)
 {
   Local *local = semantic(p)->assignable.local;
-  emit_var_op(p, OP_SET, local->stack_slot);
+  emit_var_op(p, semantic(p)->assigned_tok, OP_SET, local->stack_slot);
   local->initialized = true;
 }
 
 static void assign_upval(Parse *p)
 {
-  emit_var_op(p, OP_SET_UPVALUE, semantic(p)->assignable.upval_idx);
+  emit_var_op(p, semantic(p)->assigned_tok,
+      OP_SET_UPVALUE, semantic(p)->assignable.upval_idx);
 }
 
 // Emit p-code based on an identifier occurrence.
@@ -1238,6 +1237,7 @@ static void ident_str(Parse *p, Token ident_tok)
   size_t idx;
   Opcode get_op;
   bool initialized;
+  semantic(p)->assigned_tok = ident_tok;
 
   if ((local = resolve_local(p->c, ident)) != NULL) {
     semantic(p)->assign_fn = assign_local;
@@ -1272,7 +1272,7 @@ static void ident_str(Parse *p, Token ident_tok)
 
   if (p->current.type != TK_ASSIGN) {
     if (initialized)
-      emit_var_op(p, get_op, idx);
+      emit_var_op(p, ident_tok, get_op, idx);
     else
       parse_error(p, ident_tok, true, "variable %.*s has not been initialized",
           (int)ident.len, ident.s);
@@ -1334,7 +1334,7 @@ static size_t consume_lets(Parse *p)
         local->initialized = true;
       }
       else
-        emit_byte(p, OP_RESERVE_SLOT);
+        emit_byte(p, ident_tok, OP_RESERVE_SLOT);
     }
 
     p->c->stack_slot_count++;

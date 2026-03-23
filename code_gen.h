@@ -8,24 +8,24 @@
 #include "val.h"
 
 // Record a byte into code.
-void emit_byte(Parse *p, uint8_t byte);
+void emit_byte(Parse *p, Token tok, uint8_t byte);
 
 // For brevity.
-#define emit_bytes(p, n, ...) do { \
+#define emit_bytes(p, tok, n, ...) do { \
   uint8_t b[] = {__VA_ARGS__}; \
-  for (int i = 0; i < (n); i++) emit_byte(p, b[i]); \
+  for (int i = 0; i < (n); i++) emit_byte(p, tok, b[i]); \
 } while (false)
 
 // Returns the index of the (16-bit) operand in the code chunk.
-size_t defer_op(Parse *p, Opcode op);
+size_t defer_op(Parse *p, Token tok, Opcode op);
 // Inserts operand of defer_op into code
 void patch_op(Parse *p, size_t operand_idx, uint16_t operand);
 
 // Emit an operation that has a variable sized operand
-bool emit_var_op(Parse *p, Opcode opcode, size_t operand);
+void emit_var_op(Parse *p, Token tok, Opcode opcode, size_t operand);
 
 // Emit a code constant.
-Value *emit_constant(Parse *p, Value value);
+Value *emit_constant(Parse *p, Token tok, Value value);
 
 // Patch a jumping instruction to a specific instruction index.
 void patch_jump_to(Parse *p, Token loop_tok,

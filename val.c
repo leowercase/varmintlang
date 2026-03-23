@@ -110,7 +110,7 @@ Value String_fmt(Varmint *vm, const char *fmt, ...)
 
   if (n < 0)
     // Error.
-    runtime_error(vm, "string formatting failed\n");
+    runtime_error(vm, "string formatting failed");
 
   size_t len = (size_t)n,
          size_bytes = len * sizeof(char) + sizeof('\0');
@@ -124,7 +124,7 @@ Value String_fmt(Varmint *vm, const char *fmt, ...)
   if (n < 0) {
     // Again, error.
     gc_free(vm, s, size_bytes);
-    runtime_error(vm, "string formatting failed\n");
+    runtime_error(vm, "string formatting failed");
   }
 
   Value val = *create_gc_obj(vm, V_string, sizeof(String));

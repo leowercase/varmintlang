@@ -7,7 +7,7 @@
 static inline void push(Varmint *vm, Value value)
 {
   if (vm->op_stack.len >= OP_STACK_MAX)
-    runtime_error(vm, "stack overflow\n");
+    runtime_error(vm, "stack overflow");
 
   OpStack_push(&vm->op_stack, value);
 }
@@ -33,7 +33,7 @@ static void call(Varmint *vm,
     Upval **upvalues, size_t upvalue_count)
 {
   if (vm->call_stack.len >= CALL_STACK_MAX)
-    runtime_error(vm, "maximum call depth exceeded.\n");
+    runtime_error(vm, "maximum call depth exceeded.");
 
   // Create new frame for procedure call.
   CallFrame frame;
@@ -66,7 +66,7 @@ static void call_native(Varmint *vm, Native *native)
   for (size_t i = 1; i <= native->arity; i++) {
     Value param = pop(vm);
     if (param.type == V_no)
-      runtime_error(vm, "cannot pass in parameter with no value\n");
+      runtime_error(vm, "cannot pass in parameter with no value");
 
     params[native->arity - i] = param;
   }
@@ -85,7 +85,7 @@ static void check_fn_argc(Varmint *vm, size_t arity, Str name, size_t argc)
     name = str_from("function");
 
   if (arity != argc)
-    runtime_error(vm, "expect %li parameters to %.*s but got %li\n",
+    runtime_error(vm, "expect %li parameters to %.*s but got %li",
         arity, (int)name.len, name.s, argc);
 }
 
@@ -118,7 +118,7 @@ static void call_val(Varmint *vm, Value callee, size_t argc)
       break;
     }
   default:
-    runtime_error(vm, "cannot call value of type %s\n",
+    runtime_error(vm, "cannot call value of type %s",
         value_type_cstring(callee.type));
   }
 }
@@ -168,14 +168,14 @@ static inline Upval *capture_local(Varmint *vm, size_t stack_slot)
 static inline void validate_assign(Varmint *vm, Typetag value_type)
 {
   if (value_type == V_no)
-    runtime_error(vm, "invalid assign to expression without value\n");
+    runtime_error(vm, "invalid assign to expression without value");
 }
 
 static inline Value validate_table_key(Varmint *vm, Value key)
 {
   if (!value_is_hashable(key.type)) {
     String *s = value_to_string(vm, key).as.string;
-    runtime_error(vm, "table key %.*s is not hashable\n", (int)s->len, s->s);
+    runtime_error(vm, "table key %.*s is not hashable", (int)s->len, s->s);
   }
   return key;
 }
@@ -189,7 +189,7 @@ static void loop_result(Varmint *vm, Value result)
 static void list_comprehend(Varmint *vm, Value value)
 {
   if (value.type == V_no)
-    runtime_error(vm, "must provide value for list comprehension\n");
+    runtime_error(vm, "must provide value for list comprehension");
 
   Value list_val = peek(vm, 0);
   assert(list_val.type == V_list);
@@ -227,7 +227,7 @@ static bool for_loop_next(Varmint *vm, Value iterable, size_t counter)
     else return false;
     break;
   default:
-    runtime_error(vm, "cannot use %s as iterable in for loop\n",
+    runtime_error(vm, "cannot use %s as iterable in for loop",
         value_type_cstring(iterable.type));
   }
 
@@ -280,7 +280,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
       Maybe *optional = typechecked(vm, unwrappee, maybe);
 
       if (optional == NULL)
-        runtime_error(vm, "unwrap of None\n");
+        runtime_error(vm, "unwrap of None");
 
       push(vm, optional->raw);
       break;

@@ -8,11 +8,11 @@ static inline PCode *code(Parse *p)
   return &p->c->procedure->code;
 }
 
-void emit_byte(Parse *p, uint8_t byte)
+void emit_byte(Parse *p, Token tok, uint8_t byte)
 {
   Instructions_push(p->vm, &code(p)->instructions, byte);
 
-  size_t line = p->current.line;
+  size_t line = tok.line;
 
   if (code(p)->lines.data != NULL) {
     LineBytes *last = LineInfo_top(&code(p)->lines);
@@ -29,9 +29,9 @@ void emit_byte(Parse *p, uint8_t byte)
   LineInfo_push(p->vm, &code(p)->lines, l);
 }
 
-size_t defer_op(Parse *p, Opcode opcode)
+size_t defer_op(Parse *p, Token tok, Opcode opcode)
 {
-  emit_bytes(p, 3, (uint8_t)opcode, 0xff, 0xff);
+  emit_bytes(p, tok, 3, (uint8_t)opcode, 0xff, 0xff);
   return code(p)->instructions.len - 2;
 }
 
@@ -46,30 +46,26 @@ void patch_op(Parse *p, size_t operand_idx, uint16_t operand)
 
 // We make use of the fact that an 8-bit and a 16-bit op
 // reside next to each other in the enum.
-bool emit_var_op(Parse *p, Opcode opcode, size_t operand)
+void emit_var_op(Parse *p, Token tok, Opcode opcode, size_t operand)
 {
   if (operand <= UINT8_MAX)
-    emit_bytes(p, 2, (uint8_t)opcode, (uint8_t)operand);
+    emit_bytes(p, tok, 2, (uint8_t)opcode, (uint8_t)operand);
 
   else if (operand <= UINT16_MAX) {
     uint8_t bytes[2] = uint16_to_8((uint16_t)operand);
-    emit_bytes(p, 3, (uint8_t)opcode + 1, bytes[0], bytes[1]);
+    emit_bytes(p, tok, 3, (uint8_t)opcode + 1, bytes[0], bytes[1]);
   }
 
   else
-    return false;
-
-  return true;
+    parse_error(p, tok, true, "too many operands to bytecode instruction");
 }
 
-Value *emit_constant(Parse *p, Value value)
+Value *emit_constant(Parse *p, Token tok, Value value)
 {
   Value *constant = Constants_push(p->vm, &code(p)->constants, value);
   size_t idx = code(p)->constants.len - 1;
 
-  if (!emit_var_op(p, OP_CONST, idx))
-    parse_error(p, p->current, true, "too many constants");
-
+  emit_var_op(p, tok, OP_CONST, idx);
   return constant;
 }
 
@@ -97,7 +93,7 @@ size_t code_top(Parse *p)
 void emit_loop(Parse *p, Token loop_tok, Opcode loopcode,
     size_t loop_start)
 {
-  size_t op_idx = defer_op(p, loopcode);
+  size_t op_idx = defer_op(p, loop_tok, loopcode);
   size_t jumpable_code = code(p)->instructions.len - loop_start;
 
   if (jumpable_code > UINT16_MAX)
