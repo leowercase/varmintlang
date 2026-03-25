@@ -1,8 +1,8 @@
 {
   let elems := [1, 2, 3];
 
-  for[] x in elems: x + 5;
-  for x in elems: x + 5;
+  for[] x in elems loop x + 5;
+  for x in elems loop x + 5;
 
   let local_variable := 4;
   local_variable

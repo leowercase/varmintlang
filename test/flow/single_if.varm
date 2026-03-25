@@ -1,2 +1,2 @@
-if True and True and True: "all true"
+if True and True and True then "all true"
 # Some("all true")

@@ -17,7 +17,6 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
   SemanticDatum sem;
   sem.assign_fn = semantic(p)->assign_fn;
   sem.in_stmt = semantic(p)->in_stmt;
-  sem.in_let_expr = semantic(p)->in_let_expr;
   sem.insert_semicolon = false;
   sem.if_else_chained = false;
   sem.led_fail = false;
@@ -266,6 +265,11 @@ static inline bool is_expr(Parse *p)
   return parse_rule(p->current.type)->nud != NULL;
 }
 
+static inline void expr_rhs(Parse *p, Precedence prec, Associativity assoc)
+{
+  expr(p, (int)prec + (int)assoc);
+}
+
 typedef struct {
   Opcode type;
   Precedence precedence;
@@ -307,8 +311,7 @@ static inline void assignage(Parse *p, int min_bp, Opcode op_shorthand)
     next(p); // :=
     // Compound lhs has already been emitted.
 
-  const int r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
-  expr(p, r_bp); // Parse and emit rhs.
+  expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT); // Parse and emit rhs.
 
   if (compound)
     // Emit compound opcode
@@ -345,8 +348,6 @@ static const BinaryOp infix_ops[] = {
 
   [TK_AND]      = { OP_AND,      PREC_AND,    ASSOC_LEFT  },
   [TK_OR]       = { OP_OR,       PREC_OR,     ASSOC_LEFT  },
-  [TK_IN]       = { OP_IN,       PREC_IN,     ASSOC_LEFT  },
-  [TK_NOTIN]    = { OP_NOTIN,    PREC_IN,     ASSOC_LEFT  },
   [TK_MOD]      = { OP_MODULO,   PREC_FACTOR, ASSOC_LEFT  },
   [TK_ARROW]    = { OP_I9N,      PREC_I9N,    ASSOC_LEFT  },
 
@@ -365,8 +366,7 @@ static void infix_op(Parse *p, int min_bp)
     return;
   }
 
-  int l_bp = (int)op.precedence;
-  if (l_bp < min_bp) {
+  if ((int)op.precedence < min_bp) {
     semantic(p)->led_fail = true;
     return;
   }
@@ -374,8 +374,7 @@ static void infix_op(Parse *p, int min_bp)
   next(p); // Consume op_token
 
   // Parse right operand.
-  int r_bp = (int)l_bp + (int)op.associativity;
-  expr(p, r_bp);
+  expr_rhs(p, op.precedence, op.associativity);
 
   emit_byte(p, op_token, (uint8_t)op.type);
 }
@@ -448,8 +447,7 @@ static void cmp_chain(Parse *p, bool is_continuation)
   Opcode op = infix_ops[tok.type].type;
 
   // Parse right operand.
-  const int r_bp = (int)PREC_CMP + (int)ASSOC_LEFT;
-  expr(p, r_bp);
+  expr_rhs(p, PREC_CMP, ASSOC_LEFT);
 
   bool is_chain = is_cmp_op(p->current.type);
 
@@ -779,9 +777,7 @@ static void table_key(Parse *p)
 static inline void table_value(Parse *p)
 {
   consume(p, TK_ASSIGN, "expect `:=` after table key");
-
-  const int r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
-  expr(p, r_bp);
+  expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT);
 }
 
 static inline void table_entry(Parse *p, bool consumed_first_key)
@@ -830,13 +826,6 @@ static void table(Parse *p)
   emit_var_op(p, tok, OP_BUILD_TABLE, entry_count);
 }
 
-static void construct_body(Parse *p, Precedence prec, Associativity assoc)
-{
-  consume(p, TK_COLON, "expect `:`");
-  int r_bp = (int)prec + (int)assoc;
-  expr(p, r_bp);
-}
-
 static inline bool is_else(Parse *p)
 {
   return p->current.type == TK_ELSE || p->current.type == TK_ELIF;
@@ -850,8 +839,9 @@ static void if_expr(Parse *p)
   expr(p, PREC_NONE);
   size_t operand_idx = defer_op(p, if_tok, OP_IF);
 
+  consume(p, TK_THEN, "expect `then` after `if`");
   // Parse conditional value.
-  construct_body(p, PREC_IF, 0);
+  expr(p, PREC_ELSE);
 
   if (is_else(p)) {
     change_opcode(p, operand_idx, OP_JMP_WHEN_FALSE);
@@ -888,7 +878,7 @@ static void else_elif(Parse *p, int min_bp)
   semantic(p)->if_else_chained = false;
 
   if (is_elif) if_expr(p);
-  else { next(p); construct_body(p, PREC_ELSE, ASSOC_RIGHT); }
+  else { next(p); expr_rhs(p, PREC_ELSE, ASSOC_RIGHT); }
 
   patch_jump(p, else_tok, operand_idx);
 }
@@ -944,6 +934,9 @@ static inline void end_loop(Parse *p, Token loop_tok, Loop *loop)
 // loop for while
 static void loop_expr(Parse *p)
 {
+  // TODO: Broken
+  abort();
+
   Token tok = eat(p);
   TokenType type = tok.type;
 
@@ -1000,7 +993,7 @@ static void loop_expr(Parse *p)
   }
 
   // Parse loop body
-  construct_body(p, PREC_TOP, 0);
+  //construct_body(p, PREC_TOP, 0);
   loop->iter = code_top(p);
 
   // Increment counter variable at the end of for
@@ -1051,11 +1044,10 @@ static Loop *resolve_loop(Parse *p, Token control_flow)
 static void control_flow_result(Parse *p)
 {
   bool has_result = is_expr(p);
-
-  const int r_bp = (int)PREC_FLOW + (int)ASSOC_LEFT;
-  if (has_result) expr(p, r_bp); // Parse resulting value.
-
-  else emit_byte(p, p->current, OP_RESERVE_SLOT);
+  if (has_result)
+    expr_rhs(p, PREC_FLOW, ASSOC_LEFT); // Parse resulting value.
+  else
+    emit_byte(p, p->current, OP_RESERVE_SLOT);
 }
 
 // break [value]
@@ -1135,7 +1127,8 @@ static void using(Parse *p)
     p->c->stack_slot_count++;
   } while (match(p, TK_COMMA));
 
-  construct_body(p, PREC_TOP, 0);
+  consume(p, TK_COLON, "expect `:`");
+  expr(p, (int)PREC_TOP);
 
   clear_local_scope(p);
   end_block(p, tok, native_count + 1, true);
@@ -1329,8 +1322,7 @@ static size_t consume_lets(Parse *p)
         parse_error(p, p->current, true, "did you mean `:=`?");
 
       if (match(p, TK_ASSIGN)) {
-        const int assign_r_bp = (int)PREC_ASSIGN + (int)ASSOC_RIGHT;
-        expr(p, assign_r_bp);
+        expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT);
         local->initialized = true;
       }
       else
@@ -1378,26 +1370,16 @@ static void let_expr(Parse *p)
   p->c->depth++;
   Token let_tok = eat(p);
 
-  new_semantic_scope(p)->in_let_expr = true;
+  new_semantic_scope(p);
   size_t ndecls = consume_lets(p);
   end_semantic_scope(p);
 
   consume(p, TK_IN, "expect `in` after `let` expression");
-  construct_body(p, PREC_TOP, 0);
+  expr(p, (int)PREC_TOP);
 
   clear_local_scope(p);
   end_block(p, let_tok, ndecls + 1, true);
   p->c->depth--;
-}
-
-// The `in` keyword is a bit of an ambiguous parse.
-// It can denote an operator or the end of a `let` expression.
-static void in_keyword(Parse *p, int min_bp)
-{
-  if (semantic(p)->in_let_expr && peek(p).type == TK_COLON)
-    semantic(p)->led_fail = true;
-
-  else infix_op(p, min_bp);
 }
 
 static size_t stmt(Parse *p)
@@ -1547,14 +1529,14 @@ static const ParseRule parse_rules[] =
     [TK_NOT]       = { prefix_op,  NULL       },
     [TK_AND]       = { NULL,       infix_op   },
     [TK_OR]        = { NULL,       infix_op   },
-    [TK_IN]        = { NULL,       in_keyword },
-    [TK_NOTIN]     = { NULL,       infix_op   },
+    [TK_IN]        = { NULL,       led_end    },
 
     [TK_MOD]       = { NULL,       infix_op   },
 
     [TK_UNWRAPPED] = { NULL,       postfix_op },
 
     [TK_IF]        = { if_expr,    NULL       },
+    [TK_THEN]      = { NULL,       led_end    },
     [TK_ELSE]      = { NULL,       else_elif  },
     [TK_ELIF]      = { NULL,       else_elif  },
 
@@ -1640,7 +1622,6 @@ Procedure *compile(Varmint *vm, char *source)
   SemanticDatum sem;
   sem.assign_fn = NULL;
   sem.in_stmt = false;
-  sem.in_let_expr = false;
   sem.insert_semicolon = false;
   sem.if_else_chained = false;
   sem.led_fail = false;

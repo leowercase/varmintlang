@@ -84,8 +84,6 @@ typedef struct SemanticDatum {
   bool in_stmt; // {}
   bool insert_semicolon;
 
-  bool in_let_expr;
-
   // if..else..elif chains are optimized a bit to avoid useless shuffling
   bool if_else_chained;
   size_t if_jmp_op_idx;
@@ -131,7 +129,7 @@ void parse_error(Parse *p, Token offending_tok, bool pointer,
 typedef enum {
   PREC_NONE,
   PREC_ASSIGN,    // :=
-  PREC_TOP,       // loop for while using
+  PREC_TOP,       // let loop for while using
   PREC_ELSE,      // else elif unwrapped
   PREC_IF,        // if
   PREC_FLOW,      // break continue return
@@ -141,7 +139,7 @@ typedef enum {
   PREC_I9N,       // ->
   PREC_CMP,       // = != < > <= >=
   PREC_NOT,       // not
-  PREC_IN,        // in notin
+  PREC_IS_IN,     // is in  is not in
   PREC_RANGE,     // .. ..=
   PREC_TERM,      // + -
   PREC_FACTOR,    // * / %

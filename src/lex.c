@@ -167,6 +167,13 @@ static Token escape_sequence(Lex *lex)
   return tok;
 }
 
+static inline void mark_comprehension(Lex *lex, TokenType t)
+{
+  lex->start = lex->current;
+  next(lex); next(lex);
+  lex->comprehension = t;
+}
+
 static Token word(Lex *lex)
 {
   while (is_ident(*lex->current))
@@ -175,8 +182,22 @@ static Token word(Lex *lex)
   Token word = token(lex, TK_WORD);
 
   TokenType keyword = is_keyword(word.slice);
-  if (keyword)
+  if (keyword) {
     word.type = keyword;
+
+    if (is_loop_token(keyword)) switch (*lex->current) {
+    case '[':
+      if (peek(lex) == ']')
+        // List comprehension marker.
+        mark_comprehension(lex, TK_LIST_COMP);
+      break;
+    case '{':
+      if (peek(lex) == '}')
+        // Table comprehension marker.
+        mark_comprehension(lex, TK_TABLE_COMP);
+      break;
+    }
+  }
 
   return word;
 }
@@ -249,6 +270,12 @@ static void skip_redundant_space(Lex *lex)
 
 Token lex_token(Lex *lex)
 {
+  if (lex->comprehension) {
+    Token comp_tok = token(lex, lex->comprehension);
+    lex->comprehension = (TokenType)false;
+    return comp_tok;
+  }
+
   if (lex->escaping_string) {
     if (*lex->current == '\\')
       return escape_sequence(lex);
@@ -380,10 +407,10 @@ char *token_cstring(const TokenType type)
   case_(LET)
   case_(NOT)
   case_(AND) case_(OR)
-  case_(IN) case_(NOTIN)
+  case_(IN)
   case_(MOD)
   case_(UNWRAPPED)
-  case_(IF) case_(ELSE) case_(ELIF)
+  case_(IF) case_(THEN) case_(ELSE) case_(ELIF)
   case_(LOOP) case_(FOR) case_(WHILE)
   case_(BREAK) case_(CONTINUE)
   case_(RETURN)
@@ -395,6 +422,7 @@ char *token_cstring(const TokenType type)
   case_(LPAREN) case_(RPAREN)
   case_(LBRACK) case_(RBRACK)
   case_(LCURLY) case_(RCURLY)
+  case_(LIST_COMP) case_(TABLE_COMP)
   case_(COLON) case_(SEMICOLON) case_(COMMA)
   case_(DOT)
   case_(DOTDOT) case_(DOTDOTEQ)

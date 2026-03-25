@@ -1,8 +1,8 @@
 using put, input:
-loop 'outer: {
+loop 'outer {
   put("Hello from outer! ");
 
-  loop 'inner: {
+  loop 'inner {
     put("Hello from inner! ");
 
     input(); # Prevent excessive output

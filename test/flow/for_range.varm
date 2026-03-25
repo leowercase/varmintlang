@@ -1,8 +1,8 @@
 using putln:
 {
-  let sheep := for[] i in 1..=5: "\(i) sheep...";
+  let sheep := for[] i in 1..=5 loop "\(i) sheep...";
 
-  for s in sheep: putln(s);
+  for s in sheep loop putln(s);
   putln("ZZZ...");
 }
 # 1 sheep...

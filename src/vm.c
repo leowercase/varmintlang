@@ -306,9 +306,6 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case OP_LEQ: BINARY(_vm_less_than_or_eq(vm, lhs, rhs))
   case OP_GEQ: BINARY(_vm_greater_than_or_eq(vm, lhs, rhs))
 
-  case OP_IN:     BINARY(_vm_in(vm, lhs, rhs))
-  case OP_NOTIN:  BINARY(_vm_notin(vm, lhs, rhs))
-
   case OP_RANGE:    BINARY(_vm_range(vm, lhs, rhs, false))
   case OP_RANGE_IN: BINARY(_vm_range(vm, lhs, rhs, true))
 

@@ -1,10 +1,10 @@
 using lenof, prompt, putln:
 {
-  let s := loop[]: {
+  let s := loop[] {
     let x := prompt("Don't just type 'Enter' > ");
-    if lenof(x) = 0:
+    if lenof(x) = 0 then
       continue "D'oh"
-    else:
+    else
       break "You did it champ"
   };
   s
