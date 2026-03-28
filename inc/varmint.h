@@ -1,5 +1,5 @@
-#ifndef VARMINT_HEART_H
-#define VARMINT_HEART_H
+#ifndef VARMINT_H
+#define VARMINT_H
 
 #include "gc.h"
 #include "val.h"
