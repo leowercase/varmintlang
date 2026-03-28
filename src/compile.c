@@ -16,32 +16,31 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
 {
   SemanticDatum sem;
   sem.assign_fn = semantic(p)->assign_fn;
-  sem.in_stmt = semantic(p)->in_stmt;
-  sem.insert_semicolon = false;
   sem.if_else_chained = false;
+  sem.indent.initial = semantic(p)->indent.initial;
+  sem.indent.continued = semantic(p)->indent.continued;
   sem.led_fail = false;
-  sem.panic = false;
+  sem.panic = semantic(p)->panic;
 
   return SemanticData_push(&p->semantic, sem);
 }
 
 static inline void end_semantic_scope(Parse *p)
 {
-  SemanticDatum old_scope = SemanticData_pop(&p->semantic);
-  semantic(p)->insert_semicolon =
-    old_scope.insert_semicolon;
+  SemanticDatum sem = SemanticData_pop(&p->semantic);
+  semantic(p)->indent.continued = sem.indent.continued;
 }
 
 static void init_compiler(Parse *p, Locals arg_list)
 {
   Compiler *c = allocate(NULL, sizeof(Compiler));
-  c->depth = 0;
 
   Value proc_val = Procedure_create(p->vm, arg_list.len - 1);
   GCList_push(&p->vm->compiler_roots, proc_val);
 
   c->procedure = proc_val.as.procedure;
 
+  c->depth = 0;
   c->locals = arg_list;
   c->stack_slot_count = arg_list.len;
 
@@ -99,14 +98,11 @@ void parse_error(Parse *p, Token offending_tok, bool pointer,
 }
 
 // Emit the end of a block
-static void end_block(Parse *p, Token block_tok, size_t slots, bool has_result)
+static void end_block(Parse *p, Token block_tok, size_t slots)
 {
   p->c->stack_slot_count -= slots;
-  if (slots == 1 && has_result) return;
-
-  Opcode opcode = has_result ? OP_END_BLOCK : OP_END_EMPTY_BLOCK;
-
-  emit_var_op(p, block_tok, opcode, slots);
+  if (slots == 1) return;
+  emit_var_op(p, block_tok, OP_END_BLOCK, slots);
 }
 
 // Local lookup.
@@ -239,11 +235,36 @@ static inline Token eat(Parse *p)
   return tok;
 }
 
+// Consume successive lines and return the last one's indentation level
+static size_t reduce_lines(Parse *p)
+{
+  size_t indent = p->current.slice.len;
+  for (; peek(p).type == TK_LINE; indent = next(p).slice.len);
+  return indent;
+}
+
+static Token peek_linewise(Parse *p)
+{
+  return p->current.type == TK_LINE
+    ? reduce_lines(p), peek(p) : p->current;
+}
+
+static void begin_indent_from(Parse *p, Token indent_line)
+{
+  semantic(p)->indent.initial = indent_line.slice.len;
+  semantic(p)->indent.continued = 0;
+}
+
 static bool match(Parse *p, TokenType expected)
 {
-  Token tok = p->current;
-  if (tok.type != TK_EOF && tok.type == expected) {
-    next(p);
+  Token tok = peek_linewise(p);
+
+  if (tok.type == expected) {
+    if (p->current.type == TK_LINE) {
+      begin_indent_from(p, p->current);
+      next(p);
+    }
+    if (tok.type != TK_EOF) next(p);
     return true;
   }
   else return false;
@@ -251,10 +272,40 @@ static bool match(Parse *p, TokenType expected)
 
 static Token consume(Parse *p, TokenType expected, char *const msg)
 {
-  Token tok = p->current;
-  if (!match(p, expected))
+  Token tok = peek_linewise(p);
+
+  if (tok.type != expected)
     parse_error(p, p->current, true, msg);
+
+  if (p->current.type == TK_LINE) {
+    begin_indent_from(p, p->current);
+    next(p);
+  }
+  if (tok.type != TK_EOF) next(p);
   return tok;
+}
+
+// Operators can continue from the next line as long as there's indentation.
+static bool match_op(Parse *p, TokenType expected)
+{
+  Token tok = peek_linewise(p);
+
+  if (tok.type != TK_EOF && tok.type == expected) {
+    if (p->current.type == TK_LINE) {
+      size_t indent = p->current.slice.len;
+
+      if (indent <= semantic(p)->indent.initial
+          || indent < semantic(p)->indent.continued)
+        return false;
+
+      semantic(p)->indent.continued = indent;
+      next(p);
+    }
+
+    next(p);
+    return true;
+  }
+  else return false;
 }
 
 static const ParseRule *parse_rule(TokenType t);
@@ -321,7 +372,7 @@ static inline void assignage(Parse *p, int min_bp, Opcode op_shorthand)
   if (semantic(p)->assign_fn != NULL)
     semantic(p)->assign_fn(p);
   else
-    parse_error(p, p->current, true, "lhs is not assignable");
+    parse_error(p, tok, true, "lhs is not assignable");
 }
 
 static void assign(Parse *p, int min_bp)
@@ -544,37 +595,28 @@ static void subscript(Parse *p, int min_bp)
   semantic(p)->assigned_tok = op_tok;
 }
 
-static bool consume_arg_list_start(Parse *p)
-{
-  consume(p, TK_LPAREN, "expect grouping start");
-  TokenType current = p->current.type,
-            next = peek(p).type;
-
-  return (current == TK_WORD && (next == TK_COMMA || next == TK_RPAREN))
-       || current == TK_RPAREN;
-}
-
-// Returns argument locals
+// Returns the argument local list.
 static Locals consume_arg_list(Parse *p, Str name)
 {
   Locals arg_list = Locals_with_cap(1);
   create_local(&arg_list, name, 0, true); // Local representing the fn itself.
 
-  // Parameters take up the first few stack slots of the frame.
-  while (p->current.type == TK_WORD
-      && (peek(p).type == TK_RPAREN || peek(p).type == TK_COMMA)) {
-    size_t arg_slot = arg_list.len;
-    // Create argument local.
-    create_local(&arg_list, eat(p).slice, 0, true)
-      ->stack_slot = arg_slot;
+  if (peek_linewise(p).type == TK_RPAREN)
+    return arg_list; // Nullary fn.
 
-    if (!match(p, TK_COMMA)) break;
-  }
+  do {
+    Token arg_tok = consume(p, TK_WORD, "expect function argument");
+    size_t arg_slot = arg_list.len;
+
+    // Create argument local.
+    create_local(&arg_list, arg_tok.slice, 0, true)
+      ->stack_slot = arg_slot;
+  } while (match(p, TK_COMMA));
 
   return arg_list;
 }
 
-// Parses a function body and creates a new function.
+// Parses a function body and emits the new function.
 static void function(Parse *p, Str name, Locals arg_list, bool let_declaration)
 {
   // Reserve first stack slot for the function value
@@ -593,6 +635,12 @@ static void function(Parse *p, Str name, Locals arg_list, bool let_declaration)
     emit_byte(p, p->current, OP_CLOSURE); // Close function.
 }
 
+static inline void grouping_end(Parse *p)
+{
+  expr(p, PREC_NONE);
+  consume(p, TK_RPAREN, "expect grouping end"); // )
+}
+
 static void ident_str(Parse *p, Token ident_tok);
 
 // (x, y) => ...
@@ -600,52 +648,54 @@ static void ident_str(Parse *p, Token ident_tok);
 static void maplet(Parse *p)
 {
   Locals arg_list = consume_arg_list(p, NULL_STR);
+  size_t argc = arg_list.len - 1;
 
-  if (peek(p).type != TK_MAPS_TO) {
-    // Doesn't match a maplet.
-    size_t argc = arg_list.len - 1;
-
-    if (argc == 0)
-      // Need to parse expr inside grouping.
-      expr(p, PREC_NONE);
-
-    else if (argc == 1) {
-      // Consumed a single identifier in paretheses - that needs to be emitted.
-      // We already pushed it into locals in consume_arg_list
-      Token ident_tok = {.line = p->current.line,
-                         .slice = Locals_pop(&arg_list).name};
-      ident_str(p, ident_tok);
+  if (argc == 0) {
+    if (!match(p, TK_RPAREN)) {
+      // We accidentally consumed a grouping (...)
+      // Let's divert flow back to the right track.
+      grouping_end(p);
+      return;
     }
+  }
+  else
+    consume(p, TK_RPAREN, "expect argument list end");
 
+  if (!match_op(p, TK_MAPS_TO)) {
+    // No maplet, this.
+    // Which means we again consumed something we shouldn't have! :-[]
+
+    if (argc == 1) {
+      // Consumed a single identifier in paretheses - that needs to be emitted.
+      // We already pushed it into the argument list
+      Str ident = Locals_pop(&arg_list).name;
+      ident_str(p,
+          (Token){.type = TK_WORD,
+                  .line = p->current.line,
+                  .slice = ident});
+    }
     else
-      // Something is wrong in the user's code.
+      // Something must be wrong in the user's code.
       parse_error(p, p->current, true,
           "expect maplet arrow after argument list");
 
     free(arg_list.data);
-    consume(p, TK_RPAREN, "expect grouping end");
     return;
   }
 
-  consume(p, TK_RPAREN, "expect argument list end");
-  next(p); // =>
   function(p, NULL_STR, arg_list, false);
 }
 
-static inline void grouping_end(Parse *p)
-{
-  new_semantic_scope(p)->in_stmt = false;
-  expr(p, PREC_NONE);
-  end_semantic_scope(p);
-
-  consume(p, TK_RPAREN, "expect grouping end"); // )
-}
-
 // (...)
-static void grouping(Parse *p)
+static void parens(Parse *p)
 {
-  if (consume_arg_list_start(p)) // (
+  next(p); // (
+  TokenType t = peek_linewise(p).type;
+
+  if (t == TK_WORD || t == TK_RPAREN) {
+    if (p->current.type == TK_LINE) next(p); // Consume line start.
     maplet(p);
+  }
   else
     grouping_end(p);
 }
@@ -656,6 +706,7 @@ static size_t delimited_listing(Parse *p,
     bool allow_trailing_delim)
 {
   consume(p, start, "expect listing start"); // [
+
   size_t len = 0;
 
   // Consume listing elements
@@ -668,7 +719,7 @@ static size_t delimited_listing(Parse *p,
             "invalid trailing %s in listing", token_cstring(delim));
     }
 
-    new_semantic_scope(p)->in_stmt = false;
+    new_semantic_scope(p);
     expr(p, PREC_NONE);
     len++;
     end_semantic_scope(p);
@@ -708,127 +759,67 @@ static void list(Parse *p)
   emit_var_op(p, bracket, OP_BUILD_LIST, list_len);
 }
 
-// Consume identifier syntax for table initialization
+// Consume `.key` syntax of a table initializer.
 static void table_ident_key(Parse *p)
 {
   Token key = consume(p, TK_WORD, "expect table key");
-  emit_constant(p, key, String_create(p->vm, key.slice.s, key.slice.len));
-}
-
-// Using curly braces for tables _and_ code blocks can bring ambiguity.
-static bool consume_table_start(Parse *p)
-{
-  next(p); // {
-
-  // Empty table {}
-  if (p->current.type == TK_RCURLY)
-    return true;
-
-  Token tok = p->current;
-
-  // .key
-  if (match(p, TK_DOT)) {
-    table_ident_key(p);
-    return true;
-  }
-
-  size_t list_len = 0;
-
-  // ["key"]
-  if (match(p, TK_LBRACK)) {
-    expr(p, PREC_NONE);
-
-    if (match(p, TK_RBRACK)) {
-      if (p->current.type == TK_ASSIGN)
-        return true;
-      else
-        // Consumed a list with a single element.
-        list_len = 1;
-    }
-    else
-      // Must be a list.
-      list_len = delimited_listing(p, TK_COMMA, TK_COMMA, TK_RBRACK, true) + 1;
-  }
-
-  if (list_len > 0)
-    // Emit the list we consumed.
-    emit_var_op(p, tok, OP_BUILD_LIST, list_len);
-
-  return false;
-}
-
-static void table_key(Parse *p)
-{
-  switch (eat(p).type) {
-  case TK_DOT:
-    // Identifier syntax.
-    table_ident_key(p);
-    break;
-  case TK_LBRACK:
-    // Subscript syntax.
-    expr(p, PREC_NONE);
-    consume(p, TK_RBRACK, "expect `]`");
-    break;
-  default:
-    unreachable();
-  }
-}
-
-static inline void table_value(Parse *p)
-{
-  consume(p, TK_ASSIGN, "expect `:=` after table key");
-  expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT);
+  emit_constant(p, key,
+      String_create(p->vm, key.slice.s, key.slice.len));
 }
 
 static inline void table_entry(Parse *p, bool consumed_first_key)
 {
-  size_t key_nesting =
-    consumed_first_key ? 1 : 0;
-  for (; p->current.type == TK_LBRACK || p->current.type == TK_DOT;
-      key_nesting++)
-    table_key(p);
+  size_t nesting = consumed_first_key ? 1 : 0;
 
-  table_value(p);
+  // Consume consecutive keys
+  for (;; nesting++) {
+    if (match(p, TK_DOT))
+      // Identifier syntax.
+      table_ident_key(p);
+
+    else if (match(p, TK_LBRACK)) {
+      // Subscript syntax.
+      expr(p, PREC_NONE);
+      consume(p, TK_RBRACK, "expect `]`");
+    }
+
+    else break;
+  }
+
+  // Consume value.
+  consume(p, TK_ASSIGN, "expect `:=` after table key");
+  expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT);
 
   // Emit nested entries.
   // .a.b["c"] := value
-  if (key_nesting > 1)
-    emit_var_op(p, p->current, OP_NESTED_TABLE_ENTRIES, key_nesting - 1);
+  if (nesting > 1)
+    emit_var_op(p, p->current, OP_NESTED_TABLE_ENTRIES, nesting - 1);
 }
 
 // {.key := value}
-static void table(Parse *p)
+static void table_end(Parse *p)
 {
-  Token tok = p->current;
-
-  if (match(p, TK_RCURLY)) {
-    emit_byte(p, tok, OP_EMPTY_TABLE); // {}
-    return;
-  }
-
   // The first key has already been consumed.
   table_entry(p, true);
   size_t entry_count = 1;
 
   // Consume entries.
-  if (match(p, TK_COMMA)) {
-    do {
-      if (p->current.type == TK_RCURLY)
-        break; // Trailing comma.
+  for (; match(p, TK_COMMA); entry_count++) {
+    if (peek_linewise(p).type == TK_RCURLY)
+      break; // Trailing comma
 
-      table_entry(p, false);
-      entry_count++;
-    } while (match(p, TK_COMMA));
+    table_entry(p, false);
   }
 
-  consume(p, TK_RCURLY, "expect `}`");
+  Token curly = consume(p, TK_RCURLY, "expect `}` after table initializer");
   // Emit table
-  emit_var_op(p, tok, OP_BUILD_TABLE, entry_count);
+  emit_var_op(p, curly, OP_BUILD_TABLE, entry_count);
 }
 
 static inline bool is_else(Parse *p)
 {
-  return p->current.type == TK_ELSE || p->current.type == TK_ELIF;
+  Token tok = peek_linewise(p);
+  return tok.type == TK_ELSE || tok.type == TK_ELIF;
 }
 
 static void if_expr(Parse *p)
@@ -841,10 +832,13 @@ static void if_expr(Parse *p)
 
   consume(p, TK_THEN, "expect `then` after `if`");
   // Parse conditional value.
-  expr(p, PREC_ELSE);
+  expr(p, PREC_IF);
 
   if (is_else(p)) {
     change_opcode(p, operand_idx, OP_JMP_WHEN_FALSE);
+
+    // Allow else on the same indentation level as if
+    if (p->current.type == TK_LINE) next(p);
 
     semantic(p)->if_else_chained = true;
     semantic(p)->if_jmp_op_idx = operand_idx;
@@ -1131,7 +1125,7 @@ static void using(Parse *p)
   expr(p, (int)PREC_TOP);
 
   clear_local_scope(p);
-  end_block(p, tok, native_count + 1, true);
+  end_block(p, tok, native_count + 1);
   p->c->depth--;
 }
 
@@ -1178,7 +1172,7 @@ static void string(Parse *p)
       String_create(p->vm, strtok.slice.s, strtok.slice.len));
 }
 
-static void stmt_block_end(Parse *p, Token curly_tok);
+static void stmts(Parse *p, TokenType end);
 
 static void metastring(Parse *p)
 {
@@ -1197,7 +1191,7 @@ static void metastring(Parse *p)
       else string(p);
       break;
     case TK_LPAREN: next(p); grouping_end(p); break;
-    case TK_LCURLY: stmt_block_end(p, eat(p)); break;
+    case TK_LCURLY: next(p); stmts(p, TK_RCURLY); break;
     default:
       unreachable();
     }
@@ -1280,50 +1274,61 @@ static void ident(Parse *p)
 
 // Function declaration.
 // let f(x, y) := ...
-static void fn_decl(Parse *p, Str name)
+static void fn_let(Parse *p, Str name)
 {
-  if (!consume_arg_list_start(p))
-    parse_error(p, p->current, true, "expect argument list");
-
   Locals arg_list = consume_arg_list(p, name);
-  consume(p, TK_RPAREN, "expect argument list end");
+  Token rparen = consume(p, TK_RPAREN, "expect argument list end");
 
-  consume(p, TK_ASSIGN, "function requires a body");
+  if (!match_op(p, TK_ASSIGN))
+    parse_error(p, rparen, true, "function requires a body");
+
   function(p, name, arg_list, true);
 
   Local *fn_local = create_local_var(p, name);
   fn_local->initialized = true;
 }
 
-// Returns the number of `let` clauses consumed.
-static size_t consume_lets(Parse *p)
+// Returns the number of clauses consumed.
+static size_t consume_let_clauses(Parse *p, bool let_expr)
 {
   size_t ndecls = 0;
   new_semantic_scope(p);
 
-  Local *first_local_decl = Locals_top(&p->c->locals) + 1;
-
-  if (p->current.type != TK_WORD) {
-    parse_error(p, p->current, true, "expect identifier");
-    return 0;
-  }
+  Local *first_local = Locals_top(&p->c->locals) + 1; // `let` starts here
 
   do {
-    Token ident_tok = eat(p);
+    Token ident_tok = peek_linewise(p);
 
-    if (p->current.type == TK_LPAREN)
-      // Matches an argument list for function declaration.
-      fn_decl(p, ident_tok.slice);
+    if (ident_tok.type != TK_WORD) {
+      if (ndecls > 0 && let_expr)
+        // Trailing comma is allowed in a `let` expression
+        break;
+      else
+        // ...but not in a `let` statement.
+        parse_error(p, ident_tok, true, "expect identifier");
+    }
+
+    if (p->current.type == TK_LINE) next(p);
+    next(p); // Consume ident_tok
+
+    if (match(p, TK_LPAREN))
+      // Most likely an argument list.
+      fn_let(p, ident_tok.slice);
 
     else {
       Local *local = create_local_var(p, ident_tok.slice);
 
-      if (p->current.type == TK_EQ)
-        parse_error(p, p->current, true, "did you mean `:=`?");
+      Token assign_tok = peek_linewise(p);
 
-      if (match(p, TK_ASSIGN)) {
+      if (match_op(p, TK_ASSIGN)) {
         expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT);
         local->initialized = true;
+      }
+      else if (assign_tok.type == TK_EQ) {
+        parse_error(p, assign_tok, true, "did you mean `:=`?");
+
+        if (p->current.type == TK_LINE) next(p);
+        next(p);
       }
       else
         emit_byte(p, ident_tok, OP_RESERVE_SLOT);
@@ -1331,7 +1336,7 @@ static size_t consume_lets(Parse *p)
 
     p->c->stack_slot_count++;
     ndecls++;
-  } while (match(p, TK_COMMA) && p->current.type == TK_WORD);
+  } while (match(p, TK_COMMA));
 
   // Deferred name resolution.
   for (size_t i = 0; i < p->c->deferred_let.len; i++) {
@@ -1340,7 +1345,7 @@ static size_t consume_lets(Parse *p)
 
     Local *deferred_local = NULL;
     // Resolve from bottom up.
-    for (Local *local = first_local_decl, *top = Locals_top(&p->c->locals);
+    for (Local *local = first_local, *top = Locals_top(&p->c->locals);
         local <= top;
         local++)
       if (strs_eq(ident, local->name)) {
@@ -1359,94 +1364,168 @@ static size_t consume_lets(Parse *p)
   }
   p->c->deferred_let.len = 0;
 
+  if (let_expr) {
+    consume(p, TK_IN, "expect `in` after `let` expression");
+    goto end_expr;
+  }
+  else if (match(p, TK_IN)) goto stmt_as_expr;
+
   end_semantic_scope(p);
   return ndecls;
+
+stmt_as_expr:
+  p->c->depth++;
+  // Move local declarations into inner expression scope.
+  for (Local *local = first_local, *top = Locals_top(&p->c->locals);
+      local <= top;
+      local++)
+    local->depth++;
+
+end_expr:
+  expr(p, (int)PREC_TOP);
+  clear_local_scope(p);
+
+  end_block(p, p->current, ndecls + 1);
+  p->c->depth--;
+  return 1;
 }
 
 // The more functional and mathsy cousin of `let`.
 // https://en.wikipedia.org/wiki/Let_expression
 static void let_expr(Parse *p)
 {
+  next(p); // `let`
   p->c->depth++;
-  Token let_tok = eat(p);
+  consume_let_clauses(p, true);
+}
 
+// A series of statements.
+static void stmts(Parse *p, TokenType end)
+{
   new_semantic_scope(p);
-  size_t ndecls = consume_lets(p);
-  end_semantic_scope(p);
 
-  consume(p, TK_IN, "expect `in` after `let` expression");
-  expr(p, (int)PREC_TOP);
+  p->c->depth++;
+  size_t slots = 0;
+
+  // Consume statements
+  while (!match(p, end)) {
+    if (match(p, TK_LET))
+      // `let` statement.
+      slots += consume_let_clauses(p, false);
+
+    else if (match(p, TK_SEMICOLON))
+      // Delimiter.
+      {}
+
+    else {
+      // Expression statement.
+      if (parse_rule(p->current.type)->nud == NULL)
+        parse_error(p, p->current, true, "invalid statement");
+
+      expr(p, PREC_NONE);
+      slots++;
+      p->c->stack_slot_count++;
+    }
+
+    // Synchronize error state between statements.
+    if (semantic(p)->panic) {
+      for (TokenType t = p->current.type;
+          t != TK_LINE && t != TK_EOF && t != end;
+          t = next(p).type);
+
+      semantic(p)->panic = false;
+    }
+  }
 
   clear_local_scope(p);
-  end_block(p, let_tok, ndecls + 1, true);
+
+  end_block(p, p->current, slots);
   p->c->depth--;
-}
-
-static size_t stmt(Parse *p)
-{
-  if (match(p, TK_LET))
-    // let is a statement, as it requires stack semantics.
-    return consume_lets(p);
-
-  else {
-    expr(p, PREC_NONE);
-    p->c->stack_slot_count++;
-    return 1;
-  }
-}
-
-// A block is a series of statements.
-// (The '{' has already been consumed.)
-static void stmt_block_end(Parse *p, Token curly_tok)
-{
-  new_semantic_scope(p)->in_stmt = true;
-
-  p->c->depth++;
-  bool block_has_result = true;
-
-  // Consume first statement
-  size_t stmt_count = stmt(p);
-
-  // Consume statements ...;
-  while (!match(p, TK_RCURLY)) {
-    // Consume tokens until a semicolon is found.
-    while (!match(p, TK_SEMICOLON) && !semantic(p)->insert_semicolon) {
-      Token tok = eat(p);
-      if (tok.type == TK_EOF) goto end;
-      parse_error(p, tok, true, "expect semicolon");
-    }
-
-    semantic(p)->insert_semicolon = false;
-    semantic(p)->panic = false; // Synchronize error state between statements.
-
-    if (match(p, TK_RCURLY)) {
-      // Trailing semicolon, no value from block expr.
-      block_has_result = false;
-      break;
-    }
-
-    if (match(p, TK_RCURLY)) break;
-
-    stmt_count += stmt(p);
-  }
-
-end:
-clear_local_scope(p);
-end_block(p, curly_tok, stmt_count, block_has_result);
-p->c->depth--;
 
   end_semantic_scope(p);
 }
 
 // { ... }
-static void block(Parse *p)
+// Can denote either a code block or a table, eyes sharp!
+static void curlies(Parse *p)
 {
-  Token curly_tok = p->current;
+  Token curly = next(p); // {
+  Token brack;
 
-  if (consume_table_start(p))
-    table(p);
+  // `{}` is just an empty table.
+  if (match(p, TK_RCURLY)) {
+    emit_byte(p, curly, OP_EMPTY_TABLE);
+    return;
+  }
+
+  // .key
+  else if (match(p, TK_DOT))
+    table_ident_key(p);
+
+  // ["key"]
+  else if ((brack = peek_linewise(p)).type == TK_LBRACK) {
+    // This seemingly subscript notation can also be a list.
+    size_t list_len = delimited_listing(p,
+        TK_LBRACK, TK_COMMA, TK_RBRACK, true);
+
+    bool is_subscript =
+      list_len == 1 && peek_linewise(p).type == TK_ASSIGN;
+
+    if (!is_subscript) {
+      // List.
+      emit_var_op(p, brack, OP_BUILD_LIST, list_len);
+      return;
+    }
+  }
+
+  // Code block.
+  else {
+    stmts(p, TK_RCURLY);
+    return;
+  }
+
+  table_end(p);
+}
+
+// Expect operand.
+static void indent_nud(Parse *p)
+{
+  size_t indent = reduce_lines(p);
+  next(p); // Last line token
+
+  semantic(p)->indent.initial = indent;
+
+  Token lhs_token = p->current;
+  NudRule lhs_rule = parse_rule(lhs_token.type)->nud;
+
+  if (lhs_rule == NULL)
+    parse_error(p, lhs_token, true, "expect expression, got `%.*s`",
+        (int)lhs_token.slice.len, lhs_token.slice.s);
   else
-    stmt_block_end(p, curly_tok);
+    lhs_rule(p);
+}
+
+// Expect operator.
+static void indent_led(Parse *p, int min_bp)
+{
+  size_t indent = reduce_lines(p);
+  LedRule op_rule = parse_rule(peek(p).type)->led;
+
+  if (op_rule == NULL)
+    goto fail;
+
+  if (indent <= semantic(p)->indent.initial
+      || indent < semantic(p)->indent.continued)
+    goto fail;
+
+  semantic(p)->indent.continued = indent;
+  next(p); // Last line token
+
+  op_rule(p, min_bp);
+  return;
+
+fail:
+  semantic(p)->led_fail = true;
 }
 
 // An impl of Pratt parsing.
@@ -1469,15 +1548,6 @@ static void expr(Parse *p, int min_bp)
     LedRule op_rule = parse_rule(op_token.type)->led;
 
     if (op_rule == NULL) {
-      if (semantic(p)->in_stmt) {
-        if (semantic(p)->insert_semicolon) break;
-
-        parse_error(p, op_token, true, "unexpected `%.*s`, did you mean to add `;`?",
-            (int)op_token.slice.len, op_token.slice.s);
-
-        semantic(p)->insert_semicolon = true; break; // "Insert" semicolon.
-      }
-
       parse_error(p, op_token, true, "expect operator, got `%.*s`",
           (int)op_token.slice.len, op_token.slice.s);
 
@@ -1507,6 +1577,8 @@ static const ParseRule parse_rules[] =
     [TK_EOF]       = { NULL,       led_end    },
     [TK_ERR]       = { NULL,       NULL       },
 
+    [TK_LINE]      = { indent_nud, indent_led },
+
     [TK_PLUS]      = { prefix_op,  infix_op   },
     [TK_MINUS]     = { prefix_op,  infix_op   },
     [TK_STAR]      = { NULL,       infix_op   },
@@ -1529,6 +1601,7 @@ static const ParseRule parse_rules[] =
     [TK_NOT]       = { prefix_op,  NULL       },
     [TK_AND]       = { NULL,       infix_op   },
     [TK_OR]        = { NULL,       infix_op   },
+
     [TK_IN]        = { NULL,       led_end    },
 
     [TK_MOD]       = { NULL,       infix_op   },
@@ -1559,10 +1632,10 @@ static const ParseRule parse_rules[] =
     [TK_ARROW]     = { NULL,       infix_op   },
     [TK_MAPS_TO]   = { NULL,       NULL       },
 
-    [TK_LPAREN]    = { grouping,   invocation },
+    [TK_LPAREN]    = { parens,     invocation },
     [TK_RPAREN]    = { NULL,       led_end    },
 
-    [TK_LCURLY]    = { block,      NULL       },
+    [TK_LCURLY]    = { curlies,    NULL       },
     [TK_RCURLY]    = { NULL,       led_end    },
 
     [TK_LBRACK]    = { list,       subscript  },
@@ -1602,7 +1675,7 @@ static Parse init_parse(Varmint *vm, char *source)
   p.semantic = SemanticData_init();
 
   Locals initial_locals = Locals_with_cap(1);
-  // Reserve first stack slot for the program value.
+  // Reserve first stack slot for the program itself.
   create_local(&initial_locals, NULL_STR, 0, false);
 
   p.c = NULL;
@@ -1621,15 +1694,14 @@ Procedure *compile(Varmint *vm, char *source)
 
   SemanticDatum sem;
   sem.assign_fn = NULL;
-  sem.in_stmt = false;
-  sem.insert_semicolon = false;
   sem.if_else_chained = false;
+  sem.indent.initial = sem.indent.continued = 0;
   sem.led_fail = false;
   sem.panic = false;
   SemanticData_push(&p.semantic, sem);
 
   next(&p); next(&p);
-  expr(&p, PREC_NONE);
+  stmts(&p, TK_EOF);
 
   free(p.semantic.data);
 

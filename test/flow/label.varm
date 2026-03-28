@@ -1,13 +1,13 @@
 using put, input:
 loop 'outer {
-  put("Hello from outer! ");
+  put("Hello from outer! ")
 
   loop 'inner {
-    put("Hello from inner! ");
+    put("Hello from inner! ")
 
-    input(); # Prevent excessive output
+    input() # Prevent excessive output
 
-    continue 'outer;
+    continue 'outer
   }
 }
 # Hello from outer! Hello from inner! Hello from outer! [...]

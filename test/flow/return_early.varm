@@ -1,6 +1,6 @@
 using putln:
 {
-  return;
-  putln("This code is never executed.");
+  return
+  putln("This code is never executed.")
 }
 # no value

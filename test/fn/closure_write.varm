@@ -1,24 +1,25 @@
 using putln:
 {
   let make_mem() := {
-    let memory := "...";
+    let memory := "..."
 
     let recall() := putln(memory),
-        overwrite(x) := memory := x;
+        overwrite(x) := memory := x
+
     [recall, overwrite]
-  };
+  }
 
   let mem := make_mem(),
-      recall := mem[0], overwrite := mem[1];
+      recall := mem[0], overwrite := mem[1]
 
-  recall();
+  recall()
 
-  overwrite("apple");
-  recall();
+  overwrite("apple")
+  recall()
 
-  overwrite("pizza");
-  overwrite("pineapple");
-  recall();
+  overwrite("pizza")
+  overwrite("pineapple")
+  recall()
 }
 # ...
 # apple

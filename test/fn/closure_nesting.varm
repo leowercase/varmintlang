@@ -3,22 +3,22 @@
 using putln:
 {
   let outer() := {
-    let x := "value";
+    let x := "value"
 
     let middle() := {
-      let inner() := putln(x);
+      let inner() := putln(x)
 
-      putln("Create inner closure");
+      putln("Create inner closure")
       inner
-    };
+    }
 
-    putln("Return from outer");
+    putln("Return from outer")
     middle
-  };
+  }
 
   let mid := outer(),
-      inr := mid();
-  inr();
+      inr := mid()
+  inr()
 }
 # Return from outer
 # Create inner closure

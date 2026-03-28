@@ -220,6 +220,7 @@ static void skip_rest_line(Lex *lex)
 
   next(lex); // '\n'
   lex->line++;
+  lex->on_new_line = true;
 }
 
 static void block_comment(Lex *lex)
@@ -229,36 +230,55 @@ static void block_comment(Lex *lex)
 
   do {
     switch (*lex->current) {
-    case '\0': return;
-    case '\n': next(lex); lex->line++; continue;
+    case '\0':
+      return;
+    case '\n':
+      next(lex);
+      lex->line++;
+      lex->on_new_line = true;
+      continue;
     }
 
     if (match(lex, ']') && match(lex, '#'))
       comment_nesting--;
     else if (match(lex, '#') && match(lex, '['))
       comment_nesting++;
-
-    next(lex);
+    else
+      next(lex);
   } while (comment_nesting > 0);
 
-  if (*lex->current == '\n') lex->line++;
+  if (*lex->current == '\n') {
+    next(lex);
+    lex->line++;
+    lex->on_new_line = true;
+  }
 }
 
 static void skip_redundant_space(Lex *lex)
 {
+  if (lex->on_new_line) return;
+
   for (;;) {
     char c = *lex->current;
 
-    if (c == '\n')
+    if (c == '\n') {
+      next(lex);
       lex->line++;
+      lex->on_new_line = true;
+      return;
+    }
 
     else if (c == '#') {
       // Comment.
-      if (peek(lex) == '[')
+      if (peek(lex) == '[') {
         block_comment(lex);
-      else
+        if (lex->on_new_line) return;
+        continue;
+      }
+      else {
         skip_rest_line(lex);
-      continue;
+        return;
+      }
     }
 
     else if (!isspace(c))
@@ -266,6 +286,29 @@ static void skip_redundant_space(Lex *lex)
 
     next(lex);
   }
+}
+
+// Indentation is significant.
+static Token new_line(Lex *lex)
+{
+  for (;;) {
+    if (match(lex, ' '))
+      lex->indent.use_spaces = true;
+    else if (match(lex, '\t'))
+      lex->indent.use_tabs = true;
+    else
+      break;
+  }
+
+  lex->on_new_line = false;
+
+  if (lex->indent.use_spaces && lex->indent.use_tabs) {
+    lex->indent.use_spaces = lex->indent.use_tabs = false;
+    return error_token(lex,
+        "misleading use of both spaces and tabs as indentation");
+  }
+  else
+    return token(lex, TK_LINE);
 }
 
 Token lex_token(Lex *lex)
@@ -286,6 +329,9 @@ Token lex_token(Lex *lex)
   skip_redundant_space(lex);
 
   lex->start = lex->current;
+
+  if (lex->on_new_line)
+    return new_line(lex);
 
   char c = *lex->current;
 
@@ -397,6 +443,7 @@ char *token_cstring(const TokenType type)
   switch (type) {
   case_(EOF)
   case_(ERR)
+  case_(LINE)
   case_(PLUS) case_(MINUS) case_(STAR) case_(SLASH)
   case_(CARET)
   case_(PERCENT)

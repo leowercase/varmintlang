@@ -1,9 +1,9 @@
 using putln:
 {
-  let sheep := for[] i in 1..=5 loop "\(i) sheep...";
+  let sheep := for[] i in 1..=5 loop "\(i) sheep..."
 
-  for s in sheep loop putln(s);
-  putln("ZZZ...");
+  for s in sheep loop putln(s)
+  putln("ZZZ...")
 }
 # 1 sheep...
 # 2 sheep...

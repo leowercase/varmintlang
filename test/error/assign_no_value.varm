@@ -1,5 +1,6 @@
+using put:
 {
-  let x := "value";
-  x := { "empty block"; };
+  let x := "value"
+  x := put("this function has no value.")
 }
 # invalid assign to expression without value

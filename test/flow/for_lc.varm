@@ -1,6 +1,6 @@
 for[] i in ["Fee", "Fi", "Fo", "Fum"] loop
   using putln, lenof: {
-    let len := lenof(i);
+    let len := lenof(i)
     putln("\(i) of length \(len)"); len
   }
 # Fee of length 3

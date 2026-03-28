@@ -1,8 +1,8 @@
 {
-  12 * / 5;
+  12 * / 5
   let (;-)
 }
 # expect expression, got `/`
 # expect identifier
 # expect expression, got `)`
-# expect semicolon
+# invalid statement

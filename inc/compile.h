@@ -74,19 +74,24 @@ typedef DYN_ARRAY_STRUCT(DeferredLookup) DeferredLet;
 
 // Info about the current expression being parsed.
 typedef struct SemanticDatum {
-  void (*assign_fn)(Parse *p); // Assignment function for left hand side
+  Token assigned_tok;
   union {
     Local *local;
     size_t upval_idx;
   } assignable;
-  Token assigned_tok;
+  // Assignment function for left hand side operand
+  void (*assign_fn)(Parse *p);
 
-  bool in_stmt; // {}
-  bool insert_semicolon;
+  // Indentation affects whether or not the next line is considered
+  // a continuation of an expression.
+  struct {
+    size_t initial; // First indentation level of an expression chain
+    size_t continued; // Indentation level of the continuation
+  } indent;
 
+  size_t if_jmp_op_idx;
   // if..else..elif chains are optimized a bit to avoid useless shuffling
   bool if_else_chained;
-  size_t if_jmp_op_idx;
 
   // Whether the latest left-denoted parse failed.
   bool led_fail;

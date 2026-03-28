@@ -11,13 +11,12 @@
 /*
  * Lexical analysis splits text into lexically meaningful tokens.
  * https://en.wikipedia.org/wiki/Lexical_analysis
- *
- * This is what LLMs basically do as well!
  */
 
 typedef enum {
   TK_EOF,
   TK_ERR,
+  TK_LINE,
   TK_PLUS, TK_MINUS, TK_STAR, TK_SLASH,
   TK_CARET,
   TK_PERCENT,
@@ -151,6 +150,8 @@ typedef struct {
   char *current;
   size_t line;
 
+  bool on_new_line;
+  struct { bool use_spaces, use_tabs; } indent;
   TokenType comprehension;
   bool escaping_string;
   TemplateNesting template_nesting;
@@ -162,6 +163,9 @@ Lex lex_new(char *source)
   Lex lex;
   lex.start = lex.current = source;
   lex.line = 1;
+  lex.on_new_line = true;
+
+  lex.indent.use_spaces = lex.indent.use_tabs = false;
 
   lex.comprehension = (TokenType)false;
   lex.escaping_string = false;
