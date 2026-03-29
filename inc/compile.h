@@ -82,6 +82,12 @@ typedef struct SemanticDatum {
   // Assignment function for left hand side operand
   void (*assign_fn)(Parse *p);
 
+  // Left-denoted parsing can be ambiguous.
+  struct {
+    Token token;
+    bool deferred;
+  } led_op;
+
   // Indentation affects whether or not the next line is considered
   // a continuation of an expression.
   struct {

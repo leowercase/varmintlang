@@ -16,6 +16,7 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
 {
   SemanticDatum sem;
   sem.assign_fn = semantic(p)->assign_fn;
+  sem.led_op.deferred = false;
   sem.if_else_chained = false;
   sem.indent.initial = semantic(p)->indent.initial;
   sem.indent.continued = semantic(p)->indent.continued;
@@ -243,10 +244,16 @@ static size_t reduce_lines(Parse *p)
   return indent;
 }
 
+// Peek next token, skipping any whitespace in between
 static Token peek_linewise(Parse *p)
 {
   return p->current.type == TK_LINE
     ? reduce_lines(p), peek(p) : p->current;
+}
+
+static inline void skip_line(Parse *p)
+{
+  if (p->current.type == TK_LINE) next(p);
 }
 
 static void begin_indent_from(Parse *p, Token indent_line)
@@ -285,6 +292,12 @@ static Token consume(Parse *p, TokenType expected, char *const msg)
   return tok;
 }
 
+static bool is_continuation(Parse *p, size_t indent)
+{
+  return indent > semantic(p)->indent.initial
+    && indent >= semantic(p)->indent.continued;
+}
+
 // Operators can continue from the next line as long as there's indentation.
 static bool match_op(Parse *p, TokenType expected)
 {
@@ -294,8 +307,7 @@ static bool match_op(Parse *p, TokenType expected)
     if (p->current.type == TK_LINE) {
       size_t indent = p->current.slice.len;
 
-      if (indent <= semantic(p)->indent.initial
-          || indent < semantic(p)->indent.continued)
+      if (!is_continuation(p, indent))
         return false;
 
       semantic(p)->indent.continued = indent;
@@ -306,6 +318,21 @@ static bool match_op(Parse *p, TokenType expected)
     return true;
   }
   else return false;
+}
+
+// `:=` and `=` can easily be mixed, coming from other languages.
+static bool match_assign(Parse *p)
+{
+  if (match_op(p, TK_ASSIGN))
+    return true;
+
+  else {
+    Token eq_tok = peek_linewise(p);
+    if (match_op(p, TK_EQ))
+      parse_error(p, eq_tok, true, "did you mean `:=`?");
+
+    return false;
+  }
 }
 
 static const ParseRule *parse_rule(TokenType t);
@@ -344,6 +371,22 @@ static void prefix_op(Parse *p)
 
   expr(p, (int)op.precedence); // Parse and emit right operand.
   emit_byte(p, op_tok, (uint8_t)op.type);
+}
+
+// Unary `+` is a no-op.
+static void unary_plus(Parse *p)
+{
+  next(p);
+  expr(p, PREC_SIGN);
+}
+
+static inline Token led_op_token(Parse *p)
+{
+  if (semantic(p)->led_op.deferred) {
+    return semantic(p)->led_op.token;
+  }
+  else
+    return p->current;
 }
 
 // Allows compound assignment shorthand +:=
@@ -408,7 +451,7 @@ static const BinaryOp infix_ops[] = {
 
 static void infix_op(Parse *p, int min_bp)
 {
-  Token op_token = p->current;
+  Token op_token = led_op_token(p);
   BinaryOp op = infix_ops[op_token.type];
 
   // Assignment shorthand
@@ -422,18 +465,14 @@ static void infix_op(Parse *p, int min_bp)
     return;
   }
 
-  next(p); // Consume op_token
+  if (!semantic(p)->led_op.deferred)
+    next(p); // Consume op_token
+  semantic(p)->led_op.deferred = false;
 
   // Parse right operand.
   expr_rhs(p, op.precedence, op.associativity);
 
   emit_byte(p, op_token, (uint8_t)op.type);
-}
-
-static inline bool is_prefix_and_infix(TokenType op)
-{
-  // Can be extended later.
-  return op == TK_PLUS || op == TK_MINUS;
 }
 
 static const UnaryOp postfix_ops[] = {
@@ -444,7 +483,7 @@ static const UnaryOp postfix_ops[] = {
 
 static void postfix_op(Parse *p, int min_bp)
 {
-  Token op_token = p->current;
+  Token op_token = led_op_token(p);
   UnaryOp op = postfix_ops[op_token.type];
 
   int l_bp = (int)op.precedence;
@@ -453,43 +492,70 @@ static void postfix_op(Parse *p, int min_bp)
     return;
   }
 
-  next(p); // Consume op_token
+  if (!semantic(p)->led_op.deferred)
+    next(p); // Consume op_token
+  semantic(p)->led_op.deferred = false;
+
   emit_byte(p, op_token, (uint8_t)op.type);
 }
 
-static bool led_op_is_infix(TokenType op, TokenType next)
-{
-  const ParseRule *next_rule = parse_rule(next);
-
-  if (next_rule->nud == NULL)
-    return false; // Next token is not a valid rhs.
-
-  else if (next_rule->led == NULL || !is_prefix_and_infix(next))
-    return true; // Next token is not an infix op.
-
-  else if (next == TK_ASSIGN)
-    // Compound assignment.
-    return true;
-
-  else {
-    int op_bp = (int)infix_ops[op].precedence +
-                (int)infix_ops[op].associativity;
-
-    int next_bp = (int)infix_ops[next].precedence +
-                  (int)infix_ops[next].associativity;
-
-    return op_bp < next_bp; // Battle of the binding powers!
-  }
-}
-
-// LED op tokens of ambiguous fixity.
-// 50% + 3
+// Left-denoted op tokens of ambiguous fixity.
+// 50 % + 3
+//    ^ Is the `%` infix or postfix?
 static void led_op(Parse *p, int min_bp)
 {
-  if (led_op_is_infix(p->current.type, peek(p).type))
-    infix_op(p, min_bp);
-  else
-    postfix_op(p, min_bp);
+  Token op = semantic(p)->led_op.token = eat(p);
+  semantic(p)->led_op.deferred = true;
+
+  if (p->current.type == TK_ASSIGN)
+    // Compound assignment.
+    goto infix;
+
+  Token next = peek_linewise(p);
+  const ParseRule *next_rule = parse_rule(next.type);
+
+  if (next_rule->nud == NULL)
+    // Next token is not a valid rhs.
+    goto postfix;
+
+  if (p->current.type == TK_LINE) {
+    size_t indent = p->current.slice.len;
+
+    if (!is_continuation(p, indent))
+      // Next token is not a part of this expression.
+      goto postfix;
+  }
+
+  TokenType op_type = op.type,
+            next_type = next.type;
+
+  if (next_rule->led == NULL)
+    // Next token can not bind into this op.
+    goto infix;
+
+  else {
+    // Next token can be an rhs or an infix op.
+    // The one that binds stronger is the infix op.
+    BinaryOp op = infix_ops[op_type],
+             next = infix_ops[next_type];
+
+    int op_bp = (int)op.precedence + (int)op.associativity,
+        next_bp = (int)next.precedence + (int)next.associativity;
+
+    if (op_bp > next_bp)
+      goto infix;
+    else
+      goto postfix;
+  }
+
+infix:
+  skip_line(p);
+  infix_op(p, min_bp);
+  return;
+
+postfix:
+  skip_line(p);
+  postfix_op(p, min_bp);
 }
 
 static void cmp_chain(Parse *p, bool is_continuation)
@@ -693,7 +759,7 @@ static void parens(Parse *p)
   TokenType t = peek_linewise(p).type;
 
   if (t == TK_WORD || t == TK_RPAREN) {
-    if (p->current.type == TK_LINE) next(p); // Consume line start.
+    skip_line(p);
     maplet(p);
   }
   else
@@ -838,7 +904,7 @@ static void if_expr(Parse *p)
     change_opcode(p, operand_idx, OP_JMP_WHEN_FALSE);
 
     // Allow else on the same indentation level as if
-    if (p->current.type == TK_LINE) next(p);
+    skip_line(p);
 
     semantic(p)->if_else_chained = true;
     semantic(p)->if_jmp_op_idx = operand_idx;
@@ -1279,7 +1345,7 @@ static void fn_let(Parse *p, Str name)
   Locals arg_list = consume_arg_list(p, name);
   Token rparen = consume(p, TK_RPAREN, "expect argument list end");
 
-  if (!match_op(p, TK_ASSIGN))
+  if (!match_assign(p))
     parse_error(p, rparen, true, "function requires a body");
 
   function(p, name, arg_list, true);
@@ -1308,7 +1374,7 @@ static size_t consume_let_clauses(Parse *p, bool let_expr)
         parse_error(p, ident_tok, true, "expect identifier");
     }
 
-    if (p->current.type == TK_LINE) next(p);
+    skip_line(p);
     next(p); // Consume ident_tok
 
     if (match(p, TK_LPAREN))
@@ -1320,14 +1386,14 @@ static size_t consume_let_clauses(Parse *p, bool let_expr)
 
       Token assign_tok = peek_linewise(p);
 
-      if (match_op(p, TK_ASSIGN)) {
+      if (match_assign(p)) {
         expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT);
         local->initialized = true;
       }
       else if (assign_tok.type == TK_EQ) {
         parse_error(p, assign_tok, true, "did you mean `:=`?");
 
-        if (p->current.type == TK_LINE) next(p);
+        skip_line(p);
         next(p);
       }
       else
@@ -1514,8 +1580,7 @@ static void indent_led(Parse *p, int min_bp)
   if (op_rule == NULL)
     goto fail;
 
-  if (indent <= semantic(p)->indent.initial
-      || indent < semantic(p)->indent.continued)
+  if (!is_continuation(p, indent))
     goto fail;
 
   semantic(p)->indent.continued = indent;
@@ -1547,7 +1612,7 @@ static void expr(Parse *p, int min_bp)
     Token op_token = p->current;
     LedRule op_rule = parse_rule(op_token.type)->led;
 
-    if (op_rule == NULL) {
+    if (op_rule == NULL && !semantic(p)->led_op.deferred) {
       parse_error(p, op_token, true, "expect operator, got `%.*s`",
           (int)op_token.slice.len, op_token.slice.s);
 
@@ -1579,7 +1644,7 @@ static const ParseRule parse_rules[] =
 
     [TK_LINE]      = { indent_nud, indent_led },
 
-    [TK_PLUS]      = { prefix_op,  infix_op   },
+    [TK_PLUS]      = { unary_plus, infix_op   },
     [TK_MINUS]     = { prefix_op,  infix_op   },
     [TK_STAR]      = { NULL,       infix_op   },
     [TK_SLASH]     = { NULL,       infix_op   },
@@ -1695,6 +1760,7 @@ Procedure *compile(Varmint *vm, char *source)
   SemanticDatum sem;
   sem.assign_fn = NULL;
   sem.if_else_chained = false;
+  sem.led_op.deferred = false;
   sem.indent.initial = sem.indent.continued = 0;
   sem.led_fail = false;
   sem.panic = false;
