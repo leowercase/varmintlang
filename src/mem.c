@@ -28,10 +28,6 @@ static inline size_t round_up_to_pow_2(size_t n)
 #if defined(UINT64_MAX) && SIZE_MAX > UINT64_MAX
   n |= n >> 64;
 #endif
-#if defined(UINT128_MAX) && SIZE_MAX > UINT128_MAX
-  n |= n >> 128;
-#endif
-  // I suppose that's enough.
   n++;
 
   return n;
