@@ -63,11 +63,18 @@ Value varmint_run(Varmint *vm, char *source)
 
     Lex l = lex_new(source);
 
+    size_t line = 1;
     Token tok;
     do {
       tok = lex_token(&l);
-      fprintf(stderr, "%.2li %s `%.*s`\n",
-          tok.line,
+
+      if (tok.line > line) {
+        line++;
+        printf("\n");
+      }
+
+      fprintf(stderr,
+          ANSI_RED "%s" ANSI_RESET "(" ANSI_YELLOW "`%.*s`" ANSI_RESET ") ",
           token_cstring(tok.type),
           (int)tok.slice.len, tok.slice.s);
     } while (tok.type != TK_EOF);
