@@ -10,6 +10,9 @@
 
 Value Maybe_some(Varmint *vm, Value raw)
 {
+  if (raw.type == V_maybe)
+    return raw.as.maybe == NULL ? Maybe_none() : raw;
+
   Value val = *create_gc_obj(vm, V_maybe, sizeof(Maybe));
   val.as.maybe->raw = raw;
   return val;
