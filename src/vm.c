@@ -468,7 +468,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
     })
 
     // Get an element from a collection.
-  case OP_ELEM_GET:
+  case OP_GET_ELEM:
     {
       Value idx = pop(vm),
             collection = pop(vm);
@@ -476,7 +476,7 @@ static inline bool execute_instruction(Varmint *restrict vm)
       break;
     }
     // Set an element of a collection.
-  case OP_ELEM_SET:
+  case OP_SET_ELEM:
     {
       Value val = pop(vm),
             idx = pop(vm),

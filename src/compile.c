@@ -611,7 +611,7 @@ static void cmp(Parse *p, int min_bp)
 
 static void elem_assign(Parse *p)
 {
-  emit_byte(p, semantic(p)->assigned_tok, OP_ELEM_SET);
+  emit_byte(p, semantic(p)->assigned_tok, OP_SET_ELEM);
 }
 
 static void table_ident_key(Parse *p);
@@ -648,7 +648,7 @@ static void subscript(Parse *p, int min_bp)
       emit_byte(p, op_tok, OP_DUP_2);
 
     // Access.
-    emit_byte(p, op_tok, OP_ELEM_GET);
+    emit_byte(p, op_tok, OP_GET_ELEM);
 
     if (!compound) return;
   }
