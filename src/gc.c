@@ -127,7 +127,6 @@ static void mark_obj(Varmint *vm, Value obj)
         mark_obj(vm, obj.as.maybe->raw);
       break;
     }
-  case V_range:
   case V_string:
     break;
   case V_list:
@@ -193,9 +192,6 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
     unreachable();
   case V_maybe:
     FREE(Maybe);
-    break;
-  case V_range:
-    FREE(Range);
     break;
   case V_string:
     {

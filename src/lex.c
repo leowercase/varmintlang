@@ -441,9 +441,7 @@ Token lex_token(Lex *lex)
 
   case '.':
     return token(lex,
-      match(lex, '.')
-        ? (match(lex, '=') ? TK_DOTDOTEQ : TK_DOTDOT)
-        : TK_DOT);
+        match(lex, '.') ? TK_DOTDOT : TK_DOT);
 
   case '|':
     if (match(lex, '|'))
@@ -489,8 +487,7 @@ char *token_cstring(const TokenType type)
   case_(LCURLY) case_(RCURLY)
   case_(LIST_COMP) case_(TABLE_COMP)
   case_(COLON) case_(SEMICOLON) case_(COMMA)
-  case_(DOT)
-  case_(DOTDOT) case_(DOTDOTEQ)
+  case_(DOT) case_(DOTDOT)
   case_(NUMERAL)
   case_(STRCONT) case_(STREND)
   case_(WORD) case_(LABEL)

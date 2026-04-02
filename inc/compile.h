@@ -149,7 +149,6 @@ typedef enum {
   PREC_I9N,       // ->
   PREC_CMP,       // = != < > <= >=
   PREC_NOT,       // not
-  PREC_RANGE,     // .. ..=
   PREC_TERM,      // + -
   PREC_FACTOR,    // * / %
   PREC_CONCAT,    // ||

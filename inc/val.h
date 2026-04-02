@@ -22,7 +22,6 @@ typedef enum {
 
   // GC'd values
   V_maybe,
-  V_range,
   V_string,
   V_list,
   V_table,
@@ -39,7 +38,6 @@ typedef union {
 
   struct GCData *gc_data; // Accessed by the garbage collector.
   struct Maybe *maybe;
-  struct Range *range;
   struct String *string;
   struct List *list;
   struct Table *table;
@@ -91,15 +89,6 @@ typedef struct Maybe {
   Value raw;
 } Maybe;
 
-// A real interval.
-// Why half open by default?
-// - https://www.cs.utexas.edu/~EWD/ewd08xx/EWD831.PDF
-typedef struct Range {
-  GCData gc_data;
-  float64_t start, end;
-  bool inclusive; // [start, end) or [start, end]
-} Range;
-
 typedef struct String {
   GCData gc_data;
   char *s;
@@ -139,9 +128,6 @@ Value Maybe_none(void);
 Value List_create(struct Varmint *vm, size_t cap);
 
 Value Table_create(struct Varmint *vm, size_t cap);
-
-Value Range_create(struct Varmint *vm, float64_t start, float64_t end,
-                                       bool end_inclusive);
 
 Value String_create(struct Varmint *vm, const char *s, size_t len);
 Value String_from(struct Varmint *vm, const char *cstring);

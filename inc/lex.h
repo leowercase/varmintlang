@@ -44,8 +44,7 @@ typedef enum {
   TK_LCURLY, TK_RCURLY,
   TK_LIST_COMP, TK_TABLE_COMP,
   TK_COLON, TK_SEMICOLON, TK_COMMA,
-  TK_DOT,
-  TK_DOTDOT, TK_DOTDOTEQ,
+  TK_DOT, TK_DOTDOT,
   TK_NUMERAL,
   TK_STRCONT, TK_STREND,
   TK_WORD, TK_LABEL,
@@ -57,8 +56,7 @@ bool is_infix_op(TokenType t)
   return (TK_PLUS <= t && t <= TK_PERCENT)
     || (TK_2PIPE <= t && t <= TK_GEQ)
     || (TK_AND <= t && t <= TK_MOD)
-    || t == TK_ARROW
-    || t == TK_DOTDOT || t == TK_DOTDOTEQ;
+    || t == TK_ARROW;
 }
 
 static inline

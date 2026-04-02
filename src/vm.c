@@ -219,19 +219,6 @@ static bool for_loop_next(Varmint *vm, Value iterable, size_t counter)
   Value val = NO_VALUE;
 
   switch (iterable.type) {
-  case V_range:
-    {
-      Range *range = iterable.as.range;
-      float64_t point = range->start + (float64_t)counter;
-      bool in_range =
-        range->inclusive
-          ? point <= range->end : point < range->end;
-
-      if (in_range)
-        val = value_new(point, number);
-      else return false;
-      break;
-    }
   case V_list:
     if (counter < iterable.as.list->len)
       val = iterable.as.list->data[counter];
@@ -321,9 +308,6 @@ static inline bool execute_instruction(Varmint *restrict vm)
   case OP_GT:  BINARY(_vm_greater_than(vm, lhs, rhs))
   case OP_LEQ: BINARY(_vm_less_than_or_eq(vm, lhs, rhs))
   case OP_GEQ: BINARY(_vm_greater_than_or_eq(vm, lhs, rhs))
-
-  case OP_RANGE:    BINARY(_vm_range(vm, lhs, rhs, false))
-  case OP_RANGE_IN: BINARY(_vm_range(vm, lhs, rhs, true))
 
   case OP_CONCAT: BINARY(_vm_concat(vm, lhs, rhs))
 

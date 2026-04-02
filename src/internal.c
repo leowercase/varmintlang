@@ -93,13 +93,6 @@ Value _vm_greater_than(Varmint *vm, Value a, Value b)
 Value _vm_greater_than_or_eq(Varmint *vm, Value a, Value b)
   BINOP_(a, >=, b, number, boolean)
 
-Value _vm_range(Varmint *vm, Value left, Value right, bool inclusive)
-{
-  float64_t a = typechecked(vm, left, number),
-            b = typechecked(vm, right, number);
-  return Range_create(vm, a, b, inclusive);
-}
-
 Value _vm_concat(Varmint *vm, Value head, Value tail)
 {
   if (head.type != V_string || tail.type != V_string)
@@ -113,16 +106,6 @@ Value _vm_in(Varmint *vm, Value x, Value collection)
   bool contains = false;
 
   switch (collection.type) {
-  case V_range:
-    {
-      Range *range = collection.as.range;
-      float64_t n = typechecked(vm, x, number);
-      contains =
-        range->inclusive
-          ? range->start <= n && n <= range->end
-          : range->start <= n && n < range->end;
-      break;
-    }
   case V_string:
     {
       String *string = collection.as.string;
@@ -264,11 +247,6 @@ Value _lenof(Varmint *vm, Value *args)
   Value collection = args[0];
 
   switch (collection.type) {
-  case V_range:
-    {
-      float64_t len = collection.as.range->end - collection.as.range->start;
-      return value_new(len, number);
-    }
   case V_string:
     return value_new((float64_t)collection.as.string->len, number);
   case V_list:
@@ -354,7 +332,6 @@ Value _to_number(Varmint *vm, Value *args)
 
       break;
     }
-  case V_range:
   case V_native:
   case V_maybe:
   case V_list:

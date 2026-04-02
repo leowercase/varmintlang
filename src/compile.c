@@ -457,9 +457,6 @@ static const BinaryOp infix_ops[] = {
   [TK_OR]       = { OP_OR,       PREC_OR,     ASSOC_LEFT  },
   [TK_MOD]      = { OP_MODULO,   PREC_FACTOR, ASSOC_LEFT  },
   [TK_ARROW]    = { OP_I9N,      PREC_I9N,    ASSOC_LEFT  },
-
-  [TK_DOTDOT]   = { OP_RANGE,    PREC_RANGE,  ASSOC_RIGHT },
-  [TK_DOTDOTEQ] = { OP_RANGE_IN, PREC_RANGE,  ASSOC_RIGHT },
 };
 
 static void infix_op(Parse *p, int min_bp)
@@ -1778,9 +1775,7 @@ static const ParseRule parse_rules[] =
     [TK_COMMA]     = { NULL,       led_end    },
 
     [TK_DOT]       = { NULL,       subscript  },
-
-    [TK_DOTDOT]    = { NULL,       infix_op   },
-    [TK_DOTDOTEQ]  = { NULL,       infix_op   },
+    [TK_DOTDOT]    = { NULL,       NULL       },
 
     [TK_NUMERAL]   = { number,     NULL       },
 

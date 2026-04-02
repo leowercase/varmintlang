@@ -51,18 +51,6 @@ Value Table_create(Varmint *vm, size_t entry_count)
   return val;
 }
 
-Value Range_create(Varmint *vm, float64_t start, float64_t end,
-                                       bool end_inclusive)
-{
-  Value val = *create_gc_obj(vm, V_range, sizeof(Range));
-
-  val.as.range->start = start;
-  val.as.range->end = end;
-  val.as.range->inclusive = end_inclusive;
-
-  return val;
-}
-
 Value String_create(Varmint *vm, const char *s, size_t len)
 {
   Value val = *create_gc_obj(vm, V_string, sizeof(String));
@@ -224,9 +212,6 @@ bool values_eq(Value a, Value b)
           || (!a_none && !b_none &&
               values_eq(a.as.maybe->raw, b.as.maybe->raw));
       }
-    case V_range:
-      return a.as.range->start == b.as.range->start
-        && a.as.range->end == b.as.range->end;
     case V_string:
       return strs_eq(String_as_str(&a), String_as_str(&b));
     case V_list:
@@ -259,7 +244,6 @@ const char *value_type_cstring(Typetag type)
   case_(boolean)
   case_(native)
   case_(maybe)
-  case_(range)
   case_(string)
   case_(list)
   case_(table)
@@ -295,8 +279,6 @@ Value value_to_string(Varmint *vm, Value val)
       return String_from(vm, "");
     else
       return value_to_string(vm, val.as.maybe->raw);
-  case V_range:
-    return String_from(vm, "<range>");
   case V_string:
     return String_copy(vm, &val);
   case V_list:
@@ -343,11 +325,6 @@ void print_value(FILE *restrict stream, Value val)
       print_value(stream, val.as.maybe->raw);
       fprintf(stream, ")");
     }
-    break;
-  case V_range:
-    fprintf(stream, ANSI_RED "%g" ANSI_RESET, val.as.range->start);
-    fprintf(stream, ANSI_MAGENTA ".." ANSI_RESET);
-    fprintf(stream, ANSI_RED "%g" ANSI_RESET, val.as.range->end);
     break;
   case V_string:
     fprintf(stream, ANSI_YELLOW "\"%s\"" ANSI_RESET "(%li)",
@@ -419,11 +396,6 @@ uint64_t hash_value(Value val)
     return XXH3_64bits(&val.as.native, sizeof(size_t));
   case V_maybe:
     return val.as.maybe != NULL ? hash_value(val.as.maybe->raw) : 0;
-  case V_range:
-    {
-      float64_t a[2] = {val.as.range->start, val.as.range->end};
-      return XXH3_64bits(a, sizeof(float64_t[2]));
-    }
   case V_string:
     return XXH3_64bits(val.as.string->s, val.as.string->len);
   default:
@@ -441,7 +413,6 @@ bool value_is_hashable(Typetag t)
   case V_boolean:
   case V_native:
   case V_maybe:
-  case V_range:
   case V_string:
     return true;
   default:

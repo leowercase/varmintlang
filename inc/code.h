@@ -32,8 +32,6 @@ typedef enum {
   OP_GT,
   OP_LEQ,
   OP_GEQ,
-  OP_RANGE,
-  OP_RANGE_IN,
   OP_CONCAT,
 
   OP_CONST,
