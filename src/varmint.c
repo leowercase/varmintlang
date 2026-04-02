@@ -69,7 +69,7 @@ Value varmint_run(Varmint *vm, char *source)
       tok = lex_token(&l);
 
       if (tok.line > line) {
-        line++;
+        line = tok.line;
         printf("\n");
       }
 

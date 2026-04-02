@@ -1,5 +1,5 @@
-#ifndef VARMINT_PARSING_H
-#define VARMINT_PARSING_H
+#ifndef VARMINT_COMPILE_H
+#define VARMINT_COMPILE_H
 
 #include "generic/dyn_array.h"
 #include "lex.h"
@@ -78,18 +78,14 @@ typedef struct SemanticDatum {
   union {
     Local *local;
     size_t upval_idx;
+    bool is_valid_elem;
   } assignable;
   // Assignment function for left hand side operand
   void (*assign_fn)(Parse *p);
+  void (*compound_assign_fn)(Parse *p);
 
-  // Left-denoted parsing can be ambiguous.
-  struct {
-    Token token;
-    bool deferred;
-  } led_op;
-
-  // Indentation affects whether or not the next line is considered
-  // a continuation of an expression.
+  // Indentation affects whether or not stuff is considered to be
+  // a continuation of the previous line.
   struct {
     size_t initial; // First indentation level of an expression chain
     size_t continued; // Indentation level of the continuation
@@ -98,6 +94,9 @@ typedef struct SemanticDatum {
   size_t if_jmp_op_idx;
   // if..else..elif chains are optimized a bit to avoid useless shuffling
   bool if_else_chained;
+
+  // @(x, y, z) := ...
+  bool in_unpack;
 
   // Whether the latest left-denoted parse failed.
   bool led_fail;
@@ -150,13 +149,12 @@ typedef enum {
   PREC_I9N,       // ->
   PREC_CMP,       // = != < > <= >=
   PREC_NOT,       // not
-  PREC_IS_IN,     // is in  is not in
   PREC_RANGE,     // .. ..=
   PREC_TERM,      // + -
   PREC_FACTOR,    // * / %
   PREC_CONCAT,    // ||
   PREC_POWER,     // ^
-  PREC_SIGN,      // -
+  PREC_SIGN,      // + -
   PREC_FACTORIAL, // !
   PREC_PERCENT,   // %
   PREC_CALL,      // () []

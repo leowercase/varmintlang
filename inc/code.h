@@ -65,6 +65,7 @@ typedef enum {
   OP_SET_UPVALUE16,
   OP_GET_ELEM,
   OP_SET_ELEM,
+  OP_UNPACK,
   OP_POP,
   OP_RESERVE_SLOT,
   OP_END_BLOCK,
@@ -187,5 +188,11 @@ typedef struct Upval {
     Value hoisted; // `loc` points to `hoisted` after the value exits the stack.
   };
 } Upval;
+
+typedef enum {
+  ASSIGN_LOCAL,
+  ASSIGN_UPVAL,
+  ASSIGN_COLLECTION,
+} AssignableType;
 
 #endif

@@ -13,11 +13,11 @@ void emit_byte(Parse *p, Token tok, uint8_t byte);
 // For brevity.
 #define emit_bytes(p, tok, n, ...) do { \
   uint8_t b[] = {__VA_ARGS__}; \
-  for (int i = 0; i < (n); i++) emit_byte(p, tok, b[i]); \
+  for (size_t i = 0; i < (n); i++) emit_byte(p, tok, b[i]); \
 } while (false)
 
 // Returns the index of the (16-bit) operand in the code chunk.
-size_t defer_op(Parse *p, Token tok, Opcode op);
+size_t defer_op(Parse *p, Token tok, Opcode opcode);
 // Inserts operand of defer_op into code
 void patch_op(Parse *p, size_t operand_idx, uint16_t operand);
 
@@ -40,7 +40,7 @@ size_t code_top(Parse *p);
 // Emit a looping instruction.
 void emit_loop(Parse *p, Token loop_tok, Opcode loopcode, size_t loop_start);
 
-// Change the opcode of the preceding 16-bit operand.
+// Change the preceding 16-bit opcode.
 void change_opcode(Parse *p, size_t operand_idx, Opcode new_opcode);
 
 #endif

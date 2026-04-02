@@ -68,6 +68,12 @@ bool is_cmp_op(TokenType t)
 }
 
 static inline
+bool is_accessor(TokenType t)
+{
+  return t == TK_LBRACK || t == TK_DOT;
+}
+
+static inline
 bool is_loop_token(TokenType t)
 {
   return TK_LOOP <= t && t <= TK_WHILE;

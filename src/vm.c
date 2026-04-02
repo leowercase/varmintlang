@@ -27,6 +27,22 @@ static inline Value peek(Varmint *vm, size_t idx)
   return *(OpStack_top(&vm->op_stack) - idx);
 }
 
+static inline Value *top(Varmint *vm)
+{
+  return OpStack_top(&vm->op_stack);
+}
+
+static inline uint8_t read8(Varmint *vm)
+{
+  return *(vm->frame->ip++);
+}
+
+static inline uint16_t read16(Varmint *vm)
+{
+  vm->frame->ip += 2;
+  return uint8_to_16(vm->frame->ip - 2);
+}
+
 // Call a procedure.
 static void call(Varmint *vm,
     Procedure *procedure,
@@ -335,28 +351,27 @@ static inline bool execute_instruction(Varmint *restrict vm)
     // Swap stack slots.
   case OP_SWAP:
     {
-      Value top = peek(vm, 0), bot = peek(vm, 1);
-      OpStack_top(&vm->op_stack)[0] = bot;
-      OpStack_top(&vm->op_stack)[-1] = top;
+      Value a = peek(vm, 0), b = peek(vm, 1);
+      top(vm)[0] = b;
+      top(vm)[-1] = a;
       break;
     }
     // ( a b c -- b a c )
   case OP_SWAP_NEATH:
     {
-      Value below_top = peek(vm, 1), below_bot = peek(vm, 2);
-      OpStack_top(&vm->op_stack)[-1] = below_bot;
-      OpStack_top(&vm->op_stack)[-2] = below_top;
+      Value a = peek(vm, 1), b = peek(vm, 2);
+      top(vm)[-1] = b;
+      top(vm)[-2] = a;
       break;
     }
     // ( a b -- b a b )
   case OP_SWAP_MOVE_OVER:
     {
-      Value top = peek(vm, 0),
-            bot = peek(vm, 1);
-      OpStack_top(&vm->op_stack)[-1] = top;
-
-      OpStack_top(&vm->op_stack)[0] = bot;
-      push(vm, top);
+      Value a = peek(vm, 0),
+            b = peek(vm, 1);
+      top(vm)[-1] = a;
+      top(vm)[0] = b;
+      push(vm, a);
       break;
     }
     // Duplicate two stack slots.
@@ -485,6 +500,48 @@ static inline bool execute_instruction(Varmint *restrict vm)
       push(vm, _vm_set_elem(vm, collection, idx, val));
       break;
     }
+
+  case_16_op(OP_UNPACK, assignables,
+    {
+      Value *collections = &top(vm)[-1];
+      size_t collection_count = 0;
+
+      for (size_t i = 0; i < assignables; i++) {
+        Value val = top(vm)[i];
+        validate_assign(vm, val.type);
+
+        switch ((AssignableType)read8(vm)) {
+        case ASSIGN_LOCAL:
+          {
+            uint16_t stack_slot = read16(vm);
+            *get_stack_slot(vm, stack_slot) = val;
+            break;
+          }
+
+        case ASSIGN_UPVAL:
+          {
+            uint16_t upval_idx = read16(vm);
+            *get_upvalue(vm, upval_idx) = val;
+            break;
+          }
+
+        case ASSIGN_COLLECTION:
+          {
+            Value *slot = collections - collection_count * 2;
+            Value idx = slot[0];
+            _vm_set_elem(vm, slot[-1], idx, val);
+
+            collection_count++;
+            break;
+          }
+        }
+      }
+
+      Value top_val = pop(vm);
+      popn(vm, collection_count * 2);
+      push(vm, top_val);
+      break;
+   })
 
     // Discard a value.
   case OP_POP:

@@ -300,15 +300,33 @@ static Token new_line(Lex *lex)
       break;
   }
 
+  Token line_tok = token(lex, TK_LINE);
+
   lex->on_new_line = false;
+  skip_redundant_space(lex);
 
   if (lex->indent.use_spaces && lex->indent.use_tabs) {
+    // Tab and space indents are considered to have the same size, so mixing
+    // them can give the wrong impression of how an program really parses
     lex->indent.use_spaces = lex->indent.use_tabs = false;
     return error_token(lex,
         "misleading use of both spaces and tabs as indentation");
   }
-  else
-    return token(lex, TK_LINE);
+
+  if (*lex->current == '\0') {
+    end_lex(lex);
+
+    lex->start = lex->current;
+    return token(lex, TK_EOF);
+  }
+
+  else if (lex->on_new_line) {
+    lex->start = lex->current;
+    return new_line(lex);
+  }
+
+  // TK_NEWLINE only occurs when there is more to parse.
+  else return line_tok;
 }
 
 Token lex_token(Lex *lex)
