@@ -11,7 +11,7 @@ void *allocate(void *ptr, size_t size);
 // Grow capacity; guaranteed to be base of 2
 size_t grow_cap(size_t cap);
 
-// Compute cap that is at least required_cap
+// Compute a cap that is at least required_cap
 size_t cap_to(size_t required_cap);
 
 #endif

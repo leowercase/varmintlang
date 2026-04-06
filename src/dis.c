@@ -22,8 +22,7 @@ static void jump(FILE *restrict stream, Procedure *p, size_t offset,
 {
   size(stream, p, offset, (size_t)jumpable_code);
   fprintf(stream, " -> ");
-  // +3 accounts for the instruction and its operands
-  size_t dest = (size_t)((long)offset + 3 + sign * (long)jumpable_code);
+  size_t dest = (size_t)((long)offset + sign * (long)jumpable_code);
   dis_instruction(stream, p, dest);
 }
 
@@ -55,6 +54,7 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
 {
   Opcode instruction = p->code.instructions.data[offset];
 
+  // Print out the name of an instruction.
 #define case_(name, stmt) \
   case OP_##name: { \
       fprintf(stream, "%.2i " #name, (int)get_line(&p->code.lines, offset)); \
@@ -62,48 +62,51 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   }
 
   // Instructions with 16-bit operands
-#define case_16_op(name, fn) \
+#define case_op(name, fn) \
   case_(name, \
     { \
-        uint8_t *ip = p->code.instructions.data + offset + 1; \
+        uint8_t *ip = &p->code.instructions.data[offset + 1]; \
+        offset += 3; \
         fn(stream, p, offset, uint8_to_16(ip)); \
-        return offset + 3; \
+        return offset; \
     })
 
   // Instructions with 8/16-bit operands
 #define case_var_op(name, fn) \
   case_(name, \
     { \
-        fn(stream, p, offset, p->code.instructions.data[offset + 1]); \
-        return offset + 2; \
+        uint8_t operand = p->code.instructions.data[offset + 1]; \
+        offset += 2; \
+        fn(stream, p, offset, operand); \
+        return offset; \
     }) \
-  case_16_op(name##16, fn)
+  case_op(name##_16, fn)
 
-#define case_op(name) case_(name, return offset + 1)
+  // Simple instructions with no operands.
+#define case_i(name) case_(name, return offset + 1)
 
   switch ((Opcode)instruction) {
-  case_op(NOT)
-  case_op(NEGATE)
-  case_op(FACTORIAL)
-  case_op(PERCENTAGE)
-  case_op(UNWRAPPED)
+  case_i(NOT)
+  case_i(NEGATE)
+  case_i(FACTORIAL)
+  case_i(PERCENTAGE)
 
-  case_op(ADD)
-  case_op(SUB)
-  case_op(MUL)
-  case_op(DIV)
-  case_op(POW)
-  case_op(MODULO)
-  case_op(AND)
-  case_op(OR)
-  case_op(I9N)
-  case_op(EQ)
-  case_op(NEQ)
-  case_op(LT)
-  case_op(GT)
-  case_op(LEQ)
-  case_op(GEQ)
-  case_op(CONCAT)
+  case_i(ADD)
+  case_i(SUB)
+  case_i(MUL)
+  case_i(DIV)
+  case_i(POW)
+  case_i(MODULO)
+  case_i(AND)
+  case_i(OR)
+  case_i(I9N)
+  case_i(EQ)
+  case_i(NEQ)
+  case_i(LT)
+  case_i(GT)
+  case_i(LEQ)
+  case_i(GEQ)
+  case_i(CONCAT)
 
   case_var_op(CONST, constant)
   case_(ZERO,
@@ -122,49 +125,55 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
       fprintf(stream, ANSI_CYAN);
       return offset + 1;
     })
+
   case_var_op(BUILD_LIST, size)
   case_var_op(BUILD_STR, size)
   case_var_op(BUILD_TABLE, size)
-  case_op(EMPTY_TABLE)
   case_var_op(NESTED_TABLE_ENTRIES, size)
-  case_op(SWAP)
-  case_op(SWAP_NEATH)
-  case_op(SWAP_MOVE_OVER)
-  case_op(DUP_2)
+  case_i(MAKE_SOME)
+  case_i(MAKE_NONE)
+
   case_var_op(GET, size)
   case_var_op(SET, size)
   case_var_op(GET_UPVALUE, upval)
   case_var_op(SET_UPVALUE, upval)
-  case_op(GET_ELEM)
-  case_op(SET_ELEM)
-  case_16_op(UNPACK, size)
-  case_op(POP)
-  case_op(RESERVE_SLOT)
+  case_i(GET_ELEM)
+  case_i(SET_ELEM)
+
+  case_i(SWAP)
+  case_i(SWAP_NEATH)
+  case_i(SWAP_MOVE_OVER)
+  case_i(DUP_2)
+  case_i(POP)
+
+  case_i(RESERVE_SLOT)
   case_var_op(END_BLOCK, size)
-  case_var_op(END_EMPTY_BLOCK, size)
-  case_op(MAKE_SOME)
-  case_op(MAKE_NONE)
-  case_16_op(JMP, jump_fwd)
-  case_16_op(JMP_WHEN_FALSE, jump_fwd)
-  case_16_op(IF, jump_fwd)
-  case_16_op(ELSE, jump_fwd)
-  case_16_op(ELIF, jump_fwd)
-  case_op(LIST_COMPREHEND)
-  case_16_op(LOOP, jump_bkwd)
-  case_16_op(LOOP_LIST, jump_bkwd)
-  case_16_op(WHILE, jump_fwd)
-  case_16_op(WHILE_LIST, jump_fwd)
-  case_16_op(FOR, jump_fwd)
-  case_16_op(FOR_LIST, jump_fwd)
+
+  case_op(JMP, jump_fwd)
+  case_op(JMP_WHEN_FALSE, jump_fwd)
+
+  case_op(IF, jump_fwd)
+  case_op(ELSE, jump_fwd)
+  case_op(ELIF, jump_fwd)
+
+  case_i(LIST_COMPREHEND)
+  case_op(LOOP, jump_bkwd)
+  case_op(LOOP_LIST, jump_bkwd)
+  case_op(WHILE, jump_fwd)
+  case_op(WHILE_LIST, jump_fwd)
+  case_op(FOR, jump_fwd)
+  case_op(FOR_LIST, jump_fwd)
   case_var_op(FOR_INCREMENT, size)
-  case_16_op(BREAK, jump_fwd)
-  case_16_op(BREAK_LIST, jump_fwd)
-  case_op(DISCARD_FOR)
-  case_op(DISCARD_FOR_LIST)
-  case_op(CLOSURE)
-  case_op(HOIST_UPVALUE)
+  case_op(BREAK, jump_fwd)
+  case_op(BREAK_LIST, jump_fwd)
+  case_i(DISCARD_FOR)
+  case_i(DISCARD_FOR_LIST)
+
+  case_i(CLOSURE)
+  case_i(HOIST_UPVALUE)
   case_var_op(CALL, size)
-  case_op(RETURN)
+  case_i(RETURN)
+
   case OP_GC:
     break; // Special instruction, shouldn't appear in code
   }
@@ -172,9 +181,9 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   unreachable();
 
 #undef case_
-#undef case_8
-#undef case_16
 #undef case_op
+#undef case_var_op
+#undef case_i
 }
 
 void dis(FILE *restrict stream, Procedure *procedure, const char *name)

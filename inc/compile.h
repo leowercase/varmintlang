@@ -78,7 +78,6 @@ typedef struct SemanticDatum {
   union {
     Local *local;
     size_t upval_idx;
-    bool is_valid_elem;
   } assignable;
   // Assignment function for left hand side operand
   void (*assign_fn)(Parse *p);
@@ -94,9 +93,6 @@ typedef struct SemanticDatum {
   size_t if_jmp_op_idx;
   // if..else..elif chains are optimized a bit to avoid useless shuffling
   bool if_else_chained;
-
-  // @(x, y, z) := ...
-  bool in_unpack;
 
   // Whether the latest left-denoted parse failed.
   bool led_fail;
@@ -132,6 +128,11 @@ typedef struct Compiler {
   DeferredLet deferred_let;
   Procedure *procedure;
 } Compiler;
+
+static inline PCode *code(Parse *p)
+{
+  return &p->c->procedure->code;
+}
 
 void parse_error(Parse *p, Token offending_tok, bool pointer,
     char *const msg, ...);

@@ -6,16 +6,20 @@
 #include "val.h"
 
 /*
- * Intermediate representation.
+ * Bytecode.
  * https://en.wikipedia.org/wiki/Bytecode
  */
+
+// Some operations have a variably sized operand that gets more space only
+// when required.
+// This makes more common smaller-operand instructions slightly faster overall.
+#define var(op) op, op##_16
 
 typedef enum {
   OP_NOT = 0,
   OP_NEGATE,
   OP_FACTORIAL,
   OP_PERCENTAGE, // 100% a useful op
-  OP_UNWRAPPED,
 
   OP_ADD,
   OP_SUB,
@@ -34,47 +38,40 @@ typedef enum {
   OP_GEQ,
   OP_CONCAT,
 
-  OP_CONST,
-  OP_CONST16,
+  var(OP_CONST),
   OP_ZERO,
   OP_ONE,
+
+  var(OP_BUILD_LIST),
+  var(OP_BUILD_STR),
+  var(OP_BUILD_TABLE),
+  var(OP_NESTED_TABLE_ENTRIES),
+  OP_MAKE_SOME,
+  OP_MAKE_NONE,
+
+  var(OP_GET),
+  var(OP_SET),
+  var(OP_GET_UPVALUE),
+  var(OP_SET_UPVALUE),
+  OP_GET_ELEM,
+  OP_SET_ELEM,
+
+  OP_POP,
   OP_SWAP,
   OP_SWAP_NEATH,
   OP_SWAP_MOVE_OVER,
   OP_DUP_2,
-  OP_BUILD_LIST,
-  OP_BUILD_LIST16,
-  OP_BUILD_STR,
-  OP_BUILD_STR16,
-  OP_BUILD_TABLE,
-  OP_BUILD_TABLE16,
-  OP_EMPTY_TABLE,
-  OP_NESTED_TABLE_ENTRIES,
-  OP_NESTED_TABLE_ENTRIES16,
-  OP_MAKE_SOME,
-  OP_MAKE_NONE,
-  OP_GET,
-  OP_GET16,
-  OP_SET,
-  OP_SET16,
-  OP_GET_UPVALUE,
-  OP_GET_UPVALUE16,
-  OP_SET_UPVALUE,
-  OP_SET_UPVALUE16,
-  OP_GET_ELEM,
-  OP_SET_ELEM,
-  OP_UNPACK,
-  OP_POP,
+
   OP_RESERVE_SLOT,
-  OP_END_BLOCK,
-  OP_END_BLOCK16,
-  OP_END_EMPTY_BLOCK,
-  OP_END_EMPTY_BLOCK16,
+  var(OP_END_BLOCK),
+
   OP_JMP,
   OP_JMP_WHEN_FALSE,
+
   OP_IF,
   OP_ELSE,
   OP_ELIF,
+
   OP_LIST_COMPREHEND,
   OP_LOOP,
   OP_LOOP_LIST,
@@ -82,26 +79,28 @@ typedef enum {
   OP_WHILE_LIST,
   OP_FOR,
   OP_FOR_LIST,
-  OP_FOR_INCREMENT,
-  OP_FOR_INCREMENT16,
+  var(OP_FOR_INCREMENT),
   OP_BREAK,
   OP_BREAK_LIST,
   OP_DISCARD_FOR,
   OP_DISCARD_FOR_LIST,
+
   OP_CLOSURE,
   OP_HOIST_UPVALUE,
-  OP_CALL,
-  OP_CALL16,
+  var(OP_CALL),
   OP_RETURN,
+
   // Special instruction for GC
   OP_GC,
 } Opcode;
+
+#undef var
 
 // Ensure that all opcodes fit into 8 bits.
 static_assert(OP_GC <= UINT8_MAX, "Oops! Too many opcodes.");
 
 static
-const Opcode OP_NONE = (Opcode)UINT8_MAX;
+const Opcode OP_NONE = (Opcode)(UINT8_MAX + 1);
 
 typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
 #define T uint8_t
@@ -160,10 +159,9 @@ typedef struct Procedure {
  * the parameters they're given. This fits mathematical notions.
  *
  * Sometimes though, there are variables in the function body that aren't
- * arguments or any bindings apparent in the function. These are called
- * "free variables".
- * We need to close any free variables in order to make sense of a computation,
- * so we refer to the function scope above for these "upvalues".
+ * arguments or any bindings apparent in the function.
+ * Any free variables need to be closed in order to make sense of a computation
+ * and we refer to the enclosing function for these "upvalues".
  *
  * https://en.wikipedia.org/wiki/Closure_(computer_programming)
  * https://stackoverflow.com/a/36878651
@@ -186,11 +184,5 @@ typedef struct Upval {
     Value hoisted; // `loc` points to `hoisted` after the value exits the stack.
   };
 } Upval;
-
-typedef enum {
-  ASSIGN_LOCAL,
-  ASSIGN_UPVAL,
-  ASSIGN_COLLECTION,
-} AssignableType;
 
 #endif

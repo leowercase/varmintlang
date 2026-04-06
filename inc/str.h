@@ -8,7 +8,7 @@
 #include <xxhash.h>
 
 // Lightweight length-prefixed string.
-// Not garbage collected.
+// Not garbage collected and does not own the data it points to.
 typedef struct {
   const char *s;
   size_t len;
