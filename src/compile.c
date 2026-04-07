@@ -1271,7 +1271,7 @@ static size_t consume_let_clauses(Parse *p, bool let_stmt)
     Token ident_tok = peek_linewise(p);
 
     if (ident_tok.type != TK_WORD) {
-      if (ndecls > 0 && !let_stmt)
+      if (ndecls > 0 && (!let_stmt || peek_linewise(p).type == TK_IN))
         // Trailing comma is allowed in a `let` expression
         break;
       else
