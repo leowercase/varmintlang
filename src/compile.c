@@ -311,10 +311,8 @@ static void collapse_continued_line(Parse *p)
   if (tok.type == TK_LINE) {
     size_t indent = tok.slice.len;
 
-    if (is_continued_line(p, indent)) {
-      set_continued_line_indent(p, indent);
+    if (set_continued_line_indent(p, indent))
       next(p);
-    }
   }
 }
 
@@ -367,6 +365,31 @@ static bool match_op(Parse *p, TokenType expected)
 
 static const ParseRule *parse_rule(TokenType t);
 
+static inline bool is_nud(TokenType type) // Null denotation
+{
+  return parse_rule(type)->nud != NULL || type == TK_LINE;
+}
+
+static inline bool is_led(TokenType type) // Left denotation
+{
+  return parse_rule(type)->led != NULL;
+}
+
+// Consume a null-denoted parse.
+static inline void nud(Parse *p)
+{
+  Token lhs_token = p->current;
+  NudRule lhs_rule = parse_rule(lhs_token.type)->nud;
+
+  if (lhs_rule == NULL)
+    parse_error(p, lhs_token, true, "expect expression, got `%.*s`",
+        (int)lhs_token.slice.len, lhs_token.slice.s);
+  else
+    lhs_rule(p);
+}
+
+static void juxtaposed(Parse *p, int min_bp);
+
 // Consume left-denoted parses.
 static void leds(Parse *p, int min_bp)
 {
@@ -375,13 +398,16 @@ static void leds(Parse *p, int min_bp)
     LedRule op_rule = parse_rule(op_token.type)->led;
 
     if (op_rule == NULL) {
-      parse_error(p, op_token, true, "expect operator, got `%.*s`",
-          (int)op_token.slice.len, op_token.slice.s);
+      if (is_nud(op_token.type)) op_rule = juxtaposed;
+      else {
+        parse_error(p, op_token, true, "expect operator, got `%.*s`",
+            (int)op_token.slice.len, op_token.slice.s);
 
-      next(p); continue; // Consume tokens until a valid operator is found.
+        next(p); continue; // Consume tokens until a valid operator is found.
+      }
     }
 
-    semantic(p)->panic = false; // Synchronize error state after lhs
+    semantic(p)->panic = false; // Synchronize error state
     op_rule(p, min_bp);
 
     if (semantic(p)->led_fail)
@@ -395,15 +421,11 @@ static void expr(Parse *p, int min_bp)
 {
   new_semantic_scope(p);
 
-  Token lhs_token = p->current;
-  NudRule lhs_rule = parse_rule(lhs_token.type)->nud;
-
-  if (lhs_rule == NULL)
-    parse_error(p, lhs_token, true, "expect expression, got `%.*s`",
-        (int)lhs_token.slice.len, lhs_token.slice.s);
-  else
-    lhs_rule(p);
-
+  if (p->current.type == TK_LINE) {
+    size_t indent = eat(p).slice.len;
+    set_initial_line_indent(p, indent);
+  }
+  nud(p);
   leds(p, min_bp);
 
   end_semantic_scope(p);
@@ -415,46 +437,17 @@ static inline void expr_rhs(Parse *p, Precedence prec, Associativity assoc)
   expr(p, (int)prec + (int)assoc);
 }
 
-static inline bool is_nud(TokenType type) // Null denotation
-{
-  return parse_rule(type)->nud != NULL;
-}
-
-static inline bool is_led(TokenType type) // Left denotation
-{
-  return parse_rule(type)->led != NULL;
-}
-
-// Parse an indented operand.
-static void indent_nud(Parse *p)
-{
-  size_t indent = p->current.slice.len;
-  next(p); // Line token
-  set_initial_line_indent(p, indent);
-
-  Token lhs_token = p->current;
-  NudRule lhs_rule = parse_rule(lhs_token.type)->nud;
-
-  if (lhs_rule == NULL)
-    parse_error(p, lhs_token, true, "expect expression, got `%.*s`",
-        (int)lhs_token.slice.len, lhs_token.slice.s);
-  else
-    lhs_rule(p);
-}
-
 // Parse an indented operator if one is found.
 static void indent_led(Parse *p, int min_bp)
 {
   size_t indent = p->current.slice.len;
-  LedRule op_rule = parse_rule(peek(p).type)->led;
 
-  if (op_rule == NULL || !set_continued_line_indent(p, indent)) {
+  if (!set_continued_line_indent(p, indent)) {
     semantic(p)->led_fail = true;
     return;
   }
-
   next(p); // Line token
-  op_rule(p, min_bp);
+  leds(p, min_bp);
 }
 
 static size_t consume_let_clauses(Parse *p, bool let_stmt);
@@ -888,7 +881,6 @@ static void code_block(Parse *p)
 {
   next(p); // {
   stmts(p, TK_RCURLY);
-  consume(p, TK_RCURLY, "expect `}`");
 }
 
 static void boolean(Parse *p)
@@ -1112,6 +1104,20 @@ static void invocation(Parse *p, int min_bp)
   emit_var_op(p, paren, OP_CALL, arity);
 }
 
+// Two exprs placed next to each other marks a call with a single parameter.
+// f x
+static void juxtaposed(Parse *p, int min_bp)
+{
+  if (PREC_CALL < min_bp) {
+    semantic(p)->led_fail = true;
+    return;
+  }
+  Token tok = p->current;
+
+  expr_rhs(p, PREC_CALL, ASSOC_LEFT);
+  emit_byte(p, tok, OP_CALL_UNARY);
+}
+
 // a:b:f(...)
 // https://en.wikipedia.org/wiki/Uniform_function_call_syntax
 static void ufcs(Parse *p, int min_bp)
@@ -1132,29 +1138,39 @@ static void ufcs(Parse *p, int min_bp)
     collapse_continued_line(p);
     Token tok = p->current;
 
-    if (tok.type == TK_LPAREN) {
-      // Direct function call.
-      // Mirror the parameter list symmetrically before calling.
-      emit_var_op(p, tok, OP_MIRROR, colon_count + 1);
-
-      size_t params = delim_listing(p,
-          TK_LPAREN, TK_COMMA, TK_RPAREN, false);
-      emit_var_op(p, tok, OP_CALL, colon_count + params);
-      break;
-    }
-
-    else if (tok.type == TK_COLON) {
+    if (tok.type == TK_COLON) {
       // Continued UFCS
       next(p);
       colon_count++;
     }
 
     else {
-      // Partial application with UFCS.
+      // Mirror the parameter list symmetrically before calling.
       emit_var_op(p, tok, OP_MIRROR, colon_count + 1);
-      emit_var_op(p, tok, OP_PARTIAL, colon_count);
+
+      if (tok.type == TK_LPAREN) {
+        // Direct function call.
+        size_t params = delim_listing(p,
+            TK_LPAREN, TK_COMMA, TK_RPAREN, false);
+        emit_var_op(p, tok, OP_CALL, colon_count + params);
+        break;
+      }
+
+      else if (is_nud(tok.type)) {
+        // Single juxtaposed operand.
+        expr_rhs(p, PREC_CALL, ASSOC_LEFT);
+        emit_var_op(p, tok, OP_CALL, colon_count + 1);
+        break;
+      }
+
+      else {
+        // Partial application with UFCS.
+        emit_var_op(p, tok, OP_PARTIAL, colon_count);
+      }
+
       break;
     }
+
   }
 }
 
@@ -1646,7 +1662,7 @@ static void using(Parse *p)
     p->c->stack_slot_count++;
   } while (match(p, TK_COMMA));
 
-  consume(p, TK_COLON, "expect `:`");
+  consume(p, TK_IN, "expect `in`");
   expr(p, (int)PREC_TOP);
 
   clear_local_scope(p);
@@ -1721,7 +1737,7 @@ static const ParseRule parse_rules[] =
     [TK_EOF]       = { NULL,       led_end    },
     [TK_ERR]       = { NULL,       NULL       },
 
-    [TK_LINE]      = { indent_nud, indent_led },
+    [TK_LINE]      = { NULL,       indent_led },
 
     [TK_PLUS]      = { unary_plus, infix_op   },
     [TK_MINUS]     = { prefix_op,  infix_op   },
@@ -1792,8 +1808,8 @@ static const ParseRule parse_rules[] =
 
     [TK_NUMERAL]   = { number,     NULL       },
 
-    [TK_STRCONT]   = { metastring, led_end    },
-    [TK_STREND]    = { string,     led_end    },
+    [TK_STRCONT]   = { metastring, NULL       },
+    [TK_STREND]    = { string,     NULL       },
 
     [TK_WORD]      = { identifier, NULL       },
     [TK_LABEL]     = { NULL,       led_end    },

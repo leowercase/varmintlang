@@ -174,6 +174,7 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_i(HOIST_UPVALUE)
   case_var_op(PARTIAL, size)
   case_var_op(CALL, size)
+  case_i(CALL_UNARY)
   case_i(RETURN)
 
   case OP_GC:

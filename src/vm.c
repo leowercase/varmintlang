@@ -784,6 +784,11 @@ void execute(Varmint *vm, Procedure *program)
         call_val(vm, peek(vm, argc), argc);
         break;
       })
+      // Call a value with a single parameter.
+    case OP_CALL_UNARY:
+      call_val(vm, peek(vm, 1), 1);
+      break;
+
       // Return from a function.
     case OP_RETURN:
       {

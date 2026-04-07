@@ -90,6 +90,7 @@ typedef enum {
   OP_HOIST_UPVALUE,
   var(OP_PARTIAL),
   var(OP_CALL),
+  OP_CALL_UNARY,
   OP_RETURN,
 
   // Special instruction for GC
