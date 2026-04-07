@@ -191,6 +191,17 @@ Value Closure_create(Varmint *vm, Procedure *procedure)
   return val;
 }
 
+// Allocate a partial application.
+Value Partial_create(Varmint *vm, Value callee, size_t count)
+{
+  size_t size = sizeof(Partial) + count * sizeof(Value);
+  Value val = *create_gc_obj(vm, V_partial, size);
+
+  val.as.partial->callee = callee;
+  val.as.partial->application_count = count;
+  return val;
+}
+
 bool values_eq(Value a, Value b)
 {
   if (a.type != b.type) return false;
@@ -218,6 +229,7 @@ bool values_eq(Value a, Value b)
     case V_table:
     case V_procedure:
     case V_closure:
+    case V_partial:
       // "Shallow" equivalence
       return a.as.gc_data == b.as.gc_data;
     }
@@ -250,6 +262,7 @@ const char *value_type_cstring(Typetag type)
   case_(procedure)
   case_(upval)
   case_(closure)
+  case_(partial)
   }
 
 #undef case_
@@ -289,6 +302,8 @@ Value value_to_string(Varmint *vm, Value val)
     return fn_to_string(vm, "fn", val.as.procedure->name);
   case V_closure:
     return fn_to_string(vm, "closure", val.as.closure->procedure->name);
+  case V_partial:
+    return String_from(vm, "<partial>");
   }
 }
 
@@ -381,6 +396,10 @@ void print_value(FILE *restrict stream, Value val)
     unreachable();
   case V_closure:
     print_fn(stream, "closure", val.as.closure->procedure->name);
+    break;
+  case V_partial:
+    fprintf(stream, "partial [%li] ", val.as.partial->application_count);
+    print_value(stream, val.as.partial->callee);
     break;
   }
 }

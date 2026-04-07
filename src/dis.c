@@ -140,11 +140,12 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_i(GET_ELEM)
   case_i(SET_ELEM)
 
+  case_i(POP)
   case_i(SWAP)
   case_i(SWAP_NEATH)
   case_i(SWAP_MOVE_OVER)
   case_i(DUP_2)
-  case_i(POP)
+  case_var_op(MIRROR, size)
 
   case_i(RESERVE_SLOT)
   case_var_op(END_BLOCK, size)
@@ -171,6 +172,7 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
 
   case_i(CLOSURE)
   case_i(HOIST_UPVALUE)
+  case_var_op(PARTIAL, size)
   case_var_op(CALL, size)
   case_i(RETURN)
 

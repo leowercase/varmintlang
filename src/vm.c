@@ -4,11 +4,15 @@
 #include "../inc/val.h"
 #include "../inc/vm.h"
 
+static inline void ensure_stack_len(Varmint *vm, size_t len)
+{
+  if (len >= OP_STACK_MAX)
+    runtime_error(vm, "stack overflow");
+}
+
 static inline void push(Varmint *vm, Value value)
 {
-  if (vm->op_stack.len >= OP_STACK_MAX)
-    runtime_error(vm, "stack overflow");
-
+  ensure_stack_len(vm, vm->op_stack.len);
   OpStack_push(&vm->op_stack, value);
 }
 
@@ -131,6 +135,28 @@ static void call_val(Varmint *vm, Value callee, size_t argc)
       check_fn_argc(vm, fn->arity, fn->name, argc);
 
       call(vm, fn, c->upvalues, c->upvalue_count);
+      break;
+    }
+  case V_partial:
+    {
+      Partial *p = callee.as.partial;
+      ensure_stack_len(vm, vm->op_stack.len + p->application_count);
+
+      Value *callee_slot = top(vm) - argc;
+      Value *params = callee_slot + 1;
+
+      // Adjust parameter positions.
+      for (size_t i = 0; i < argc; i++)
+        params[p->application_count + i] = params[i];
+
+      // Place the partially applied parameters
+      for (size_t i = 0; i < p->application_count; i++)
+        params[i] = p->applied[i];
+
+      vm->op_stack.len += p->application_count;
+      *callee_slot = p->callee;
+
+      call_val(vm, p->callee, argc + p->application_count);
       break;
     }
   default:
@@ -357,6 +383,20 @@ void execute(Varmint *vm, Procedure *program)
         push(vm, two);
         break;
       }
+      // (a b c d -- d c b a)
+    case_var_op(OP_MIRROR, n,
+      {
+        Value *bottom_slot = top(vm) - (n - 1);
+
+        for (size_t i = 0, middle = n / 2; i < middle; i++) {
+          Value left = bottom_slot[i];
+          Value *right = top(vm) - i;
+
+          bottom_slot[i] = *right;
+          *right = left;
+        }
+        break;
+      })
 
       // Weaves a list.
     case_var_op(OP_BUILD_LIST, len,
@@ -702,6 +742,41 @@ void execute(Varmint *vm, Procedure *program)
         upval->loc = &upval->hoisted;
         break;
       }
+
+      // Partially apply values to a callable
+    case_var_op(OP_PARTIAL, count,
+      {
+        Value *callee = top(vm) - count;
+        Value partial;
+        Value *applied;
+
+        if (callee->type == V_partial) {
+          // Flatten partial application.
+          size_t old_count = callee->as.partial->application_count;
+          partial = Partial_create(vm,
+              callee->as.partial->callee, old_count + count);
+
+          // Migrate old applied values.
+          for (size_t i = 0; i < old_count; i++)
+            partial.as.partial->applied[i] = callee->as.partial->applied[i];
+
+          applied = &partial.as.partial->applied[old_count];
+        }
+
+        else {
+          partial = Partial_create(vm, *callee, count);
+          applied = partial.as.partial->applied;
+        }
+
+        Value *vals = callee + 1;
+        // Move applied values over.
+        for (size_t i = 0; i < count; i++)
+          applied[i] = vals[i];
+
+        popn(vm, count); // Pop applied parameters
+        *top(vm) = partial; // Push partial application.
+        break;
+      })
 
       // Call a value
     case_var_op(OP_CALL, argc,

@@ -307,8 +307,15 @@ static bool set_continued_line_indent(Parse *p, size_t indent)
 static void collapse_continued_line(Parse *p)
 {
   Token tok = p->current;
-  if (tok.type == TK_LINE && is_continued_line(p, tok.slice.len))
-    next(p);
+
+  if (tok.type == TK_LINE) {
+    size_t indent = tok.slice.len;
+
+    if (is_continued_line(p, indent)) {
+      set_continued_line_indent(p, indent);
+      next(p);
+    }
+  }
 }
 
 static bool match(Parse *p, TokenType expected)
@@ -1105,6 +1112,52 @@ static void invocation(Parse *p, int min_bp)
   emit_var_op(p, paren, OP_CALL, arity);
 }
 
+// a:b:f(...)
+// https://en.wikipedia.org/wiki/Uniform_function_call_syntax
+static void ufcs(Parse *p, int min_bp)
+{
+  if (PREC_UFCS < min_bp) {
+    semantic(p)->led_fail = true;
+    return;
+  }
+
+  next(p); // ,
+  size_t colon_count = 1;
+
+  for (;;) {
+    // The colon operator is right associative.
+    // We parse with left though, to be able to grab the ensuing operator.
+    expr_rhs(p, PREC_UFCS, ASSOC_LEFT);
+
+    collapse_continued_line(p);
+    Token tok = p->current;
+
+    if (tok.type == TK_LPAREN) {
+      // Direct function call.
+      // Mirror the parameter list symmetrically before calling.
+      emit_var_op(p, tok, OP_MIRROR, colon_count + 1);
+
+      size_t params = delim_listing(p,
+          TK_LPAREN, TK_COMMA, TK_RPAREN, false);
+      emit_var_op(p, tok, OP_CALL, colon_count + params);
+      break;
+    }
+
+    else if (tok.type == TK_COLON) {
+      // Continued UFCS
+      next(p);
+      colon_count++;
+    }
+
+    else {
+      // Partial application with UFCS.
+      emit_var_op(p, tok, OP_MIRROR, colon_count + 1);
+      emit_var_op(p, tok, OP_PARTIAL, colon_count);
+      break;
+    }
+  }
+}
+
 static Locals consume_arg_list(Parse *p, Str name)
 {
   Locals arg_list = arg_list_init(name);
@@ -1730,7 +1783,7 @@ static const ParseRule parse_rules[] =
     [TK_LBRACK]    = { list,       subscript  },
     [TK_RBRACK]    = { NULL,       led_end    },
 
-    [TK_COLON]     = { NULL,       led_end    },
+    [TK_COLON]     = { NULL,       ufcs       },
     [TK_SEMICOLON] = { NULL,       led_end    },
     [TK_COMMA]     = { NULL,       led_end    },
 

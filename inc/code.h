@@ -61,6 +61,7 @@ typedef enum {
   OP_SWAP_NEATH,
   OP_SWAP_MOVE_OVER,
   OP_DUP_2,
+  var(OP_MIRROR),
 
   OP_RESERVE_SLOT,
   var(OP_END_BLOCK),
@@ -87,6 +88,7 @@ typedef enum {
 
   OP_CLOSURE,
   OP_HOIST_UPVALUE,
+  var(OP_PARTIAL),
   var(OP_CALL),
   OP_RETURN,
 

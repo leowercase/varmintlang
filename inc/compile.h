@@ -158,6 +158,7 @@ typedef enum {
   PREC_FACTORIAL, // !
   PREC_PERCENT,   // %
   PREC_CALL,      // () []
+  PREC_UFCS,      // :
 } Precedence;
 
 typedef enum {

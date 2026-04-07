@@ -155,6 +155,14 @@ static void mark_obj(Varmint *vm, Value obj)
   case V_closure:
     mark_procedure(vm, obj.as.closure->procedure);
     break;
+  case V_partial:
+    {
+      Partial *partial = obj.as.partial;
+      mark_obj(vm, partial->callee);
+      for (size_t i = 0; i < partial->application_count; i++)
+        mark_obj(vm, partial->applied[i]);
+      break;
+    }
   }
 }
 
@@ -234,6 +242,9 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
     break;
   case V_closure:
     FREE(Closure);
+    break;
+  case V_partial:
+    FREE(Partial);
     break;
   }
 

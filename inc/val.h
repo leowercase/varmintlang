@@ -28,6 +28,7 @@ typedef enum {
   V_procedure,
   V_upval,
   V_closure,
+  V_partial,
 } Typetag;
 
 // Union of Varmint values.
@@ -44,6 +45,7 @@ typedef union {
   struct Procedure *procedure;
   struct Upval *upval;
   struct Closure *closure;
+  struct Partial *partial;
 } Valueu;
 
 typedef struct {
@@ -120,6 +122,14 @@ typedef struct Table {
 #define USE_GC
 #include "generic/table.inc"
 
+// Partial application.
+typedef struct Partial {
+  GCData gc_data;
+  Value callee;
+  size_t application_count;
+  Value applied[];
+} Partial;
+
 struct Varmint;
 
 Value Maybe_some(struct Varmint *vm, Value value);
@@ -141,6 +151,8 @@ Str String_as_str(Value *val);
 Value Procedure_create(struct Varmint *vm, size_t arity);
 
 Value Closure_create(struct Varmint *vm, struct Procedure *procedure);
+
+Value Partial_create(struct Varmint *vm, Value callee, size_t count);
 
 const char *value_type_cstring(Typetag type);
 Value value_to_string(struct Varmint *vm, Value val);

@@ -1,0 +1,7 @@
+let
+  f(x, y, z, w) := x||y||z||w,
+  g := "very ":"cool, ":f,
+in
+  "super ":g("and hyper")
+
+# "cool, very super and hyper"

@@ -338,6 +338,7 @@ Value _to_number(Varmint *vm, Value *args)
   case V_table:
   case V_procedure:
   case V_closure:
+  case V_partial:
     goto no_num;
   }
 
