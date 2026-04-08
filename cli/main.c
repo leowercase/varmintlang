@@ -1,4 +1,7 @@
 #include "../inc/info.h"
+#include "../inc/compile.h"
+#include "../inc/dis.h"
+#include "../inc/lex.h"
 #include "../inc/varmint.h"
 
 #include <sysexits.h>
@@ -8,34 +11,121 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
-static void run(Varmint *vm, char *source)
+typedef enum {
+  // CLI options
+  OPT_TOKENS,
+  OPT_DIS,
+  OPT_EVAL,
+  OPT_HELP,
+
+  // Number of command line options.
+  OPTS_LEN,
+
+  // Default action for source file
+  OPT_EXECUTE,
+  // User error
+  OPT_ERROR,
+} Opt;
+
+typedef struct {
+  Str name;
+  char *short_forms;
+  char *desc;
+} OptDesc;
+
+const OptDesc arguments[] = {
+  [OPT_TOKENS] = { str_from("tokens"), "t",  "print tokens"         },
+  [OPT_DIS]    = { str_from("dis"),    "d",  "disassemble bytecode" },
+  [OPT_EVAL]   = { str_from("eval"),   "e",  "evaluate expression"  },
+  [OPT_HELP]   = { str_from("help"),   "h?", "print help"           },
+};
+
+static void print_usage(const char *program_name)
 {
-  Value result = varmint_run(vm, source);
-  print_value(stdout, result);
-  printf("\n");
+  printf("usage: %s [OPTION] [FILE]\n", program_name);
 }
 
-static void repl(void)
+static void print_opts(const char *short_prefix, const char *long_prefix)
 {
-  Varmint vm = varmint_start();
+  for (size_t i = 0; i < OPTS_LEN; i++) {
+    OptDesc opt = arguments[i];
 
-  // https://en.wikipedia.org/wiki/GNU_Readline#Sample_code
+    // Print long form.
+    printf("  " ANSI_YELLOW
+        "%s%.*s", long_prefix, (int)opt.name.len, opt.name.s);
 
-  // History
-  using_history();
+    // Print short forms.
+    for (char *short_opt = opt.short_forms; *short_opt != '\0'; short_opt++)
+      printf(" %s%c", short_prefix, *short_opt);
 
-  // A read eval print loop.
-  for (;;) {
-    char *input = readline("> ");
-    if (!input) break;
-    add_history(input);
-
-    run(&vm, input);
-
-    free(input);
+    // Print description.
+    printf(ANSI_RESET "\n    %s\n", opt.desc);
   }
+}
 
-  varmint_free(&vm);
+static Opt short_opt(const char *prefix, char opt_c)
+{
+  for (size_t i = 0; i < OPTS_LEN; i++) {
+    for (char *c = arguments[i].short_forms; *c != '\0'; c++)
+      if (*c == opt_c)
+        return (Opt)i;
+  }
+  error_out("unknown option %s%c\n", prefix, opt_c);
+  return OPT_ERROR;
+}
+
+static Opt long_opt(const char *prefix, Str opt_s)
+{
+  for (size_t i = 0; i < OPTS_LEN; i++) {
+    if (strs_eq(arguments[i].name, opt_s))
+      return (Opt)i;
+  }
+  error_out("unknown option %s%.*s\n", prefix, (int)opt_s.len, opt_s.s);
+  return OPT_ERROR;
+}
+
+static void run(Varmint *vm, Opt opt, char *source,
+    const char *program_name, bool in_repl)
+{
+  switch (opt) {
+  case OPT_TOKENS:
+    print_tokens(stdout, source);
+    break;
+  case OPT_DIS:
+    {
+      Procedure *program = compile(vm, source);
+      if (program == NULL) return;
+      dis(stdout, program, program_name);
+      break;
+    }
+  case OPT_EVAL:
+    {
+      Value result = varmint_run(vm, source);
+      print_value(stdout, result);
+      printf("\n\n");
+      break;
+    }
+  case OPT_HELP:
+    if (in_repl) {
+      print_opts(":", ":");
+      printf("\n");
+    }
+    else {
+      print_usage(program_name);
+      printf("  " ANSI_YELLOW "(default)" ANSI_RESET "\n    run REPL\n");
+      print_opts("-", "--");
+    }
+    break;
+  case OPT_EXECUTE:
+    varmint_run(vm, source);
+    break;
+  case OPT_ERROR:
+    if (!in_repl) exit(EX_USAGE);
+    printf("\n");
+    break;
+  case OPTS_LEN:
+    unreachable();
+  }
 }
 
 static size_t file_size(FILE *file)
@@ -48,8 +138,7 @@ static size_t file_size(FILE *file)
   return size;
 }
 
-// Run a script file.
-static void run_file(const char *filename)
+static char *read_file(const char *filename)
 {
   FILE *file;
   file = fopen(filename, "r");
@@ -59,40 +148,117 @@ static void run_file(const char *filename)
     exit(EX_NOINPUT);
   }
 
-  size_t source_size = file_size(file);
-  char *source = malloc(sizeof(char) * (source_size + 1));
+  size_t size = file_size(file);
+  char *contents = malloc(sizeof(char) * (size + 1));
 
-  if (source == NULL) {
+  if (contents == NULL) {
     error_out("Not enough memory to read %s\n", filename);
     exit(EX_OSERR);
   }
 
   size_t bytes_read =
-    fread(source, sizeof(char), source_size, file);
-  source[bytes_read] = '\0';
+    fread(contents, sizeof(char), size, file);
+  contents[bytes_read] = '\0';
 
-  if (bytes_read < source_size) {
+  if (bytes_read < size) {
     error_out("Could not read file %s\n", filename);
     exit(EX_NOINPUT);
   }
 
+  fclose(file);
+  return contents;
+}
+
+// Run a read-eval-print loop.
+static void run_repl(void)
+{
   Varmint vm = varmint_start();
 
-  run(&vm, source);
+  // https://en.wikipedia.org/wiki/GNU_Readline#Sample_code
+  using_history();
+
+  for (;;) {
+    char *input = readline("vm> ");
+    if (!input) break;
+    add_history(input);
+
+    // Evaluate input expr by default
+    Opt opt = OPT_EVAL;
+    char *in = input;
+
+    // Parse REPL command.
+    if (in[0] == ':') {
+      in++;
+      Str cmd = {in, 0};
+      for (; !isspace(*in) && *in != '\0'; cmd.len++, in++);
+
+      if (cmd.len == 0) {
+        error_out("expect REPL command\n");
+        free(input);
+        continue;
+      }
+      else if (cmd.len == 1)
+        opt = short_opt(":", cmd.s[0]);
+      else
+        opt = long_opt(":", cmd);
+    }
+
+    run(&vm, opt, in, NULL, true);
+    free(input);
+  }
 
   varmint_free(&vm);
-  free(source);
-  fclose(file);
 }
 
 int main(int argc, const char **argv)
 {
   if (argc == 1)
-    repl();
-  else if (argc == 2)
-    run_file(argv[1]);
+    run_repl();
+
   else {
-    error_out("usage: %s [script]\n", argv[0]);
-    exit(EX_USAGE);
+    const char *program_name = argv[0];
+    Opt opt = OPT_EXECUTE;
+
+    // Parse command line options.
+    size_t i = 1;
+    for (; i < (size_t)argc && argv[i][0] == '-'; i++) {
+      if (argv[i][1] == '-') {
+        const char *s = &argv[i][2];
+
+        Str opt_s = {s, 0};
+        for (; *s != '\0'; s++, opt_s.len++);
+
+        if (opt_s.len == 0) {
+          error_out("expect long option name\n");
+          exit(EX_USAGE);
+        }
+        opt = long_opt("--", opt_s);
+      }
+      else
+        opt = short_opt("-", argv[1][1]);
+    }
+
+    char *source;
+
+    if (opt == OPT_HELP)
+      source = NULL;
+
+    else if ((size_t)argc != i + 1) {
+      print_usage(program_name);
+      printf("Run `%s --help` for help\n", program_name);
+      exit(EX_USAGE);
+    }
+
+    else {
+      const char *filename = argv[i];
+      source = read_file(filename);
+    }
+
+    // Run script file.
+    Varmint vm = varmint_start();
+    run(&vm, opt, source, program_name, false);
+
+    varmint_free(&vm);
+    free(source);
   }
 }

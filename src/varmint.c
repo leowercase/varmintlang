@@ -55,32 +55,9 @@ void varmint_free(Varmint *vm)
 
 Value varmint_run(Varmint *vm, char *source)
 {
-  vm->source = source;
-
 #ifdef VARMINT_DEBUG
-  {
-    fprintf(stderr, "*** TOKENS ***\n");
-
-    Lex l = lex_new(source);
-
-    size_t line = 1;
-    Token tok;
-    do {
-      tok = lex_token(&l);
-
-      if (tok.line > line) {
-        line = tok.line;
-        printf("\n");
-      }
-
-      fprintf(stderr,
-          ANSI_RED "%s" ANSI_RESET "(" ANSI_YELLOW "`%.*s`" ANSI_RESET ") ",
-          token_cstring(tok.type),
-          (int)tok.slice.len, tok.slice.s);
-    } while (tok.type != TK_EOF);
-
-    fprintf(stderr, "\n");
-  }
+  fprintf(stderr, "*** TOKENS ***\n");
+  print_tokens(stderr, source);
 #endif
 
   Procedure *program = compile(vm, source);

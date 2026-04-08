@@ -6,6 +6,7 @@
 #include "util.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 /*
@@ -179,5 +180,8 @@ Lex lex_new(char *source)
 Token lex_token(Lex *lex);
 
 char *token_cstring(const TokenType type);
+
+// Print the tokens of a program.
+void print_tokens(FILE *restrict stream, char *source);
 
 #endif

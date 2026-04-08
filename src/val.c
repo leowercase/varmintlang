@@ -357,7 +357,8 @@ void print_value(FILE *restrict stream, Value val)
           fprintf(stream, ", ");
       }
 
-      fprintf(stream, ANSI_MAGENTA "]" ANSI_RESET);
+      fprintf(stream, ANSI_MAGENTA "]" ANSI_RESET "(%li)",
+          list->len);
       break;
     }
   case V_table:
@@ -386,7 +387,8 @@ void print_value(FILE *restrict stream, Value val)
         if (ents < table->entry_count)
           fprintf(stream, ", ");
       }
-      fprintf(stream, ANSI_MAGENTA "}" ANSI_RESET);
+      fprintf(stream, ANSI_MAGENTA "}" ANSI_RESET "(%li)",
+          table->entry_count);
       break;
     }
   case V_procedure:

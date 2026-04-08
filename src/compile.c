@@ -84,8 +84,10 @@ static void clear_local_scope(Parse *p)
 static void end_block(Parse *p, Token block_tok, size_t slots)
 {
   p->c->stack_slot_count -= slots;
-  if (slots == 1) return;
-  emit_var_op(p, block_tok, OP_END_BLOCK, slots);
+  if (slots == 0)
+    emit_byte(p, block_tok, OP_RESERVE_SLOT);
+  else if (slots > 1)
+    emit_var_op(p, block_tok, OP_END_BLOCK, slots);
 }
 
 // Local variable lookup.
@@ -1822,10 +1824,7 @@ static const ParseRule *parse_rule(TokenType type)
 
 Procedure *compile(Varmint *vm, char *source)
 {
-  if (*source == '\0') {
-    error_out("empty file\n");
-    return NULL;
-  }
+  vm->source = source;
 
   Parse p = init_parse(vm, source);
 

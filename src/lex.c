@@ -494,3 +494,26 @@ char *token_cstring(const TokenType type)
 
 #undef case_
 }
+
+void print_tokens(FILE *restrict stream, char *source)
+{
+  Lex l = lex_new(source);
+
+  size_t line = 1;
+  Token tok;
+  do {
+    tok = lex_token(&l);
+
+    if (tok.line > line) {
+      line = tok.line;
+      fprintf(stream, "\n");
+    }
+
+    fprintf(stream,
+        ANSI_RED "%s" ANSI_RESET "(" ANSI_YELLOW "`%.*s`" ANSI_RESET ") ",
+        token_cstring(tok.type),
+        (int)tok.slice.len, tok.slice.s);
+  } while (tok.type != TK_EOF);
+
+  fprintf(stream, "\n");
+}
