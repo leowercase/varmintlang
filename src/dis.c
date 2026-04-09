@@ -201,13 +201,15 @@ void dis(FILE *restrict stream, Procedure *procedure, const char *name)
     fprintf(stream, "\n");
   }
 
-  fprintf(stream, ANSI_RESET "\n");
+  fprintf(stream, ANSI_RESET);
 
   // Disassemble any functions inside the procedure.
   for (size_t i = 0; i < code->constants.len; i++) {
     Value *c = &code->constants.data[i];
 
     if (c->type == V_procedure) {
+      fprintf(stream, "\n");
+
       Procedure *fn = c->as.procedure;
 
       if (fn->name.s == NULL)

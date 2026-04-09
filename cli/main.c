@@ -85,7 +85,7 @@ static Opt long_opt(const char *prefix, Str opt_s)
 }
 
 static void run(Varmint *vm, Opt opt, char *source,
-    const char *program_name, bool in_repl)
+    const char *program_name, const char *filename, bool in_repl)
 {
   switch (opt) {
   case OPT_TOKENS:
@@ -95,14 +95,14 @@ static void run(Varmint *vm, Opt opt, char *source,
     {
       Procedure *program = compile(vm, source);
       if (program == NULL) return;
-      dis(stdout, program, program_name);
+      dis(stdout, program, filename);
       break;
     }
   case OPT_EVAL:
     {
       Value result = varmint_run(vm, source);
       print_value(stdout, result);
-      printf("\n\n");
+      printf("\n");
       break;
     }
   case OPT_HELP:
@@ -203,7 +203,8 @@ static void run_repl(void)
         opt = long_opt(":", cmd);
     }
 
-    run(&vm, opt, in, NULL, true);
+    run(&vm, opt, in, NULL, NULL, true);
+    printf("\n");
     free(input);
   }
 
@@ -239,6 +240,7 @@ int main(int argc, const char **argv)
     }
 
     char *source;
+    const char *filename = NULL;
 
     if (opt == OPT_HELP)
       source = NULL;
@@ -250,13 +252,13 @@ int main(int argc, const char **argv)
     }
 
     else {
-      const char *filename = argv[i];
+      filename = argv[i];
       source = read_file(filename);
     }
 
     // Run script file.
     Varmint vm = varmint_start();
-    run(&vm, opt, source, program_name, false);
+    run(&vm, opt, source, program_name, filename, false);
 
     varmint_free(&vm);
     free(source);
