@@ -41,6 +41,9 @@ Varmint varmint_start(void)
 
   gc_init(&vm);
 
+  vm.result = NO_VALUE;
+  vm.status = VM_A_OK;
+
   return vm;
 }
 
@@ -53,7 +56,7 @@ void varmint_free(Varmint *vm)
   free(vm->natives_table.entries);
 }
 
-Value varmint_run(Varmint *vm, char *source)
+VarmintStatus varmint_run(Varmint *vm, char *source)
 {
 #ifdef VARMINT_DEBUG
   fprintf(stderr, "*** TOKENS ***\n");
@@ -61,14 +64,16 @@ Value varmint_run(Varmint *vm, char *source)
 #endif
 
   Procedure *program = compile(vm, source);
-  if (program == NULL)
-    return NO_VALUE;
 
+  if (program != NULL) {
 #ifdef VARMINT_DEBUG
-  fprintf(stderr, "*** INSTRUCTIONS ***\n");
-  dis(stderr, program, "program");
+    fprintf(stderr, "*** INSTRUCTIONS ***\n");
+    dis(stderr, program, "program");
 #endif
 
-  execute(vm, program);
-  return vm->result;
+    call_program(vm, program);
+    run_bytecode(vm);
+  }
+
+  return vm->status;
 }

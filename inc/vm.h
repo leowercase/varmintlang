@@ -4,7 +4,10 @@
 #include "varmint.h"
 #include "code.h"
 
-// Execute a procedure
-void execute(Varmint *vm, Procedure *program);
+// Ready a program for execution.
+void call_program(Varmint *vm, Procedure *program);
+
+// Run the VM.
+void run_bytecode(Varmint *vm);
 
 #endif

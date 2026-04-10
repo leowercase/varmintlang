@@ -265,10 +265,13 @@ static bool for_loop_next(Varmint *vm, Value iterable, size_t counter)
   return true;
 }
 
-void execute(Varmint *vm, Procedure *program)
+void call_program(Varmint *vm, Procedure *program)
 {
   call(vm, program, NULL, 0);
+}
 
+void run_bytecode(Varmint *vm)
+{
   // Macros really help with some of the tedium here.
 
 #define UNARY(expr) { \
@@ -283,14 +286,12 @@ void execute(Varmint *vm, Procedure *program)
     break; \
   }
 
-#define case_(op_name, decl, expr, ip_increment, stmt) \
-    case op_name: \
-      { decl = expr; vm->frame->ip += ip_increment; stmt; }
-
-    // Opcode with a variable sized operand (8/16-bit)
+  // Opcode with a variable sized operand (8/16-bit)
 #define case_var_op(op_name, ident, stmt) \
-      case_(op_name,      uint8_t ident,  *vm->frame->ip,             1, stmt) \
-      case_(op_name##_16, uint16_t ident, uint8_to_16(vm->frame->ip), 2, stmt)
+  case op_name: \
+    { uint8_t ident = read_byte(vm); stmt } \
+  case op_name##_16: \
+    { uint16_t ident = read_16(vm); stmt }
 
   for (;;) {
     Opcode instruction = (Opcode)read_byte(vm);
@@ -825,7 +826,6 @@ void execute(Varmint *vm, Procedure *program)
       vm->frame->ip = vm->gc_resume_ip; // Pick up where we left off.
       break;
     }
-
   }
 
 exit:
@@ -833,6 +833,5 @@ exit:
 
 #undef UNARY
 #undef BINARY
-#undef case_
 #undef case_var_op
 }
