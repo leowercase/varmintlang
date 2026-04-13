@@ -3,6 +3,7 @@
 #include "../inc/dis.h"
 #include "../inc/lex.h"
 #include "../inc/varmint.h"
+#include "../inc/vm.h"
 
 #include <sysexits.h>
 #include <stdio.h>
@@ -85,7 +86,7 @@ static Opt long_opt(const char *prefix, Str opt_s)
 }
 
 static void run(Varmint *vm, Opt opt, char *source,
-    const char *program_name, const char *filename, bool in_repl)
+    const char *program_name, const char *filename, Parse *parse, bool in_repl)
 {
   switch (opt) {
   case OPT_TOKENS:
@@ -93,15 +94,21 @@ static void run(Varmint *vm, Opt opt, char *source,
     break;
   case OPT_DIS:
     {
-      Procedure *program = compile(vm, source);
+      Procedure *program = compile(vm, parse, source);
       if (program == NULL) return;
       dis(stdout, program, filename);
       break;
     }
   case OPT_EVAL:
     {
-      Value result = varmint_run(vm, source);
-      print_value(stdout, result);
+      Procedure *program = compile(vm, parse, source);
+      if (program == NULL) return;
+
+      call_program(vm, program);
+      run_bytecode(vm);
+
+      if (vm->status == VM_A_OK)
+        print_value(stdout, vm->result);
       printf("\n");
       break;
     }
@@ -173,6 +180,7 @@ static char *read_file(const char *filename)
 static void run_repl(void)
 {
   Varmint vm = varmint_start();
+  Parse parse = init_parse(&vm);
 
   // https://en.wikipedia.org/wiki/GNU_Readline#Sample_code
   using_history();
@@ -203,20 +211,24 @@ static void run_repl(void)
         opt = long_opt(":", cmd);
     }
 
-    run(&vm, opt, in, NULL, NULL, true);
+    run(&vm, opt, in,
+        NULL, NULL, &parse, true);
     printf("\n");
     free(input);
   }
 
+  free_parse(&parse);
   varmint_free(&vm);
 }
 
 int main(int argc, const char **argv)
 {
   if (argc == 1)
+    // Run REPL
     run_repl();
 
   else {
+    // Run the CLI
     const char *program_name = argv[0];
     Opt opt = OPT_EXECUTE;
 
@@ -258,9 +270,9 @@ int main(int argc, const char **argv)
 
     // Run script file.
     Varmint vm = varmint_start();
-    run(&vm, opt, source, program_name, filename, false);
+    run(&vm, opt, source,
+        program_name, filename, NULL, false);
 
     varmint_free(&vm);
-    free(source);
   }
 }

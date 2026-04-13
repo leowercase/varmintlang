@@ -3,7 +3,6 @@
 
 #include "code.h"
 #include "generic/dyn_array.h"
-#include "generic/table.h"
 #include "val.h"
 
 // Maximum op stack size, fairly arbitrarily picked.
@@ -42,32 +41,5 @@ typedef DYN_ARRAY_STRUCT(CallFrame) CallStack;
 #define T CallFrame
 #define ARR CallStack
 #include "generic/dyn_array.inc"
-
-typedef Value (*NativeFn)(struct Varmint *vm, Value *args);
-
-// Native function.
-typedef struct Native {
-  size_t arity;
-  NativeFn fn;
-  Str name;
-} Native;
-
-typedef DYN_ARRAY_STRUCT(Native) Natives;
-#define T Native
-#define ARR Natives
-#include "generic/dyn_array.inc"
-
-// Maps function names to indices of the natives array.
-typedef struct { TABLE_ENTRY(Str, size_t) } NativesTableEntry;
-typedef TABLE_STRUCT(NativesTableEntry) NativesTable;
-#define K Str
-#define V size_t
-#define HASH(key) str_hash(key)
-#define IS_EMPTY_KEY(key) (key.s == NULL)
-#define EMPTY_KEY NULL_STR
-#define KEYS_EQ(a, b) strs_eq(a, b)
-#define TBL_ENTRY NativesTableEntry
-#define TBL NativesTable
-#include "generic/table.inc"
 
 #endif

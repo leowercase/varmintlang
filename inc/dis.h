@@ -1,5 +1,5 @@
-#ifndef VARMINT_DEBUG_H
-#define VARMINT_DEBUG_H
+#ifndef VARMINT_DIS_H
+#define VARMINT_DIS_H
 
 #include "code.h"
 

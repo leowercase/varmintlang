@@ -5,6 +5,12 @@
 #include "val.h"
 #include "state.h"
 
+typedef enum {
+  VM_A_OK,
+  VM_COMPILE_ERR,
+  VM_RUNTIME_ERR,
+} VarmintStatus;
+
 /*
  * Heart of a Varmint, offspring of the C cockroach.
  * Contains all common state.
@@ -17,9 +23,6 @@ typedef struct Varmint {
   // Sorted so it reflects the order of the stack.
   Upval *open_upvalues;
 
-  Natives natives;
-  NativesTable natives_table;
-
   Value *gc_objects; // GC'd values are stored as a singly linked list.
   GCList grey_worklist;
   size_t bytes_allocd, next_gc; // Tally for the next GC sweep
@@ -27,21 +30,17 @@ typedef struct Varmint {
   const uint8_t *gc_resume_ip;
 
   Value result;
-  char *source;
+  VarmintStatus status;
 } Varmint;
 
 // Initialize a Varmint instance.
 Varmint varmint_start(void);
 
 // Run some code!
-Value varmint_run(Varmint *vm, char *source);
+VarmintStatus varmint_run(Varmint *vm, char *source);
 
 // Free the poor beast.
 void varmint_free(Varmint *vm);
-
-// Add a native function.
-void varmint_add_native(Varmint *vm,
-    const char *name, NativeFn fn, size_t arity);
 
 // Controls debug output.
 //#define VARMINT_DEBUG

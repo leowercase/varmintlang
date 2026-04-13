@@ -70,6 +70,8 @@ void error_line_snip(char *source, size_t line, char *pointer_pos)
   error_out("\n");
 }
 
+static const uint8_t HALT_INSTRUCTION = OP_HALT;
+
 void runtime_error(Varmint *vm, const char *fmt, ...)
 {
   va_list args;
@@ -95,7 +97,7 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
     else
       error_out("anonymous function:\n");
 
-    error_line_snip(vm->source, line, NULL);
+    error_line_snip(proc->source->s, line, NULL);
   }
 
 #ifdef VARMINT_DEBUG
@@ -108,5 +110,6 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
   }
 #endif
 
-  exit(EX_DATAERR);
+  vm->status = VM_RUNTIME_ERR;
+  vm->frame->ip = &HALT_INSTRUCTION;
 }

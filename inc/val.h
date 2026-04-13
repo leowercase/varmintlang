@@ -9,6 +9,13 @@
 #include <assert.h>
 #include <stdio.h>
 
+struct Varmint;
+struct Value;
+
+// Native function.
+typedef struct Value (*NativeFn)(struct Varmint *vm,
+                                 size_t argc, struct Value *argv);
+
 // Dynamic typing; values carry a typetag during runtime.
 typedef enum {
   // Internal value type, null equivalent.
@@ -35,7 +42,7 @@ typedef enum {
 typedef union {
   float64_t number;
   int boolean;
-  size_t native;
+  NativeFn native;
 
   struct GCData *gc_data; // Accessed by the garbage collector.
   struct Maybe *maybe;
@@ -48,19 +55,13 @@ typedef union {
   struct Partial *partial;
 } Valueu;
 
-typedef struct {
+typedef struct Value {
   Typetag type;
   Valueu as;
 } Value;
 
-static inline
-Value __value_new(Valueu raw, Typetag tag)
-{
-  Value val = {tag, raw};
-  return val;
-}
 #define value_new(raw, t) \
-  __value_new((Valueu){.t = raw}, V_##t)
+  (Value){V_##t, (Valueu){.t = raw}}
 
 static const Value NO_VALUE = {V_no, {0}};
 
@@ -70,6 +71,10 @@ bool value_is_falsey(Value val);
 // Obtain the 64-bit hash of a value.
 uint64_t hash_value(Value val);
 bool value_is_hashable(Typetag t);
+
+const char *value_type_cstring(Typetag type);
+Value value_to_string(struct Varmint *vm, Value val);
+void print_value(FILE *restrict stream, Value val);
 
 // GC'd values have the same initial sequence, GCData.
 typedef struct GCData {
@@ -130,8 +135,6 @@ typedef struct Partial {
   Value applied[];
 } Partial;
 
-struct Varmint;
-
 Value Maybe_some(struct Varmint *vm, Value value);
 Value Maybe_none(void);
 
@@ -148,14 +151,10 @@ Value String_concat(struct Varmint *vm, Value *head, Value *tail);
 Value String_readline(struct Varmint *vm, const char *prompt);
 Str String_as_str(Value *val);
 
-Value Procedure_create(struct Varmint *vm, size_t arity);
+Value Procedure_create(struct Varmint *vm, size_t arity, String *source);
 
 Value Closure_create(struct Varmint *vm, struct Procedure *procedure);
 
 Value Partial_create(struct Varmint *vm, Value callee, size_t count);
-
-const char *value_type_cstring(Typetag type);
-Value value_to_string(struct Varmint *vm, Value val);
-void print_value(FILE *restrict stream, Value val);
 
 #endif

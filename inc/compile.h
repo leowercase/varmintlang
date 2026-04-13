@@ -115,6 +115,7 @@ struct Parse {
   SemanticData semantic;
   struct Compiler *c;
   Varmint *vm;
+  String *source;
 };
 
 // Compiler for a procedure
@@ -188,6 +189,14 @@ typedef struct {
   LedRule led;
 } ParseRule;
 
-Procedure *compile(Varmint *vm, char *source);
+// Initialize a parse
+Parse init_parse(Varmint *vm);
+
+// Free parse data
+void free_parse(Parse *p);
+
+// Compile some code into an executable procedure.
+// If the existing parse `p` is non-NULL, continue parsing with its data
+Procedure *compile(Varmint *vm, Parse *p, char *source);
 
 #endif

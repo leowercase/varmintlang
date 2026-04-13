@@ -158,7 +158,7 @@ Str String_as_str(Value *val)
   return str_new(val->as.string->s, val->as.string->len);
 }
 
-Value Procedure_create(Varmint *vm, size_t arity)
+Value Procedure_create(Varmint *vm, size_t arity, String *source)
 {
   Value val = *create_gc_obj(vm, V_procedure, sizeof(Procedure));
   Procedure *proc = val.as.procedure;
@@ -167,6 +167,9 @@ Value Procedure_create(Varmint *vm, size_t arity)
   proc->code.constants = Constants_init();
   proc->code.instructions = Instructions_init();
   proc->code.lines = LineInfo_init();
+
+  // Keep track of source code.
+  proc->source = source;
 
   // Initialize closure description
   proc->closure_desc = ClosureDesc_init();
@@ -286,7 +289,7 @@ Value value_to_string(Varmint *vm, Value val)
   case V_boolean:
     return val.as.boolean ? String_from(vm, "True") : String_from(vm, "False");
   case V_native:
-    return fn_to_string(vm, "native fn", vm->natives.data[val.as.native].name);
+    return String_from(vm, "native fn");
   case V_maybe:
     if (val.as.maybe == NULL)
       return String_from(vm, "");
@@ -414,7 +417,7 @@ uint64_t hash_value(Value val)
   case V_boolean:
     return XXH3_64bits(&val.as.boolean, sizeof(int));
   case V_native:
-    return XXH3_64bits(&val.as.native, sizeof(size_t));
+    return XXH3_64bits(&val.as.native, sizeof(NativeFn));
   case V_maybe:
     return val.as.maybe != NULL ? hash_value(val.as.maybe->raw) : 0;
   case V_string:

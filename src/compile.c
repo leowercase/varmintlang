@@ -158,7 +158,7 @@ static void init_compiler(Parse *p, Locals arg_list)
 {
   Compiler *c = allocate(NULL, sizeof(Compiler));
 
-  Value proc_val = Procedure_create(p->vm, arg_list.len - 1);
+  Value proc_val = Procedure_create(p->vm, arg_list.len - 1, p->source);
   GCList_push(&p->vm->compiler_roots, proc_val);
 
   c->procedure = proc_val.as.procedure;
@@ -178,10 +178,18 @@ static void init_compiler(Parse *p, Locals arg_list)
   p->c = c;
 }
 
+static void descend_compilers(Parse *p)
+{
+  Compiler *enclosing = p->c->enclosing;
+  free(p->c->locals.data);
+  free(p->c);
+  p->c = enclosing;
+}
+
 // Return from compiler.
 static Procedure *return_compiler(Parse *p)
 {
-  // End arg list
+  // Move arg list out of scope
   clear_local_scope(p);
 
   Procedure *procedure = p->c->procedure;
@@ -189,30 +197,49 @@ static Procedure *return_compiler(Parse *p)
 
   // Return from procedure.
   emit_byte(p, p->current, OP_RETURN);
-
-  Compiler *enclosing = p->c->enclosing;
-  free(p->c->locals.data);
-  free(p->c);
-  p->c = enclosing;
+  descend_compilers(p);
 
   return procedure;
 }
 
-static Parse init_parse(Varmint *vm, char *source)
+static void advance_lookahead(Parse *p);
+static Token next(Parse *p);
+
+static inline void init_lex(Parse *p, String *source)
+{
+  p->source = source;
+  p->lex = lex_new(source->s);
+  advance_lookahead(p); next(p);
+}
+
+Parse init_parse(Varmint *vm)
 {
   Parse p;
   p.vm = vm;
 
-  p.lex = lex_new(source);
+  SemanticDatum sem;
+  sem.assign_fn = sem.compound_assign_fn = NULL;
+  sem.indent.initial = sem.indent.continued = 0;
+  sem.if_else_chained = false;
+  sem.led_fail = false;
+  sem.panic = false;
+
+  p.semantic = SemanticData_init();
+  SemanticData_push(&p.semantic, sem);
 
   p.had_error = false;
-  p.semantic = SemanticData_init();
 
   Locals initial_locals = arg_list_init(NULL_STR);
   p.c = NULL;
   init_compiler(&p, initial_locals);
 
   return p;
+}
+
+void free_parse(Parse *p)
+{
+  while (p->c != NULL) descend_compilers(p);
+  free(p->semantic.data);
 }
 
 // Issue a parsing error and enter panic mode in the imminent semantic scope.
@@ -229,8 +256,10 @@ void parse_error(Parse *p, Token offending_tok, bool pointer,
   va_end(args);
   error_out("\n");
 
-  error_line_snip(p->vm->source, offending_tok.line,
+  error_line_snip(p->source->s, offending_tok.line,
                pointer ? (char *)offending_tok.slice.s : NULL);
+
+  p->vm->status = VM_COMPILE_ERR;
   p->had_error = true;
   semantic(p)->panic = true;
 }
@@ -244,7 +273,7 @@ static inline Token peek(Parse *p)
 static void advance_lookahead(Parse *p)
 {
   for (;;) {
-    if (p->lookahead.type == TK_EOF) break;
+    if (*p->lex.current == '\0') break;
     Token t = p->lookahead = lex_token(&p->lex);
 
     // Catch as many consecutive error tokens as possible.
@@ -440,7 +469,7 @@ static inline void expr_rhs(Parse *p, Precedence prec, Associativity assoc)
 }
 
 // Parse an indented operator if one is found.
-static void indent_led(Parse *p, int min_bp)
+static void indentation(Parse *p, int min_bp)
 {
   size_t indent = p->current.slice.len;
 
@@ -455,7 +484,7 @@ static void indent_led(Parse *p, int min_bp)
 static size_t consume_let_clauses(Parse *p, bool let_stmt);
 
 // Parse a series of statements.
-static void stmts(Parse *p, TokenType end)
+static void stmts(Parse *p, TokenType end, bool end_scope)
 {
   new_semantic_scope(p);
 
@@ -491,9 +520,10 @@ static void stmts(Parse *p, TokenType end)
     }
   }
 
-  clear_local_scope(p);
-
-  end_block(p, p->current, slots);
+  if (end_scope) {
+    clear_local_scope(p);
+    end_block(p, p->current, slots);
+  }
   p->c->depth--;
 
   end_semantic_scope(p);
@@ -882,7 +912,7 @@ static inline void grouping_end(Parse *p)
 static void code_block(Parse *p)
 {
   next(p); // {
-  stmts(p, TK_RCURLY);
+  stmts(p, TK_RCURLY, true);
 }
 
 static void boolean(Parse *p)
@@ -1116,7 +1146,7 @@ static void juxtaposed(Parse *p, int min_bp)
   }
   Token tok = p->current;
 
-  expr_rhs(p, PREC_CALL, ASSOC_LEFT);
+  expr_rhs(p, PREC_CALL, ASSOC_RIGHT);
   emit_byte(p, tok, OP_CALL_UNARY);
 }
 
@@ -1160,7 +1190,7 @@ static void ufcs(Parse *p, int min_bp)
 
       else if (is_nud(tok.type)) {
         // Single juxtaposed operand.
-        expr_rhs(p, PREC_CALL, ASSOC_LEFT);
+        expr_rhs(p, PREC_CALL, ASSOC_RIGHT);
         emit_var_op(p, tok, OP_CALL, colon_count + 1);
         break;
       }
@@ -1635,43 +1665,6 @@ static void returnage(Parse *p)
   emit_byte(p, tok, OP_RETURN);
 }
 
-// using f, g, h: ...
-static void using(Parse *p)
-{
-  Token tok = eat(p);
-  p->c->depth++;
-
-  size_t native_count = 0;
-  do {
-    Token ident_tok = consume(p, TK_WORD,
-        "expect native function name in `using`");
-    Str name = ident_tok.slice;
-
-    Local *local = create_local_var(p, name);
-    local->initialized = true;
-
-    size_t *native_idx =
-      NativesTable_get(&p->vm->natives_table, name);
-
-    if (native_idx == NULL)
-      parse_error(p, ident_tok, true,
-          "no native function named %.*s", (int)name.len, name.s);
-    else
-      emit_constant(p, ident_tok, value_new(*native_idx, native));
-
-    // Native function values occupy space too.
-    native_count++;
-    p->c->stack_slot_count++;
-  } while (match(p, TK_COMMA));
-
-  consume(p, TK_IN, "expect `in`");
-  expr(p, (int)PREC_TOP);
-
-  clear_local_scope(p);
-  end_block(p, tok, native_count + 1);
-  p->c->depth--;
-}
-
 // (...)
 static void parens(Parse *p)
 {
@@ -1736,85 +1729,83 @@ static void led_end(Parse *p, int _)
 static const ParseRule parse_rules[] =
   {
 /*  token type         NUD         LED        */
-    [TK_EOF]       = { NULL,       led_end    },
-    [TK_ERR]       = { NULL,       NULL       },
+    [TK_EOF]       = { NULL,       led_end     },
+    [TK_ERR]       = { NULL,       NULL        },
 
-    [TK_LINE]      = { NULL,       indent_led },
+    [TK_LINE]      = { NULL,       indentation },
 
-    [TK_PLUS]      = { unary_plus, infix_op   },
-    [TK_MINUS]     = { prefix_op,  infix_op   },
-    [TK_STAR]      = { NULL,       infix_op   },
-    [TK_SLASH]     = { NULL,       infix_op   },
-    [TK_CARET]     = { NULL,       infix_op   },
-    [TK_PERCENT]   = { NULL,       led_op     },
-    [TK_BANG]      = { NULL,       postfix_op },
-    [TK_2PIPE]     = { NULL,       infix_op   },
+    [TK_PLUS]      = { unary_plus, infix_op    },
+    [TK_MINUS]     = { prefix_op,  infix_op    },
+    [TK_STAR]      = { NULL,       infix_op    },
+    [TK_SLASH]     = { NULL,       infix_op    },
+    [TK_CARET]     = { NULL,       infix_op    },
+    [TK_PERCENT]   = { NULL,       led_op      },
+    [TK_BANG]      = { NULL,       postfix_op  },
+    [TK_2PIPE]     = { NULL,       infix_op    },
 
-    [TK_EQ]        = { NULL,       cmp        },
-    [TK_NEQ]       = { NULL,       cmp        },
-    [TK_LT]        = { NULL,       cmp        },
-    [TK_GT]        = { NULL,       cmp        },
-    [TK_LEQ]       = { NULL,       cmp        },
-    [TK_GEQ]       = { NULL,       cmp        },
+    [TK_EQ]        = { NULL,       cmp         },
+    [TK_NEQ]       = { NULL,       cmp         },
+    [TK_LT]        = { NULL,       cmp         },
+    [TK_GT]        = { NULL,       cmp         },
+    [TK_LEQ]       = { NULL,       cmp         },
+    [TK_GEQ]       = { NULL,       cmp         },
 
-    [TK_ASSIGN]    = { NULL,       assign     },
-    [TK_LET]       = { let_expr,   NULL       },
+    [TK_ASSIGN]    = { NULL,       assign      },
+    [TK_LET]       = { let_expr,   NULL        },
 
-    [TK_NOT]       = { prefix_op,  NULL       },
-    [TK_AND]       = { NULL,       infix_op   },
-    [TK_OR]        = { NULL,       infix_op   },
+    [TK_NOT]       = { prefix_op,  NULL        },
+    [TK_AND]       = { NULL,       infix_op    },
+    [TK_OR]        = { NULL,       infix_op    },
 
-    [TK_IN]        = { NULL,       led_end    },
+    [TK_IN]        = { NULL,       led_end     },
 
-    [TK_MOD]       = { NULL,       infix_op   },
+    [TK_MOD]       = { NULL,       infix_op    },
 
-    [TK_IF]        = { if_expr,    NULL       },
-    [TK_THEN]      = { NULL,       led_end    },
-    [TK_ELSE]      = { NULL,       else_elif  },
-    [TK_ELIF]      = { NULL,       else_elif  },
+    [TK_IF]        = { if_expr,    NULL        },
+    [TK_THEN]      = { NULL,       led_end     },
+    [TK_ELSE]      = { NULL,       else_elif   },
+    [TK_ELIF]      = { NULL,       else_elif   },
 
-    [TK_LOOP]      = { loop_expr,  NULL       },
-    [TK_FOR]       = { loop_expr,  NULL       },
-    [TK_WHILE]     = { loop_expr,  NULL       },
+    [TK_LOOP]      = { loop_expr,  NULL        },
+    [TK_FOR]       = { loop_expr,  NULL        },
+    [TK_WHILE]     = { loop_expr,  NULL        },
 
-    [TK_BREAK]     = { loop_flow,  NULL       },
-    [TK_CONTINUE]  = { loop_flow,  NULL       },
-    [TK_RETURN]    = { returnage,  NULL       },
+    [TK_BREAK]     = { loop_flow,  NULL        },
+    [TK_CONTINUE]  = { loop_flow,  NULL        },
+    [TK_RETURN]    = { returnage,  NULL        },
 
-    [TK_USING]     = { using,      NULL       },
+    [TK_TRUE]      = { boolean,    NULL        },
+    [TK_FALSE]     = { boolean,    NULL        },
 
-    [TK_TRUE]      = { boolean,    NULL       },
-    [TK_FALSE]     = { boolean,    NULL       },
+    [TK_SOME]      = { some,       NULL        },
+    [TK_NONE]      = { none,       NULL        },
 
-    [TK_SOME]      = { some,       NULL       },
-    [TK_NONE]      = { none,       NULL       },
+    [TK_ARROW]     = { NULL,       infix_op    },
+    [TK_MAPS_TO]   = { NULL,       NULL        },
 
-    [TK_ARROW]     = { NULL,       infix_op   },
-    [TK_MAPS_TO]   = { NULL,       NULL       },
+    [TK_LPAREN]    = { parens,     invocation  },
+    [TK_RPAREN]    = { NULL,       led_end     },
 
-    [TK_LPAREN]    = { parens,     invocation },
-    [TK_RPAREN]    = { NULL,       led_end    },
+    [TK_LCURLY]    = { code_block, NULL        },
+    [TK_RCURLY]    = { NULL,       led_end     },
 
-    [TK_LCURLY]    = { code_block, NULL       },
-    [TK_RCURLY]    = { NULL,       led_end    },
+    [TK_LBRACK]    = { list,       subscript   },
+    [TK_RBRACK]    = { NULL,       led_end     },
 
-    [TK_LBRACK]    = { list,       subscript  },
-    [TK_RBRACK]    = { NULL,       led_end    },
+    [TK_COLON]     = { NULL,       ufcs        },
+    [TK_SEMICOLON] = { NULL,       led_end     },
+    [TK_COMMA]     = { NULL,       led_end     },
 
-    [TK_COLON]     = { NULL,       ufcs       },
-    [TK_SEMICOLON] = { NULL,       led_end    },
-    [TK_COMMA]     = { NULL,       led_end    },
+    [TK_DOT]       = { NULL,       subscript   },
+    [TK_DOTDOT]    = { NULL,       NULL        },
 
-    [TK_DOT]       = { NULL,       subscript  },
-    [TK_DOTDOT]    = { NULL,       NULL       },
+    [TK_NUMERAL]   = { number,     NULL        },
 
-    [TK_NUMERAL]   = { number,     NULL       },
+    [TK_STRCONT]   = { metastring, NULL        },
+    [TK_STREND]    = { string,     NULL        },
 
-    [TK_STRCONT]   = { metastring, NULL       },
-    [TK_STREND]    = { string,     NULL       },
-
-    [TK_WORD]      = { identifier, NULL       },
-    [TK_LABEL]     = { NULL,       led_end    },
+    [TK_WORD]      = { identifier, NULL        },
+    [TK_LABEL]     = { NULL,       led_end     },
  };
 
 static const ParseRule *parse_rule(TokenType type)
@@ -1822,25 +1813,51 @@ static const ParseRule *parse_rule(TokenType type)
   return &parse_rules[type];
 }
 
-Procedure *compile(Varmint *vm, char *source)
+Procedure *compile(Varmint *vm, Parse *p, char *source)
 {
-  vm->source = source;
+  bool ad_hoc = p == NULL;
 
-  Parse p = init_parse(vm, source);
+  Parse new_parse;
+  size_t prev_code_len;
 
-  SemanticDatum sem;
-  sem.assign_fn = sem.compound_assign_fn = NULL;
-  sem.indent.initial = sem.indent.continued = 0;
-  sem.if_else_chained = false;
-  sem.led_fail = false;
-  sem.panic = false;
-  SemanticData_push(&p.semantic, sem);
+  if (ad_hoc) {
+    // Embark on a brand new parse.
+    new_parse = init_parse(vm);
+    p = &new_parse;
+  }
+  else {
+    // Continue with existing parse data.
+    prev_code_len = code_idx(p);
+    p->had_error = false;
+  }
 
-  next(&p); next(&p);
-  stmts(&p, TK_EOF);
+  // Initialize lexer
+  String *source_string = String_own(vm, source).as.string;
+  init_lex(p, source_string);
 
-  free(p.semantic.data);
+  // Parse program.
+  stmts(p, TK_EOF, ad_hoc);
 
-  Procedure *proc = return_compiler(&p);
-  return p.had_error ? NULL : proc;
+  // Return from program
+  Procedure *procedure;
+  if (ad_hoc) {
+    procedure = return_compiler(p);
+    free_parse(p);
+  }
+  else {
+    emit_byte(p, p->current, OP_SUSPEND); // Continue execution later.
+    procedure = p->c->procedure;
+  }
+
+  if (!p->had_error)
+    return procedure;
+
+  else {
+    // Compile error.
+    if (!ad_hoc)
+      // Discard any erroneous p-code emitted.
+      procedure->code.instructions.len = prev_code_len;
+
+    return NULL;
+  }
 }

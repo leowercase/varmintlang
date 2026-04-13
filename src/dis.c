@@ -175,8 +175,11 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_var_op(PARTIAL, size)
   case_var_op(CALL, size)
   case_i(CALL_UNARY)
-  case_i(RETURN)
 
+  case_i(RETURN)
+  case_i(SUSPEND)
+
+  case OP_HALT:
   case OP_GC:
     break; // Special instruction, shouldn't appear in code
   }

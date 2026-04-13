@@ -91,7 +91,10 @@ typedef enum {
   var(OP_PARTIAL),
   var(OP_CALL),
   OP_CALL_UNARY,
+
   OP_RETURN,
+  OP_SUSPEND,
+  OP_HALT,
 
   // Special instruction for GC
   OP_GC,
@@ -154,6 +157,7 @@ typedef struct Procedure {
   Str name;
   size_t arity;
   PCode code;
+  String *source;
   ClosureDesc closure_desc;
 } Procedure;
 

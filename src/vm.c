@@ -47,124 +47,6 @@ static inline uint16_t read_16(Varmint *vm)
   return uint8_to_16(vm->frame->ip - 2);
 }
 
-// Call a procedure.
-static void call(Varmint *vm,
-    Procedure *procedure,
-    Upval **upvalues, size_t upvalue_count)
-{
-  if (vm->call_stack.len >= CALL_STACK_MAX)
-    runtime_error(vm, "maximum call depth exceeded.");
-
-  // Create new frame for procedure call.
-  CallFrame frame;
-  frame.procedure = procedure;
-  frame.ip = procedure->code.instructions.data;
-
-  frame.upvalues = upvalues;
-  frame.upvalue_count = upvalue_count;
-
-  size_t argc = procedure->arity;
-
-  if (vm->op_stack.len > 0)
-    // (`argc` + 1) slots for parameters and the fn itself
-    frame.op_stack = &vm->op_stack.data[vm->op_stack.len - argc - 1];
-
-  else {
-    // Begin program.
-    frame.op_stack = &vm->op_stack.data[0];
-    OpStack_push(&vm->op_stack, value_new(procedure, procedure));
-  }
-
-  vm->frame = CallStack_push(&vm->call_stack, frame);
-}
-
-// Call a native function.
-static void call_native(Varmint *vm, Native *native)
-{
-  Value *params = allocate(NULL, (size_t)native->arity * sizeof(Value));
-  // Get parameters
-  for (size_t i = 1; i <= native->arity; i++) {
-    Value param = pop(vm);
-    if (param.type == V_no)
-      runtime_error(vm, "cannot pass in parameter with no value");
-
-    params[native->arity - i] = param;
-  }
-
-  // Call native function.
-  Value result = native->fn(vm, params);
-
-  free(params);
-  pop(vm); // Pop native function value off the op stack
-  push(vm, result);
-}
-
-static void check_fn_argc(Varmint *vm, size_t arity, Str name, size_t argc)
-{
-  if (name.len == 0)
-    name = str_from("function");
-
-  if (arity != argc)
-    runtime_error(vm, "expect %li parameters to %.*s but got %li",
-        arity, (int)name.len, name.s, argc);
-}
-
-static void call_val(Varmint *vm, Value callee, size_t argc)
-{
-  switch (callee.type) {
-  case V_native:
-    {
-      Native *fn = &vm->natives.data[callee.as.native];
-      check_fn_argc(vm, fn->arity, fn->name, argc);
-
-      call_native(vm, fn);
-      break;
-    }
-  case V_procedure:
-    {
-      Procedure *fn = callee.as.procedure;
-      check_fn_argc(vm, fn->arity, fn->name, argc);
-
-      call(vm, fn, NULL, 0);
-      break;
-    }
-  case V_closure:
-    {
-      Closure *c = callee.as.closure;
-      Procedure *fn = c->procedure;
-      check_fn_argc(vm, fn->arity, fn->name, argc);
-
-      call(vm, fn, c->upvalues, c->upvalue_count);
-      break;
-    }
-  case V_partial:
-    {
-      Partial *p = callee.as.partial;
-      ensure_stack_len(vm, vm->op_stack.len + p->application_count);
-
-      Value *callee_slot = top(vm) - argc;
-      Value *params = callee_slot + 1;
-
-      // Adjust parameter positions.
-      for (size_t i = 0; i < argc; i++)
-        params[p->application_count + i] = params[i];
-
-      // Place the partially applied parameters
-      for (size_t i = 0; i < p->application_count; i++)
-        params[i] = p->applied[i];
-
-      vm->op_stack.len += p->application_count;
-      *callee_slot = p->callee;
-
-      call_val(vm, p->callee, argc + p->application_count);
-      break;
-    }
-  default:
-    runtime_error(vm, "cannot call value of type %s",
-        value_type_cstring(callee.type));
-  }
-}
-
 static inline Value *get_stack_slot(Varmint *vm, size_t stack_slot)
 {
   Value *slot = &vm->frame->op_stack[stack_slot];
@@ -265,6 +147,105 @@ static bool for_loop_next(Varmint *vm, Value iterable, size_t counter)
   return true;
 }
 
+// Call a procedure.
+static void call(Varmint *vm,
+    Procedure *procedure,
+    Upval **upvalues, size_t upvalue_count)
+{
+  if (vm->call_stack.len >= CALL_STACK_MAX)
+    runtime_error(vm, "maximum call depth exceeded.");
+
+  // Create new frame for procedure call.
+  CallFrame frame;
+  frame.procedure = procedure;
+  frame.ip = procedure->code.instructions.data;
+
+  frame.upvalues = upvalues;
+  frame.upvalue_count = upvalue_count;
+
+  size_t argc = procedure->arity;
+
+  if (vm->op_stack.len > 0)
+    // (`argc` + 1) slots for parameters and the fn itself
+    frame.op_stack = &vm->op_stack.data[vm->op_stack.len - argc - 1];
+
+  else {
+    // Begin program.
+    frame.op_stack = &vm->op_stack.data[0];
+    OpStack_push(&vm->op_stack, value_new(procedure, procedure));
+  }
+
+  vm->frame = CallStack_push(&vm->call_stack, frame);
+}
+
+static void check_fn_argc(Varmint *vm, size_t arity, Str name, size_t argc)
+{
+  if (name.len == 0)
+    name = str_from("function");
+
+  if (arity != argc)
+    runtime_error(vm, "expect %li parameters to %.*s but got %li",
+        arity, (int)name.len, name.s, argc);
+}
+
+// Call a value.
+static void call_val(Varmint *vm, Value callee, size_t argc)
+{
+  switch (callee.type) {
+  case V_native:
+    {
+      Value *argv = argc == 0 ? NULL : top(vm) - argc + 1;
+      Value result = callee.as.native(vm, argc, argv);
+
+      popn(vm, argc); // Pop parameters off the op stack
+      *top(vm) = result;
+      break;
+    }
+  case V_procedure:
+    {
+      Procedure *fn = callee.as.procedure;
+      check_fn_argc(vm, fn->arity, fn->name, argc);
+
+      call(vm, fn, NULL, 0);
+      break;
+    }
+  case V_closure:
+    {
+      Closure *c = callee.as.closure;
+      Procedure *fn = c->procedure;
+      check_fn_argc(vm, fn->arity, fn->name, argc);
+
+      call(vm, fn, c->upvalues, c->upvalue_count);
+      break;
+    }
+  case V_partial:
+    {
+      Partial *p = callee.as.partial;
+      ensure_stack_len(vm, vm->op_stack.len + p->application_count);
+
+      Value *callee_slot = top(vm) - argc;
+      Value *params = callee_slot + 1;
+
+      // Adjust parameter positions.
+      for (size_t i = 0; i < argc; i++)
+        params[p->application_count + i] = params[i];
+
+      // Place the partially applied parameters
+      for (size_t i = 0; i < p->application_count; i++)
+        params[i] = p->applied[i];
+
+      vm->op_stack.len += p->application_count;
+      *callee_slot = p->callee;
+
+      call_val(vm, p->callee, argc + p->application_count);
+      break;
+    }
+  default:
+    runtime_error(vm, "cannot call value of type %s",
+        value_type_cstring(callee.type));
+  }
+}
+
 void call_program(Varmint *vm, Procedure *program)
 {
   call(vm, program, NULL, 0);
@@ -272,8 +253,6 @@ void call_program(Varmint *vm, Procedure *program)
 
 void run_bytecode(Varmint *vm)
 {
-  // Macros really help with some of the tedium here.
-
 #define UNARY(expr) { \
     Value operand = peek(vm, 0); \
     *top(vm) = (expr); \
@@ -807,7 +786,7 @@ void run_bytecode(Varmint *vm)
         if (vm->call_stack.len == 0) {
           // Return from program.
           vm->result = return_val;
-          goto exit;
+          return;
         }
 
         // Push return value
@@ -816,6 +795,15 @@ void run_bytecode(Varmint *vm)
         vm->frame = CallStack_top(&vm->call_stack);
         break;
       }
+
+      // Suspend execution in order to continue at a later time.
+    case OP_SUSPEND:
+      vm->result = peek(vm, 0);
+      return;
+
+      // Halt erroneous program execution.
+    case OP_HALT:
+      return;
 
       // Collect garbage.
       // This instruction is only ever encountered by the VM when the garbage
@@ -827,9 +815,6 @@ void run_bytecode(Varmint *vm)
       break;
     }
   }
-
-exit:
-  return;
 
 #undef UNARY
 #undef BINARY

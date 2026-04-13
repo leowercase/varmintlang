@@ -37,7 +37,8 @@ static const uint8_t GC_INSTRUCTION = OP_GC;
 // (but that is left as an exercise for the reader. :)
 static inline void set_gc_ip(Varmint *vm)
 {
-  if (vm->call_stack.len == 0 || vm->frame->ip == &GC_INSTRUCTION)
+  if (vm->call_stack.len == 0
+      || *vm->frame->ip == OP_HALT || *vm->frame->ip == OP_GC)
     return;
   vm->gc_resume_ip = vm->frame->ip;
   vm->frame->ip = &GC_INSTRUCTION;
