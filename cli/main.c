@@ -175,6 +175,24 @@ static char *read_file(const char *filename)
   return contents;
 }
 
+// Add input to history.
+// Discard consecutive duplicate lines
+static void historize(char *input)
+{
+  HISTORY_STATE *hist = history_get_history_state();
+  if (hist->length == 0)
+    goto history;
+
+  HIST_ENTRY *prev = hist->entries[hist->length - 1];
+
+  if (prev->line == NULL || strcmp(prev->line, input) != 0)
+    goto history;
+
+  return;
+history:
+  add_history(input);
+}
+
 // Run a read-eval-print loop.
 static void run_repl(void)
 {
@@ -187,7 +205,7 @@ static void run_repl(void)
   for (;;) {
     char *input = readline("vm> ");
     if (!input) break;
-    add_history(input);
+    historize(input);
 
     // By default, evaluate input expr
     Opt opt = OPT_EVAL;
