@@ -149,7 +149,7 @@ static bool for_loop_next(Varmint *vm, Value iterable, size_t counter)
 
 // Call a procedure.
 static void call(Varmint *vm,
-    Procedure *procedure,
+    Procedure *procedure, Value *op_stack,
     Upval **upvalues, size_t upvalue_count)
 {
   if (vm->call_stack.len >= CALL_STACK_MAX)
@@ -165,15 +165,11 @@ static void call(Varmint *vm,
 
   size_t argc = procedure->arity;
 
-  if (vm->op_stack.len > 0)
+  if (op_stack == NULL)
     // (`argc` + 1) slots for parameters and the fn itself
     frame.op_stack = &vm->op_stack.data[vm->op_stack.len - argc - 1];
-
-  else {
-    // Begin program.
-    frame.op_stack = &vm->op_stack.data[0];
-    OpStack_push(&vm->op_stack, value_new(procedure, procedure));
-  }
+  else
+    frame.op_stack = op_stack;
 
   vm->frame = CallStack_push(&vm->call_stack, frame);
 }
@@ -189,13 +185,14 @@ static void check_fn_argc(Varmint *vm, size_t arity, Str name, size_t argc)
 }
 
 // Call a value.
-static void call_val(Varmint *vm, Value callee, size_t argc)
+static void call_val(Varmint *vm, Value *callee, size_t argc)
 {
-  switch (callee.type) {
+  Value *argv = callee + 1;
+
+  switch (callee->type) {
   case V_native:
     {
-      Value *argv = argc == 0 ? NULL : top(vm) - argc + 1;
-      Value result = callee.as.native(vm, argc, argv);
+      Value result = callee->as.native(vm, argc, argv);
 
       popn(vm, argc); // Pop parameters off the op stack
       *top(vm) = result;
@@ -203,52 +200,55 @@ static void call_val(Varmint *vm, Value callee, size_t argc)
     }
   case V_procedure:
     {
-      Procedure *fn = callee.as.procedure;
+      Procedure *fn = callee->as.procedure;
       check_fn_argc(vm, fn->arity, fn->name, argc);
 
-      call(vm, fn, NULL, 0);
+      call(vm, fn, callee, NULL, 0);
       break;
     }
   case V_closure:
     {
-      Closure *c = callee.as.closure;
+      Closure *c = callee->as.closure;
       Procedure *fn = c->procedure;
       check_fn_argc(vm, fn->arity, fn->name, argc);
 
-      call(vm, fn, c->upvalues, c->upvalue_count);
+      call(vm, fn, callee, c->upvalues, c->upvalue_count);
       break;
     }
   case V_partial:
     {
-      Partial *p = callee.as.partial;
+      Partial *p = callee->as.partial;
       ensure_stack_len(vm, vm->op_stack.len + p->application_count);
-
-      Value *callee_slot = top(vm) - argc;
-      Value *params = callee_slot + 1;
 
       // Adjust parameter positions.
       for (size_t i = 0; i < argc; i++)
-        params[p->application_count + i] = params[i];
+        argv[p->application_count + i] = argv[i];
 
       // Place the partially applied parameters
       for (size_t i = 0; i < p->application_count; i++)
-        params[i] = p->applied[i];
+        argv[i] = p->applied[i];
 
       vm->op_stack.len += p->application_count;
-      *callee_slot = p->callee;
+      *callee = p->callee;
 
-      call_val(vm, p->callee, argc + p->application_count);
+      call_val(vm, callee, argc + p->application_count);
       break;
     }
   default:
     runtime_error(vm, "cannot call value of type %s",
-        value_type_cstring(callee.type));
+        value_type_cstring(callee->type));
   }
 }
 
 void call_program(Varmint *vm, Procedure *program)
 {
-  call(vm, program, NULL, 0);
+  Value *slot = &vm->op_stack.data[0];
+
+  if (vm->op_stack.len == 0)
+    vm->op_stack.len = 1;
+
+  *slot = value_new(program, procedure);
+  call(vm, program, slot, NULL, 0);
 }
 
 void run_bytecode(Varmint *vm)
@@ -761,12 +761,12 @@ void run_bytecode(Varmint *vm)
       // Call a value
     case_var_op(OP_CALL, argc,
       {
-        call_val(vm, peek(vm, argc), argc);
+        call_val(vm, top(vm) - argc, argc);
         break;
       })
       // Call a value with a single parameter.
     case OP_CALL_UNARY:
-      call_val(vm, peek(vm, 1), 1);
+      call_val(vm, top(vm) - 1, 1);
       break;
 
       // Return from a function.
@@ -796,12 +796,13 @@ void run_bytecode(Varmint *vm)
         break;
       }
 
-      // Suspend execution in order to continue at a later time.
+      // Suspend program execution in order to continue at a later time.
     case OP_SUSPEND:
-      vm->result = peek(vm, 0);
+      vm->result =
+        vm->status == VM_A_OK ? peek(vm, 0) : NO_VALUE;
       return;
 
-      // Halt erroneous program execution.
+      // Halt erroneous execution.
     case OP_HALT:
       return;
 

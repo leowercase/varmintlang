@@ -33,7 +33,7 @@ static inline void end_semantic_scope(Parse *p)
 }
 
 static Local *create_local(Locals *locals,
-    Str name, int depth, bool initialized)
+    Str name, size_t depth, bool initialized)
 {
   Local local = {
     name, .stack_slot = 0, depth,
@@ -158,14 +158,10 @@ static void init_compiler(Parse *p, Locals arg_list)
 {
   Compiler *c = allocate(NULL, sizeof(Compiler));
 
-  Value proc_val = Procedure_create(p->vm, arg_list.len - 1, p->source);
-  GCList_push(&p->vm->compiler_roots, proc_val);
-
-  c->procedure = proc_val.as.procedure;
-
   c->depth = 0;
   c->locals = arg_list;
   c->stack_slot_count = arg_list.len;
+  c->argc = arg_list.len - 1;
 
   c->loops = LoopStack_init();
 
@@ -202,14 +198,18 @@ static Procedure *return_compiler(Parse *p)
   return procedure;
 }
 
-static void advance_lookahead(Parse *p);
-static Token next(Parse *p);
-
-static inline void init_lex(Parse *p, String *source)
+// Output the currently parsed p-code, otherwise defer all other compiler data
+// to a later time
+static Procedure *suspend_compiler(Parse *p)
 {
-  p->source = source;
-  p->lex = lex_new(source->s);
-  advance_lookahead(p); next(p);
+  Procedure *procedure = p->c->procedure;
+  GCList_pop(&p->vm->compiler_roots);
+
+  // Continue execution later.
+  emit_byte(p, p->current, OP_SUSPEND);
+
+  p->c->procedure = NULL;
+  return procedure;
 }
 
 Parse init_parse(Varmint *vm)
@@ -242,6 +242,29 @@ void free_parse(Parse *p)
   free(p->semantic.data);
 }
 
+static void advance_lookahead(Parse *p);
+static Token next(Parse *p);
+
+static inline void init_new_code(Parse *p, String *source)
+{
+  if (source != NULL) {
+    // Remember the new source string we're working with.
+    p->source = source;
+
+    // Initialize lex data
+    p->lex = lex_new(source->s);
+    // Token lookup.
+    advance_lookahead(p); next(p);
+  }
+  else
+    source = p->source;
+
+  Value proc_val = Procedure_create(p->vm, p->c->argc, source);
+  GCList_push(&p->vm->compiler_roots, proc_val);
+
+  p->c->procedure = proc_val.as.procedure;
+}
+
 // Issue a parsing error and enter panic mode in the imminent semantic scope.
 void parse_error(Parse *p, Token offending_tok, bool pointer,
     char *const msg, ...)
@@ -272,8 +295,7 @@ static inline Token peek(Parse *p)
 // Lex a new token into lookahead.
 static void advance_lookahead(Parse *p)
 {
-  for (;;) {
-    if (*p->lex.current == '\0') break;
+  while (!p->lex.ended) {
     Token t = p->lookahead = lex_token(&p->lex);
 
     // Catch as many consecutive error tokens as possible.
@@ -583,7 +605,7 @@ static void emit_identifier(Parse *p, Token ident_tok,
   }
 
   else {
-    parse_error(p, ident_tok, true, "use of undeclared variable %.*s",
+    parse_error(p, ident_tok, true, "undeclared variable %.*s",
         (int)ident.len, ident.s);
     return;
   }
@@ -1234,6 +1256,8 @@ static void function(Parse *p, Str name, Locals arg_list, bool let_declaration)
   init_compiler(p, arg_list);
   p->c->let_declaration = let_declaration;
 
+  init_new_code(p, NULL);
+
   expr(p, PREC_NONE);
 
   Procedure *proc = return_compiler(p);
@@ -1256,7 +1280,7 @@ static void single_arg_maplet(Parse *p, Str arg)
   Locals arg_list = Locals_with_cap(2);
 
   create_local(&arg_list, NULL_STR, 0, true); // Fn local
-  create_local(&arg_list, arg, 0, true); // Argument local
+  create_local(&arg_list, arg, 0, true)->stack_slot = 1; // Argument local
 
   maplet(p, arg_list);
 }
@@ -1816,48 +1840,52 @@ static const ParseRule *parse_rule(TokenType type)
 Procedure *compile(Varmint *vm, Parse *p, char *source)
 {
   bool ad_hoc = p == NULL;
+  String *source_string = String_own(vm, source).as.string;
 
   Parse new_parse;
-  size_t prev_code_len;
+  size_t initial_slot_count;
 
   if (ad_hoc) {
     // Embark on a brand new parse.
-    new_parse = init_parse(vm);
-    p = &new_parse;
+    new_parse = init_parse(vm); p = &new_parse;
   }
-  else {
-    // Continue with existing parse data.
-    prev_code_len = code_idx(p);
-    p->had_error = false;
-  }
+  else
+    // Continue with the parsing we've been doing.
+    initial_slot_count = p->c->stack_slot_count;
 
-  // Initialize lexer
-  String *source_string = String_own(vm, source).as.string;
-  init_lex(p, source_string);
+  init_new_code(p, source_string);
 
   // Parse program.
-  stmts(p, TK_EOF, ad_hoc);
+  if (peek_linewise(p).type == TK_EOF) {
+    emit_byte(p, p->current, OP_RESERVE_SLOT);
+    p->c->stack_slot_count++;
+  }
+  else
+    stmts(p, TK_EOF, ad_hoc);
 
-  // Return from program
   Procedure *procedure;
+  // Return from program
   if (ad_hoc) {
     procedure = return_compiler(p);
     free_parse(p);
   }
-  else {
-    emit_byte(p, p->current, OP_SUSPEND); // Continue execution later.
-    procedure = p->c->procedure;
+  else procedure = suspend_compiler(p);
+
+  if (p->had_error) {
+    procedure = NULL;
+
+    if (!ad_hoc) {
+      // Reset error state for the next run.
+      p->had_error = semantic(p)->panic = false;
+
+      // Delete erroneous top level locals
+      while (Locals_top(&p->c->locals)->depth == p->c->depth + 1)
+        Locals_pop(&p->c->locals);
+
+      // Ignore any tallied slots
+      p->c->stack_slot_count = initial_slot_count;
+    }
   }
 
-  if (!p->had_error)
-    return procedure;
-
-  else {
-    // Compile error.
-    if (!ad_hoc)
-      // Discard any erroneous p-code emitted.
-      procedure->code.instructions.len = prev_code_len;
-
-    return NULL;
-  }
+  return procedure;
 }

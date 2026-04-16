@@ -27,6 +27,7 @@ static inline size_t current_template_nesting(Lex *lex)
 static inline void end_lex(Lex *lex)
 {
   free(lex->template_nesting.data);
+  lex->ended = true;
 }
 
 // 1 character of lookahead.
@@ -85,6 +86,7 @@ static Token number(Lex *lex)
 
 static Token metastring(Lex *lex)
 {
+  char *start = lex->start;
   lex->start = lex->current;
 
   for (bool found_end = false; !found_end; next(lex)) {
@@ -97,6 +99,7 @@ static Token metastring(Lex *lex)
       lex->escaping_string = true;
       return token(lex, TK_STRCONT);
     case '\0':
+      lex->start = start;
       return error_token(lex, "unterminated string");
     case '\n':
       lex->line++;
@@ -512,7 +515,7 @@ void print_tokens(FILE *restrict stream, char *source)
         ANSI_RED "%s" ANSI_RESET "(" ANSI_YELLOW "`%.*s`" ANSI_RESET ") ",
         token_cstring(tok.type),
         (int)tok.slice.len, tok.slice.s);
-  } while (tok.type != TK_EOF);
+  } while (!l.ended);
 
   fprintf(stream, "\n");
 }

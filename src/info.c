@@ -65,9 +65,8 @@ void error_line_snip(char *source, size_t line, char *pointer_pos)
 
   if (pointer_pos != NULL) {
     int column = (int)(pointer_pos - s);
-    info_out("\t%*s^", column, "");
+    info_out("\t%*s^\n", column, "");
   }
-  error_out("\n");
 }
 
 static const uint8_t HALT_INSTRUCTION = OP_HALT;
@@ -81,8 +80,8 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
   va_end(args);
   error_out("\n");
 
-  for (CallFrame *frame = CallStack_top(&vm->call_stack);
-      frame >= vm->call_stack.data; frame--) {
+  // Stack trace.
+  for (CallFrame *frame = CallStack_top(&vm->call_stack);;) {
     Procedure *proc = frame->procedure;
 
     size_t offset = (size_t)(frame->ip - proc->code.instructions.data),
@@ -98,6 +97,9 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
       error_out("anonymous function:\n");
 
     error_line_snip(proc->source->s, line, NULL);
+
+    if (--frame < vm->call_stack.data) break;
+    else error_out("\n");
   }
 
 #ifdef VARMINT_DEBUG

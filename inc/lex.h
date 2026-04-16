@@ -151,6 +151,7 @@ typedef struct {
   char *current;
   size_t line;
 
+  bool ended;
   bool on_new_line;
   struct { bool use_spaces, use_tabs; } indent;
   TokenType comprehension;
@@ -164,6 +165,7 @@ Lex lex_new(char *source)
   Lex lex;
   lex.start = lex.current = source;
   lex.line = 1;
+  lex.ended = false;
   lex.on_new_line = true;
 
   lex.indent.use_spaces = lex.indent.use_tabs = false;

@@ -107,8 +107,7 @@ static void run(Varmint *vm, Opt opt, char *source,
       call_program(vm, program);
       run_bytecode(vm);
 
-      if (vm->status == VM_A_OK)
-        print_value(stdout, vm->result);
+      print_value(stdout, vm->result);
       printf("\n");
       break;
     }
@@ -190,7 +189,7 @@ static void run_repl(void)
     if (!input) break;
     add_history(input);
 
-    // Evaluate input expr by default
+    // By default, evaluate input expr
     Opt opt = OPT_EVAL;
     char *in = input;
 
@@ -214,7 +213,10 @@ static void run_repl(void)
     run(&vm, opt, in,
         NULL, NULL, &parse, true);
     printf("\n");
-    free(input);
+
+    // Reset status between lines.
+    vm.result = NO_VALUE;
+    vm.status = VM_A_OK;
   }
 
   free_parse(&parse);

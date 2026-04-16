@@ -23,7 +23,7 @@ typedef struct Parse Parse;
 typedef struct Local {
   Str name;
   size_t stack_slot;
-  int depth;
+  size_t depth;
   bool initialized;
   // Whether the local is captured by an upvalue
   bool is_captured;
@@ -122,9 +122,10 @@ struct Parse {
 typedef struct Compiler {
   struct Compiler *enclosing;
   Locals locals;
+  size_t argc;
   size_t stack_slot_count;
   LoopStack loops;
-  int depth; // Current block depth { { ... } }
+  size_t depth; // Current block depth { { ... } }
   bool let_declaration; // Whether is a function being declared with `let`.
   DeferredLet deferred_let;
   Procedure *procedure;
