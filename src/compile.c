@@ -1879,7 +1879,7 @@ Procedure *compile(Varmint *vm, Parse *p, char *source)
       p->had_error = semantic(p)->panic = false;
 
       // Delete erroneous top level locals
-      while (Locals_top(&p->c->locals)->depth == p->c->depth + 1)
+      while (Locals_top(&p->c->locals)->stack_slot >= initial_slot_count)
         Locals_pop(&p->c->locals);
 
       // Ignore any tallied slots
