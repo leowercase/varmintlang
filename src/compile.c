@@ -52,10 +52,9 @@ static Local *create_local_var(Parse *p, Str name)
   return local;
 }
 
-static UpvalDesc *create_upval(Parse *p, Compiler *c,
-    Str name, bool captures_local, size_t idx)
+static UpvalDesc *create_upval(Parse *p, Compiler *c, Str name)
 {
-  UpvalDesc upval = {name, captures_local, idx};
+  UpvalDesc upval = {name, .captures_local = false, .idx = 0};
   return ClosureDesc_push(p->vm, &c->procedure->closure_desc, upval);
 }
 
@@ -107,26 +106,43 @@ static Local *resolve_local(Compiler *c, Str name)
 }
 
 // Upvalue lookup.
-static UpvalDesc *resolve_upval(Parse *p, Compiler *c, Str name)
+// Create a new upvalue or reuse an old one
+static UpvalDesc *resolve_upval(Parse *p, Compiler *c,
+    Str name, UpvalDesc *upval)
 {
   if (c->enclosing == NULL)
     return NULL;
 
-  // Look at the enclosing function's locals.
-  Local *local = resolve_local(c->enclosing, name);
+  size_t idx;
+  bool captures_local;
+  Local *local;
+  UpvalDesc *enclosing_upval;
 
-  if (local != NULL) {
+  // Look at the enclosing function's locals.
+  if ((local =
+        resolve_local(c->enclosing, name)) != NULL) {
+    // Upvalue to local variable slot
     local->is_captured = true;
-    // Create new upvalue to that slot.
-    return create_upval(p, c, name, true, local->stack_slot);
+    idx = local->stack_slot;
+    captures_local = true;
   }
 
   // Look at the enclosing function's upvalues.
-  UpvalDesc *upval = resolve_upval(p, c->enclosing, name);
-  if (upval == NULL) return NULL;
+  else if ((enclosing_upval =
+        resolve_upval(p, c->enclosing, name, NULL)) != NULL) {
+    // Upvalue to another upvalue
+    idx = upval_idx(c->enclosing, enclosing_upval);
+    captures_local = false;
+  }
 
-  // Create a new upvalue to that upvalue
-  return create_upval(p, c, name, false, upval_idx(c->enclosing, upval));
+  // Return NULL when unable to resolve the identifier.
+  else return NULL;
+
+  // Initialize & return the resolved upval.
+  if (upval == NULL) upval = create_upval(p, c, name);
+  upval->idx = idx;
+  upval->captures_local = captures_local;
+  return upval;
 }
 
 // Hoisted `let` declaration lookup.
@@ -134,13 +150,13 @@ static size_t resolve_deferred_let(Parse *p, Token tok)
 {
   DeferredLet *deferred = &p->c->enclosing->deferred_let;
 
-  // Try to recycle an existing declaration
+  // Try to recycle an existing deferred declaration
   for (size_t i = 0; i < deferred->len; i++)
     if (strs_eq(deferred->data[i].tok.slice, tok.slice))
       return upval_idx(p->c, deferred->data[i].upval);
 
-  // Else, create a new upvalue.
-  UpvalDesc *upval = create_upval(p, p->c, tok.slice, true, 0);
+  // Else, create a new upvalue that will be resolved at the end of the `let`.
+  UpvalDesc *upval = create_upval(p, p->c, tok.slice);
   DeferredLet_push(deferred, (DeferredLookup){upval, tok});
   return upval_idx(p->c, upval);
 }
@@ -418,7 +434,7 @@ static bool match_op(Parse *p, TokenType expected)
 
 static const ParseRule *parse_rule(TokenType t);
 
-static inline bool is_nud(TokenType type) // Null denotation
+static inline bool is_expr(TokenType type) // Null denoted expression
 {
   return parse_rule(type)->nud != NULL || type == TK_LINE;
 }
@@ -451,7 +467,7 @@ static void leds(Parse *p, int min_bp)
     LedRule op_rule = parse_rule(op_token.type)->led;
 
     if (op_rule == NULL) {
-      if (is_nud(op_token.type)) op_rule = juxtaposed;
+      if (is_expr(op_token.type)) op_rule = juxtaposed;
       else {
         parse_error(p, op_token, true, "expect operator, got `%.*s`",
             (int)op_token.slice.len, op_token.slice.s);
@@ -525,7 +541,7 @@ static void stmts(Parse *p, TokenType end, bool end_scope)
 
     else {
       // Expression statement.
-      if (!is_nud(p->current.type))
+      if (!is_expr(p->current.type))
         parse_error(p, p->current, true, "invalid statement");
 
       expr(p, PREC_NONE);
@@ -587,19 +603,19 @@ static void emit_identifier(Parse *p, Token ident_tok,
     initialized = local->initialized;
   }
 
-  else if ((upval = resolve_upval(p, p->c, ident)) != NULL) {
-    semantic(p)->assign_fn = assign_upval;
-    semantic(p)->assignable.upval_idx = idx
-      = upval_idx(p->c, upval);
-    get_op = OP_GET_UPVALUE;
-    initialized = true;
-  }
-
   else if (p->c->let_declaration) {
     // Assume the variable is further defined in the `let`.
     semantic(p)->assign_fn = assign_upval;
     semantic(p)->assignable.upval_idx = idx
       = resolve_deferred_let(p, ident_tok);
+    get_op = OP_GET_UPVALUE;
+    initialized = true;
+  }
+
+  else if ((upval = resolve_upval(p, p->c, ident, NULL)) != NULL) {
+    semantic(p)->assign_fn = assign_upval;
+    semantic(p)->assignable.upval_idx = idx
+      = upval_idx(p->c, upval);
     get_op = OP_GET_UPVALUE;
     initialized = true;
   }
@@ -841,7 +857,7 @@ static void led_op(Parse *p, int min_bp)
   TokenType op_t = op_token.type,
             next_t = next_token.type;
 
-  if (!is_nud(next_t))
+  if (!is_expr(next_t))
     // Next token is not a valid rhs expression.
     goto postfix;
 
@@ -1210,7 +1226,7 @@ static void ufcs(Parse *p, int min_bp)
         break;
       }
 
-      else if (is_nud(tok.type)) {
+      else if (is_expr(tok.type)) {
         // Single juxtaposed operand.
         expr_rhs(p, PREC_CALL, ASSOC_RIGHT);
         emit_var_op(p, tok, OP_CALL, colon_count + 1);
@@ -1305,11 +1321,12 @@ static void fn_let(Parse *p, Str name)
 static void let_resolution(Parse *p, Local *first_local)
 {
   for (size_t i = 0; i < p->c->deferred_let.len; i++) {
-    DeferredLookup *l = &p->c->deferred_let.data[i];
-    Str ident = l->tok.slice;
+    DeferredLookup *deferred = &p->c->deferred_let.data[i];
+    Str ident = deferred->tok.slice;
 
     Local *deferred_local = NULL;
-    // Resolve from bottom up.
+
+    // First try to resolve from the clauses bottom up
     for (Local *local = first_local, *top = Locals_top(&p->c->locals);
         local <= top;
         local++)
@@ -1318,14 +1335,18 @@ static void let_resolution(Parse *p, Local *first_local)
         break;
       }
 
-    if (deferred_local == NULL) {
-      parse_error(p, l->tok, true, "use of undeclared variable %.*s",
-          (int)ident.len, ident.s);
+    if (deferred_local != NULL) {
+      deferred->upval->idx = deferred_local->stack_slot;
+      deferred->upval->captures_local = deferred_local->is_captured = true;
       continue;
     }
 
-    l->upval->idx = deferred_local->stack_slot;
-    l->upval->captures_local = deferred_local->is_captured = true;
+    // If that fails, try to resolve the upvalue.
+    if (resolve_upval(p, p->c, ident, deferred->upval) != NULL)
+      continue;
+
+    parse_error(p, deferred->tok, true, "undeclared variable %.*s",
+        (int)ident.len, ident.s);
   }
 
   p->c->deferred_let.len = 0;
@@ -1634,7 +1655,7 @@ static Loop *resolve_loop(Parse *p, Token control_flow)
 // Emit the result of a control flow keyword
 static void control_flow_result(Parse *p)
 {
-  bool has_result = is_nud(p->current.type);
+  bool has_result = is_expr(p->current.type);
   if (has_result)
     expr_rhs(p, PREC_FLOW, ASSOC_LEFT); // Parse resulting value.
   else
