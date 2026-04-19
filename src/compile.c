@@ -20,6 +20,8 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
   sem.indent.initial = semantic(p)->indent.initial;
   sem.indent.continued = semantic(p)->indent.continued;
   sem.if_else_chained = false;
+  sem.is_stmts = false;
+  sem.in_stmts = semantic(p)->is_stmts;
   sem.led_fail = false;
   sem.panic = semantic(p)->panic;
 
@@ -237,6 +239,7 @@ Parse init_parse(Varmint *vm)
   sem.assign_fn = sem.compound_assign_fn = NULL;
   sem.indent.initial = sem.indent.continued = 0;
   sem.if_else_chained = false;
+  sem.is_stmts = sem.in_stmts = false;
   sem.led_fail = false;
   sem.panic = false;
 
@@ -524,7 +527,7 @@ static size_t consume_let_clauses(Parse *p, bool let_stmt);
 // Parse a series of statements.
 static void stmts(Parse *p, TokenType end, bool end_scope)
 {
-  new_semantic_scope(p);
+  new_semantic_scope(p)->is_stmts = true;
 
   p->c->depth++;
   size_t slots = 0;
@@ -1352,19 +1355,21 @@ static void let_resolution(Parse *p, Local *first_local)
   p->c->deferred_let.len = 0;
 }
 
-// Consume comma-separated `let` declarations and return their total number
+// Consume comma-separated `let` declarations and return number of stack slots
+// occupied
 static size_t consume_let_clauses(Parse *p, bool let_stmt)
 {
   size_t ndecls = 0;
   new_semantic_scope(p);
 
-  Local *first_local = Locals_top(&p->c->locals) + 1; // `let` starts here
+  // Declarations start here
+  Local *first_local = Locals_top(&p->c->locals) + 1;
 
   do {
     Token ident_tok = peek_linewise(p);
 
     if (ident_tok.type != TK_WORD) {
-      if (ndecls > 0 && (!let_stmt || peek_linewise(p).type == TK_IN))
+      if (ndecls > 0 && (!let_stmt || ident_tok.type == TK_IN))
         // Trailing comma is allowed in a `let` expression
         break;
       else
@@ -1383,7 +1388,7 @@ static size_t consume_let_clauses(Parse *p, bool let_stmt)
       Local *local = create_local_var(p, ident_tok.slice);
 
       if (match_assignment(p)) {
-        expr_rhs(p, PREC_NONE, ASSOC_NONE);
+        expr_rhs(p, PREC_ASSIGN, ASSOC_NONE);
         local->initialized = true;
       }
       else
@@ -1417,11 +1422,14 @@ stmt_as_expr:
     local->depth++;
 
 end_expr:
-  expr(p, (int)PREC_TOP);
-  clear_local_scope(p);
+  expr(p, PREC_TOP);
+  p->c->stack_slot_count++;
 
+  clear_local_scope(p);
   end_block(p, p->current, ndecls + 1);
   p->c->depth--;
+
+  end_semantic_scope(p);
   return 1;
 }
 
@@ -1432,6 +1440,66 @@ static void let_expr(Parse *p)
   next(p); // `let`
   p->c->depth++;
   consume_let_clauses(p, false);
+}
+
+// Alternative syntax for name binding.
+// ... as x
+static void as_binding(Parse *p, int min_bp)
+{
+  if (PREC_TOP < min_bp) {
+    semantic(p)->led_fail = true;
+    return;
+  }
+
+  Token tok = p->current;
+
+  p->c->depth++;
+  bool as_stmt = semantic(p)->in_stmts;
+  Local *first_local = Locals_top(&p->c->locals) + 1;
+
+  // Consume declarations
+  size_t ndecls = 0;
+  for (;;) {
+    consume(p, TK_AS, "expect `as`");
+    Str ident = consume(p, TK_WORD, "expect identifier after `as`").slice;
+
+    create_local_var(p, ident)->initialized = true;
+    ndecls++;
+    p->c->stack_slot_count++;
+
+    if (!match(p, TK_COMMA))
+      break;
+    if (peek_linewise(p).type == TK_IN)
+      break; // Trailing comma.
+
+    // Parse the next bound expression
+    expr_rhs(p, PREC_TOP, ASSOC_LEFT);
+  }
+
+  if (as_stmt && peek_linewise(p).type != TK_IN) {
+    // Statement.
+    first_local->depth--;
+    p->c->depth--;
+    // The single local's stack slot is already accounted for when parsing
+    // statements, here decrement the count
+    p->c->stack_slot_count--;
+
+    // You can only have a single declaration inside an `as` stmt.
+    // Why use commas to delimit when you can already have semicolons?
+    if (ndecls > 1)
+      parse_error(p, tok, true,
+          "cannot have multiple declarations in an `as` statement");
+    return;
+  }
+
+  // Expression - parse the body.
+  consume(p, TK_IN, "expect `in` after `as` expression");
+  expr(p, PREC_TOP);
+  p->c->stack_slot_count++;
+
+  clear_local_scope(p);
+  end_block(p, tok, ndecls + 1);
+  p->c->depth--;
 }
 
 static inline bool is_else(Parse *p)
@@ -1796,13 +1864,15 @@ static const ParseRule parse_rules[] =
     [TK_GEQ]       = { NULL,       cmp         },
 
     [TK_ASSIGN]    = { NULL,       assign      },
+
     [TK_LET]       = { let_expr,   NULL        },
+    [TK_AS]        = { NULL,       as_binding  },
+
+    [TK_IN]        = { NULL,       led_end     },
 
     [TK_NOT]       = { prefix_op,  NULL        },
     [TK_AND]       = { NULL,       infix_op    },
     [TK_OR]        = { NULL,       infix_op    },
-
-    [TK_IN]        = { NULL,       led_end     },
 
     [TK_MOD]       = { NULL,       infix_op    },
 
@@ -1858,26 +1928,26 @@ static const ParseRule *parse_rule(TokenType type)
   return &parse_rules[type];
 }
 
-Procedure *compile(Varmint *vm, Parse *p, char *source)
+Procedure *compile(Varmint *vm, Parse *p, bool discard_state, String *source)
 {
   bool ad_hoc = p == NULL;
-  String *source_string = String_own(vm, source).as.string;
 
   Parse new_parse;
   size_t initial_slot_count;
 
   if (ad_hoc) {
     // Embark on a brand new parse.
-    new_parse = init_parse(vm); p = &new_parse;
+    new_parse = init_parse(vm);
+    p = &new_parse;
   }
   else
     // Continue with the parsing we've been doing.
     initial_slot_count = p->c->stack_slot_count;
 
-  init_new_code(p, source_string);
+  init_new_code(p, source);
 
   // Parse program.
-  if (peek_linewise(p).type == TK_EOF) {
+  if (p->current.type == TK_EOF) {
     emit_byte(p, p->current, OP_RESERVE_SLOT);
     p->c->stack_slot_count++;
   }
@@ -1894,18 +1964,19 @@ Procedure *compile(Varmint *vm, Parse *p, char *source)
 
   if (p->had_error) {
     procedure = NULL;
+    discard_state = true;
+  }
 
-    if (!ad_hoc) {
-      // Reset error state for the next run.
-      p->had_error = semantic(p)->panic = false;
+  if (!ad_hoc && discard_state) {
+    // Reset error state for the next run.
+    p->had_error = semantic(p)->panic = false;
 
-      // Delete erroneous top level locals
-      while (Locals_top(&p->c->locals)->stack_slot >= initial_slot_count)
-        Locals_pop(&p->c->locals);
+    // Delete top level locals
+    while (Locals_top(&p->c->locals)->stack_slot >= initial_slot_count)
+      Locals_pop(&p->c->locals);
 
-      // Ignore any tallied slots
-      p->c->stack_slot_count = initial_slot_count;
-    }
+    // Ignore any tallied slots
+    p->c->stack_slot_count = initial_slot_count;
   }
 
   return procedure;

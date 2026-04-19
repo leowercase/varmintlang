@@ -42,4 +42,6 @@ typedef DYN_ARRAY_STRUCT(CallFrame) CallStack;
 #define ARR CallStack
 #include "generic/dyn_array.inc"
 
+typedef struct Parse Parse;
+
 #endif

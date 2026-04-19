@@ -85,32 +85,22 @@ static Opt long_opt(const char *prefix, Str opt_s)
   return OPT_ERROR;
 }
 
-static void run(Varmint *vm, Opt opt, char *source,
+static void run(Varmint *vm, Opt opt, String *source,
     const char *program_name, const char *filename, Parse *parse, bool in_repl)
 {
   switch (opt) {
   case OPT_TOKENS:
-    print_tokens(stdout, source);
+    print_tokens(stdout, source->s);
     break;
   case OPT_DIS:
-    {
-      Procedure *program = compile(vm, parse, source);
-      if (program == NULL) return;
-      dis(stdout, program, filename);
-      break;
-    }
+    dis_source(stdout, vm, parse, source, filename);
+    break;
   case OPT_EVAL:
-    {
-      Procedure *program = compile(vm, parse, source);
-      if (program == NULL) return;
-
-      call_program(vm, program);
-      run_bytecode(vm);
-
+    if (varmint_run_with(vm, parse, false, source) == VM_A_OK) {
       print_value(stdout, vm->result);
       printf("\n");
-      break;
     }
+    break;
   case OPT_HELP:
     if (in_repl) {
       print_opts(":", ":");
@@ -185,10 +175,10 @@ static void historize(char *input)
 
   HIST_ENTRY *prev = hist->entries[hist->length - 1];
 
-  if (prev->line == NULL || strcmp(prev->line, input) != 0)
-    goto history;
-
+  bool dup = prev->line != NULL && strcmp(prev->line, input) == 0;
+  if (!dup) goto history;
   return;
+
 history:
   add_history(input);
 }
@@ -228,7 +218,10 @@ static void run_repl(void)
         opt = long_opt(":", cmd);
     }
 
-    run(&vm, opt, in,
+    String *source = String_from(&vm, in).as.string;
+    free(input);
+
+    run(&vm, opt, source,
         NULL, NULL, &parse, true);
     printf("\n");
 
@@ -271,7 +264,8 @@ int main(int argc, const char **argv)
         opt = short_opt("-", argv[1][1]);
     }
 
-    char *source;
+    Varmint vm = varmint_start();
+    String *source;
     const char *filename = NULL;
 
     if (opt == OPT_HELP)
@@ -285,11 +279,10 @@ int main(int argc, const char **argv)
 
     else {
       filename = argv[i];
-      source = read_file(filename);
+      source = String_own(&vm, read_file(filename)).as.string;
     }
 
     // Run script file.
-    Varmint vm = varmint_start();
     run(&vm, opt, source,
         program_name, filename, NULL, false);
 

@@ -29,9 +29,16 @@ void varmint_free(Varmint *vm)
   // NB! Don't free op stack, it isn't dynamically allocated.
 }
 
-VarmintStatus varmint_run(Varmint *vm, char *source)
+VarmintStatus varmint_run(Varmint *vm, String *source)
 {
-  Procedure *program = compile(vm, NULL, source);
+  return varmint_run_with(vm, NULL, true, source);
+}
+
+VarmintStatus varmint_run_with(Varmint *vm,
+    Parse *parse, bool discard_parse_state, String *source)
+{
+  Procedure *program = compile(
+      vm, parse, discard_parse_state, source);
 
   if (program != NULL) {
     call_program(vm, program);

@@ -1,5 +1,6 @@
-#include "../inc/info.h"
+#include "../inc/compile.h"
 #include "../inc/dis.h"
+#include "../inc/info.h"
 #include "../inc/util.h"
 #include "../inc/val.h"
 
@@ -225,4 +226,11 @@ void dis(FILE *restrict stream, Procedure *procedure, const char *name)
       dis(stream, fn, NULL);
     }
   }
+}
+
+void dis_source(FILE *restrict stream,
+    Varmint *vm, Parse *parse, String *source, const char *name)
+{
+  Procedure *procedure = compile(vm, parse, true, source);
+  dis(stream, procedure, name);
 }

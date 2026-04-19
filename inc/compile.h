@@ -16,8 +16,6 @@
  * https://en.wikipedia.org/wiki/Reverse_Polish_notation
  */
 
-typedef struct Parse Parse;
-
 // Local variable that resides on the operation stack.
 // Local going out of scope gets its value pushed off the stack.
 typedef struct Local {
@@ -94,6 +92,9 @@ typedef struct SemanticDatum {
   // if..else..elif chains are optimized a bit to avoid useless shuffling
   bool if_else_chained;
 
+  // Whether the current surrounding is in fact a statement or inside one
+  bool is_stmts, in_stmts;
+
   // Whether the latest left-denoted parse failed.
   bool led_fail;
 
@@ -142,8 +143,8 @@ void parse_error(Parse *p, Token offending_tok, bool pointer,
 typedef enum {
   PREC_NONE,
   PREC_ASSIGN,    // :=
-  PREC_TOP,       // let loop for while using
-  PREC_ELSE,      // else elif unwrapped
+  PREC_TOP,       // let as loop for while
+  PREC_ELSE,      // else elif
   PREC_IF,        // if
   PREC_FLOW,      // break continue return
   PREC_MAPLET,    // =>
@@ -198,6 +199,6 @@ void free_parse(Parse *p);
 
 // Compile some code into an executable procedure.
 // If the existing parse `p` is non-NULL, continue parsing with its data
-Procedure *compile(Varmint *vm, Parse *p, char *source);
+Procedure *compile(Varmint *vm, Parse *p, bool discard_state, String *source);
 
 #endif

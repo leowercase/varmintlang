@@ -37,7 +37,11 @@ typedef struct Varmint {
 Varmint varmint_start(void);
 
 // Run some code!
-VarmintStatus varmint_run(Varmint *vm, char *source);
+VarmintStatus varmint_run(Varmint *vm, String *source);
+
+// Run some code with previous parse state
+VarmintStatus varmint_run_with(Varmint *vm,
+    Parse *parse, bool discard_parse_state, String *source);
 
 // Free the poor beast.
 void varmint_free(Varmint *vm);
