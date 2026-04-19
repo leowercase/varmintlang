@@ -25,7 +25,7 @@ typedef enum {
   TK_2PIPE,
   TK_EQ, TK_NEQ, TK_LT, TK_GT, TK_LEQ, TK_GEQ,
   TK_ASSIGN,
-  TK_LET, TK_AS,
+  TK_VAR, TK_AS,
   TK_IN,
   TK_NOT,
   TK_AND, TK_OR,
@@ -85,14 +85,14 @@ bool is_ident_beginning(char c)
 static inline
 bool is_ident(char c)
 {
-  return is_ident_beginning(c) || isdigit(c);
+  return is_ident_beginning(c) || isdigit(c) || c == '\'';
 }
 
 static inline
 TokenType is_keyword(Str str)
 {
   const Str keywords[] = {
-    [TK_LET]       = str_from("let"),
+    [TK_VAR]       = str_from("var"),
     [TK_AS]        = str_from("as"),
     [TK_IN]        = str_from("in"),
     [TK_NOT]       = str_from("not"),
@@ -115,7 +115,7 @@ TokenType is_keyword(Str str)
     [TK_NONE]      = str_from("None"),
   };
   // This could be faster with a trie. Still sufficiently fast though.
-  for (int i = TK_LET; i <= TK_NONE; i++)
+  for (int i = TK_VAR; i <= TK_NONE; i++)
     if (strs_eq(keywords[i], str)) return (TokenType)i;
 
   return (TokenType)false;

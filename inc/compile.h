@@ -59,15 +59,15 @@ typedef DYN_ARRAY_STRUCT(Loop) LoopStack;
 #include "generic/dyn_array.inc"
 
 // To ease creating mutually recursive fns (among other things), we allow
-// deferred name resolution in a multiple `let` until the end of the clauses.
+// deferred name resolution in a multiple `var` until the end of the clauses.
 typedef struct {
   UpvalDesc *upval;
   Token tok;
 } DeferredLookup;
 
-typedef DYN_ARRAY_STRUCT(DeferredLookup) DeferredLet;
+typedef DYN_ARRAY_STRUCT(DeferredLookup) DeferredVar;
 #define T DeferredLookup
-#define ARR DeferredLet
+#define ARR DeferredVar
 #include "generic/dyn_array.inc"
 
 // Info about the current expression being parsed.
@@ -92,7 +92,8 @@ typedef struct SemanticDatum {
   // if..else..elif chains are optimized a bit to avoid useless shuffling
   bool if_else_chained;
 
-  // Whether the current surrounding is in fact a statement or inside one
+  size_t statement_count;
+  // Whether the current surrounding is a statement or inside one
   bool is_stmts, in_stmts;
 
   // Whether the latest left-denoted parse failed.
@@ -127,8 +128,8 @@ typedef struct Compiler {
   size_t stack_slot_count;
   LoopStack loops;
   size_t depth; // Current block depth { { ... } }
-  bool let_declaration; // Whether is a function being declared with `let`.
-  DeferredLet deferred_let;
+  bool var_declaration; // Whether is a function being declared with `var`.
+  DeferredVar deferred_var;
   Procedure *procedure;
 } Compiler;
 
@@ -143,7 +144,7 @@ void parse_error(Parse *p, Token offending_tok, bool pointer,
 typedef enum {
   PREC_NONE,
   PREC_ASSIGN,    // :=
-  PREC_TOP,       // let as loop for while
+  PREC_TOP,       // var as loop for while
   PREC_ELSE,      // else elif
   PREC_IF,        // if
   PREC_FLOW,      // break continue return

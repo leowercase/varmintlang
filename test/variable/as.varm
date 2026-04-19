@@ -1,4 +1,2 @@
-1 as one
-
-2 as two, 3 as three,
-  in one + two + three # 6
+"apple" as a, "pineapple" as p, "pen" as p',
+  in p' || p || a || p'

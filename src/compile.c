@@ -147,19 +147,19 @@ static UpvalDesc *resolve_upval(Parse *p, Compiler *c,
   return upval;
 }
 
-// Hoisted `let` declaration lookup.
-static size_t resolve_deferred_let(Parse *p, Token tok)
+// Hoisted `var` declaration lookup.
+static size_t resolve_deferred_var(Parse *p, Token tok)
 {
-  DeferredLet *deferred = &p->c->enclosing->deferred_let;
+  DeferredVar *deferred = &p->c->enclosing->deferred_var;
 
   // Try to recycle an existing deferred declaration
   for (size_t i = 0; i < deferred->len; i++)
     if (strs_eq(deferred->data[i].tok.slice, tok.slice))
       return upval_idx(p->c, deferred->data[i].upval);
 
-  // Else, create a new upvalue that will be resolved at the end of the `let`.
+  // Else, create a new upvalue that will be resolved at the end of the `var`.
   UpvalDesc *upval = create_upval(p, p->c, tok.slice);
-  DeferredLet_push(deferred, (DeferredLookup){upval, tok});
+  DeferredVar_push(deferred, (DeferredLookup){upval, tok});
   return upval_idx(p->c, upval);
 }
 
@@ -183,8 +183,8 @@ static void init_compiler(Parse *p, Locals arg_list)
 
   c->loops = LoopStack_init();
 
-  c->let_declaration = false;
-  c->deferred_let = DeferredLet_init();
+  c->var_declaration = false;
+  c->deferred_var = DeferredVar_init();
 
   // Switch compilers.
   // We're one function nesting level deeper.
@@ -196,6 +196,7 @@ static void descend_compilers(Parse *p)
 {
   Compiler *enclosing = p->c->enclosing;
   free(p->c->locals.data);
+  free(p->c->deferred_var.data);
   free(p->c);
   p->c = enclosing;
 }
@@ -522,33 +523,25 @@ static void indentation(Parse *p, int min_bp)
   leds(p, min_bp);
 }
 
-static size_t consume_let_clauses(Parse *p, bool let_stmt);
-
 // Parse a series of statements.
 static void stmts(Parse *p, TokenType end, bool end_scope)
 {
-  new_semantic_scope(p)->is_stmts = true;
+  SemanticDatum *scope = new_semantic_scope(p);
+  scope->is_stmts = true;
+  scope->statement_count = 0;
 
   p->c->depth++;
-  size_t slots = 0;
 
   // Consume statements
   while (!match(p, end)) {
-    if (match(p, TK_LET))
-      // `let` statement.
-      slots += consume_let_clauses(p, true);
-
-    else if (match(p, TK_SEMICOLON))
-      // Delimiter.
-      {}
-
+    if (match(p, TK_SEMICOLON)); // Delimiter.
     else {
       // Expression statement.
       if (!is_expr(p->current.type))
         parse_error(p, p->current, true, "invalid statement");
 
       expr(p, PREC_NONE);
-      slots++;
+      scope->statement_count++;
       p->c->stack_slot_count++;
     }
 
@@ -563,7 +556,7 @@ static void stmts(Parse *p, TokenType end, bool end_scope)
 
   if (end_scope) {
     clear_local_scope(p);
-    end_block(p, p->current, slots);
+    end_block(p, p->current, scope->statement_count);
   }
   p->c->depth--;
 
@@ -606,11 +599,11 @@ static void emit_identifier(Parse *p, Token ident_tok,
     initialized = local->initialized;
   }
 
-  else if (p->c->let_declaration) {
-    // Assume the variable is further defined in the `let`.
+  else if (p->c->var_declaration) {
+    // Assume the variable is further defined in the `var`.
     semantic(p)->assign_fn = assign_upval;
     semantic(p)->assignable.upval_idx = idx
-      = resolve_deferred_let(p, ident_tok);
+      = resolve_deferred_var(p, ident_tok);
     get_op = OP_GET_UPVALUE;
     initialized = true;
   }
@@ -1243,7 +1236,6 @@ static void ufcs(Parse *p, int min_bp)
 
       break;
     }
-
   }
 }
 
@@ -1267,13 +1259,13 @@ static Locals consume_arg_list(Parse *p, Str name)
 }
 
 // Parse the body and emit a new function.
-static void function(Parse *p, Str name, Locals arg_list, bool let_declaration)
+static void function(Parse *p, Str name, Locals arg_list, bool var_declaration)
 {
   // Reserve first stack slot for the function value
   Value *fn_constant = emit_constant(p, p->current, NO_VALUE);
 
   init_compiler(p, arg_list);
-  p->c->let_declaration = let_declaration;
+  p->c->var_declaration = var_declaration;
 
   init_new_code(p, NULL);
 
@@ -1305,8 +1297,8 @@ static void single_arg_maplet(Parse *p, Str arg)
 }
 
 // Function declaration.
-// let f(x, y) := ...
-static void fn_let(Parse *p, Str name)
+// var f(x, y) := ...
+static void fn_var(Parse *p, Str name)
 {
   Locals arg_list = consume_arg_list(p, name);
   Token rparen = consume(p, TK_RPAREN, "expect argument list end");
@@ -1321,20 +1313,18 @@ static void fn_let(Parse *p, Str name)
 }
 
 // Deferred name resolution.
-static void let_resolution(Parse *p, Local *first_local)
+static void var_resolve(Parse *p, Local *locals, size_t ndecls)
 {
-  for (size_t i = 0; i < p->c->deferred_let.len; i++) {
-    DeferredLookup *deferred = &p->c->deferred_let.data[i];
+  for (size_t i = 0; i < p->c->deferred_var.len; i++) {
+    DeferredLookup *deferred = &p->c->deferred_var.data[i];
     Str ident = deferred->tok.slice;
 
     Local *deferred_local = NULL;
 
     // First try to resolve from the clauses bottom up
-    for (Local *local = first_local, *top = Locals_top(&p->c->locals);
-        local <= top;
-        local++)
-      if (strs_eq(ident, local->name)) {
-        deferred_local = local;
+    for (size_t j = 0; j < ndecls; j++)
+      if (strs_eq(ident, locals[j].name)) {
+        deferred_local = &locals[j];
         break;
       }
 
@@ -1352,37 +1342,29 @@ static void let_resolution(Parse *p, Local *first_local)
         (int)ident.len, ident.s);
   }
 
-  p->c->deferred_let.len = 0;
+  p->c->deferred_var.len = 0;
 }
 
-// Consume comma-separated `let` declarations and return number of stack slots
-// occupied
-static size_t consume_let_clauses(Parse *p, bool let_stmt)
+// `var` binds variables to values.
+// Can be a statement, or an expression.
+// https://en.wikipedia.org/wiki/Let_expression
+static void var_bind(Parse *p)
 {
-  size_t ndecls = 0;
-  new_semantic_scope(p);
+  next(p); // `var`
+
+  bool is_statement = semantic(p)->in_stmts;
+  size_t decl_count = 0;
 
   // Declarations start here
-  Local *first_local = Locals_top(&p->c->locals) + 1;
+  Local *locals = Locals_top(&p->c->locals) + 1;
+  p->c->depth++;
 
-  do {
-    Token ident_tok = peek_linewise(p);
-
-    if (ident_tok.type != TK_WORD) {
-      if (ndecls > 0 && (!let_stmt || ident_tok.type == TK_IN))
-        // Trailing comma is allowed in a `let` expression
-        break;
-      else
-        // ...but not in a `let` statement.
-        parse_error(p, ident_tok, true, "expect identifier");
-    }
-
-    skip_line(p);
-    next(p); // Consume ident_tok
+  for (;;) {
+    Token ident_tok = consume(p, TK_WORD, "expect identifier");
 
     if (match(p, TK_LPAREN))
       // This is an argument list.
-      fn_let(p, ident_tok.slice);
+      fn_var(p, ident_tok.slice);
 
     else {
       Local *local = create_local_var(p, ident_tok.slice);
@@ -1396,55 +1378,45 @@ static size_t consume_let_clauses(Parse *p, bool let_stmt)
     }
 
     p->c->stack_slot_count++;
-    ndecls++;
-  } while (match(p, TK_COMMA));
+    decl_count++;
 
-  let_resolution(p, first_local);
-
-  // `let` expressions require `in`, but you can also provide `in` after
-  // a statement, turning it into an expression.
-  if (!let_stmt) {
-    consume(p, TK_IN, "expect `in` after `let` expression");
-    goto end_expr;
+    if (!match(p, TK_COMMA))
+      break;
+    if (peek_linewise(p).type == TK_IN)
+      break; // Trailing comma.
   }
-  else if (match(p, TK_IN)) goto stmt_as_expr;
 
-  // Statement.
-  end_semantic_scope(p);
-  return ndecls;
+  var_resolve(p, locals, decl_count);
 
-stmt_as_expr:
-  p->c->depth++;
-  // Move local declarations into inner expression scope.
-  for (Local *local = first_local, *top = Locals_top(&p->c->locals);
-      local <= top;
-      local++)
-    local->depth++;
+  if (is_statement) {
+    if (!match(p, TK_IN)) {
+      // Statement style `var`.
+      p->c->depth--;
+      semantic(p)[-1].statement_count += decl_count - 1;
 
-end_expr:
+      // Last slot is already accounted for when parsing statements.
+      p->c->stack_slot_count--;
+
+      // Move local declarations into outer statement scope.
+      for (size_t i = 0; i < decl_count; i++)
+        locals[i].depth--;
+      return;
+    }
+  }
+  else consume(p, TK_IN, "expect `in` after `var` expression");
+
+  // Expression style `var`
   expr(p, PREC_TOP);
   p->c->stack_slot_count++;
 
   clear_local_scope(p);
-  end_block(p, p->current, ndecls + 1);
+  end_block(p, p->current, decl_count + 1);
   p->c->depth--;
-
-  end_semantic_scope(p);
-  return 1;
-}
-
-// The more functional and mathsy cousin of `let`.
-// https://en.wikipedia.org/wiki/Let_expression
-static void let_expr(Parse *p)
-{
-  next(p); // `let`
-  p->c->depth++;
-  consume_let_clauses(p, false);
 }
 
 // Alternative syntax for name binding.
 // ... as x
-static void as_binding(Parse *p, int min_bp)
+static void as_bind(Parse *p, int min_bp)
 {
   if (PREC_TOP < min_bp) {
     semantic(p)->led_fail = true;
@@ -1453,18 +1425,19 @@ static void as_binding(Parse *p, int min_bp)
 
   Token tok = p->current;
 
-  p->c->depth++;
-  bool as_stmt = semantic(p)->in_stmts;
+  bool is_statement = semantic(p)->in_stmts;
+  size_t decl_count = 0;
+
   Local *first_local = Locals_top(&p->c->locals) + 1;
+  p->c->depth++;
 
   // Consume declarations
-  size_t ndecls = 0;
   for (;;) {
     consume(p, TK_AS, "expect `as`");
     Str ident = consume(p, TK_WORD, "expect identifier after `as`").slice;
 
     create_local_var(p, ident)->initialized = true;
-    ndecls++;
+    decl_count++;
     p->c->stack_slot_count++;
 
     if (!match(p, TK_COMMA))
@@ -1476,29 +1449,29 @@ static void as_binding(Parse *p, int min_bp)
     expr_rhs(p, PREC_TOP, ASSOC_LEFT);
   }
 
-  if (as_stmt && peek_linewise(p).type != TK_IN) {
-    // Statement.
+  if (is_statement && peek_linewise(p).type != TK_IN) {
+    // Statement style `as`.
     first_local->depth--;
     p->c->depth--;
-    // The single local's stack slot is already accounted for when parsing
-    // statements, here decrement the count
+
+    // Slot is already accounted for.
     p->c->stack_slot_count--;
 
     // You can only have a single declaration inside an `as` stmt.
     // Why use commas to delimit when you can already have semicolons?
-    if (ndecls > 1)
+    if (decl_count > 1)
       parse_error(p, tok, true,
           "cannot have multiple declarations in an `as` statement");
     return;
   }
 
-  // Expression - parse the body.
+  // Expression style `as`
   consume(p, TK_IN, "expect `in` after `as` expression");
   expr(p, PREC_TOP);
   p->c->stack_slot_count++;
 
   clear_local_scope(p);
-  end_block(p, tok, ndecls + 1);
+  end_block(p, tok, decl_count + 1);
   p->c->depth--;
 }
 
@@ -1865,8 +1838,8 @@ static const ParseRule parse_rules[] =
 
     [TK_ASSIGN]    = { NULL,       assign      },
 
-    [TK_LET]       = { let_expr,   NULL        },
-    [TK_AS]        = { NULL,       as_binding  },
+    [TK_VAR]       = { var_bind,   NULL        },
+    [TK_AS]        = { NULL,       as_bind     },
 
     [TK_IN]        = { NULL,       led_end     },
 
