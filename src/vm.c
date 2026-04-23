@@ -192,7 +192,8 @@ static void call_val(Varmint *vm, Value *callee, size_t argc)
   switch (callee->type) {
   case V_native:
     {
-      Value result = callee->as.native(vm, argc, argv);
+      ArgList args = {argc, argv};
+      Value result = callee->as.native(vm, &args);
 
       popn(vm, argc); // Pop parameters off the op stack
       *top(vm) = result;
@@ -244,10 +245,14 @@ void call_program(Varmint *vm, Procedure *program)
 {
   Value *slot = &vm->op_stack.data[0];
 
+  // Retain old op stack values!
   if (vm->op_stack.len == 0)
     vm->op_stack.len = 1;
 
   *slot = value_new(program, procedure);
+
+  // Reset calls
+  vm->call_stack.len = 0;
   call(vm, program, slot, NULL, 0);
 }
 
@@ -303,6 +308,20 @@ void run_bytecode(Varmint *vm)
     case OP_GEQ: BINARY(_vm_greater_than_or_eq(vm, lhs, rhs))
 
     case OP_CONCAT: BINARY(_vm_concat(vm, lhs, rhs))
+
+      // Initialize builtin stack slots
+    case OP_INIT_BUILTINS:
+      for (size_t i = 0; i < vm->builtins.len; i++)
+        push(vm, vm->builtins.data[i].value);
+      break;
+      // ...Discard them.
+    case OP_DISCARD_BUILTINS:
+      {
+        Value top = pop(vm);
+        popn(vm, vm->builtins.len);
+        push(vm, top);
+        break;
+      }
 
       // Load a constant value.
     case_var_op(OP_CONST, idx,

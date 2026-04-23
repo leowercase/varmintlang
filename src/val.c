@@ -8,6 +8,70 @@
 // https://github.com/Cyan4973/xxHash
 #include <xxhash.h>
 
+bool varm_arg(struct Varmint *vm,
+    struct ArgList *args, const char *format, ...)
+{
+  va_list ap;
+  va_start(ap, format);
+
+  size_t i;
+  for (i = 0; format[i] != '\0'; i++) {
+    Value arg = args->argv[i];
+    Typetag argt = arg.type;
+
+    switch (format[i]) {
+      // Value
+    case 'v':
+      *va_arg(ap, Value *) = arg;
+      break;
+      // Number
+    case 'n':
+      *va_arg(ap, float64_t *) = typechecked(vm, arg, number);
+      break;
+      // Number cast to int
+    case 'i':
+      *va_arg(ap, int *) = (int)typechecked(vm, arg, number);
+      break;
+      // Boolean
+    case 'b':
+      *va_arg(ap, bool *) = typechecked(vm, arg, boolean);
+      break;
+      // Maybe
+    case 'M':
+      *va_arg(ap, Maybe **) = typechecked(vm, arg, maybe);
+      break;
+      // String
+    case 'S':
+      *va_arg(ap, String **) = typechecked(vm, arg, string);
+      break;
+      // List
+    case 'L':
+      *va_arg(ap, List **) = typechecked(vm, arg, list);
+      break;
+      // Table
+    case 'T':
+      *va_arg(ap, Table **) = typechecked(vm, arg, table);
+      break;
+      // Callable
+    case 'C':
+      if (!value_is_callable(argt))
+        runtime_error(vm, "expect callable arg, got %s",
+            value_type_cstring(argt));
+      *va_arg(ap, Value *) = arg;
+      break;
+    default:
+      unreachable();
+    }
+  }
+
+  if (i != args->argc)
+    runtime_error(vm, "expect %li args to function, got %li",
+        i, args->argc);
+
+  va_end(ap);
+  return vm->status == VM_A_OK;
+}
+
 Value Maybe_some(Varmint *vm, Value raw)
 {
   Value val = *create_gc_obj(vm, V_maybe, sizeof(Maybe));
@@ -435,6 +499,19 @@ bool value_is_hashable(Typetag t)
   case V_native:
   case V_maybe:
   case V_string:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool value_is_callable(Typetag t)
+{
+  switch (t) {
+  case V_native:
+  case V_procedure:
+  case V_closure:
+  case V_partial:
     return true;
   default:
     return false;

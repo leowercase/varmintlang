@@ -3,6 +3,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <time.h>
 
 #define BINOP_(lhs, op, rhs, vm_value_t, vm_return_t) { \
   return value_new( \
@@ -205,7 +206,7 @@ Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
   default:
     runtime_error(vm, "cannot index into %s",
         value_type_cstring(collection.type));
-    unreachable();
+    return NO_VALUE;
   }
 }
 
@@ -230,21 +231,24 @@ Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
   default:
     runtime_error(vm, "cannot index into %s",
         value_type_cstring(collection.type));
-    unreachable();
+    return NO_VALUE;
   }
 }
 
-Value _typeof(Varmint *vm, Value *args)
+Value _typeof(Varmint *vm, ArgList *args)
 {
-  Value val = args[0];
-  const char *type_string = value_type_cstring(val.type);
+  Value val;
+  if (!varm_arg(vm, args, "v", &val))
+    return NO_VALUE;
 
-  return String_create(vm, type_string, strlen(type_string));
+  return String_from(vm, value_type_cstring(val.type));
 }
 
-Value _lenof(Varmint *vm, Value *args)
+Value _len(Varmint *vm, ArgList *args)
 {
-  Value collection = args[0];
+  Value collection;
+  if (!varm_arg(vm, args, "v", &collection))
+    return NO_VALUE;
 
   switch (collection.type) {
   case V_string:
@@ -260,42 +264,13 @@ Value _lenof(Varmint *vm, Value *args)
   }
 }
 
-Value _put(Varmint *vm, Value *args)
+Value _to_number(Varmint *vm, ArgList *args)
 {
-  Value output_string = args[0];
+  Value val;
+  if (!varm_arg(vm, args, "v", &val))
+    return NO_VALUE;
 
-  String *s = typechecked(vm, output_string, string);
-  printf("%.*s", (int)s->len, s->s);
-
-  return NO_VALUE;
-}
-
-Value _putln(Varmint *vm, Value *args)
-{
-  Value output_string = args[0];
-
-  String *s = typechecked(vm, output_string, string);
-  printf("%.*s\n", (int)s->len, s->s);
-
-  return NO_VALUE;
-}
-
-Value _input(Varmint *vm, Value *_)
-{
-  return String_readline(vm, NULL);
-}
-
-Value _prompt(Varmint *vm, Value *args)
-{
-  Value prompt = args[0];
-  return String_readline(vm, typechecked(vm, prompt, string)->s);
-}
-
-Value _to_number(Varmint *vm, Value *args)
-{
   float64_t n;
-
-  Value val = args[0];
 
   switch (val.type) {
   case V_no: case V_upval:
@@ -347,25 +322,76 @@ no_num:
   return Maybe_none();
 }
 
-Value _rot(Varmint *vm, Value *args)
+Value _unwrap(Varmint *vm, ArgList *args)
 {
-  Value shift = args[0],
-        text = args[1];
+  Maybe *unwrappee;
+  if (!varm_arg(vm, args, "M", &unwrappee))
+    return NO_VALUE;
 
-  int shift_n = (int)typechecked(vm, shift, number);
-  String *s = typechecked(vm, text, string);
+  if (unwrappee == NULL) {
+    runtime_error(vm, "unwrap of None");
+    return NO_VALUE;
+  }
 
-  Value ciphertext = String_create(vm, s->s, s->len);
+  return unwrappee->raw;
+}
+
+Value _put(Varmint *vm, ArgList *args)
+{
+  String *output;
+  if (!varm_arg(vm, args, "S", &output))
+    return NO_VALUE;
+
+  printf("%.*s", (int)output->len, output->s);
+  return NO_VALUE;
+}
+
+Value _putln(Varmint *vm, ArgList *args)
+{
+  String *output;
+  if (!varm_arg(vm, args, "S", &output))
+    return NO_VALUE;
+
+  printf("%.*s\n", (int)output->len, output->s);
+  return NO_VALUE;
+}
+
+Value _input(Varmint *vm, ArgList *args)
+{
+  String *prompt;
+  if (!varm_arg(vm, args, "S", &prompt))
+    return NO_VALUE;
+
+  return String_readline(vm, prompt->s);
+}
+
+Value _time(Varmint *vm, ArgList *args)
+{
+  if (!varm_arg(vm, args, ""))
+    return NO_VALUE;
+
+  clock_t time = clock();
+  return value_new((float64_t)time, number);
+}
+
+Value _rot(Varmint *vm, ArgList *args)
+{
+  int shift;
+  String *text;
+  if (!varm_arg(vm, args, "iS", &shift, &text))
+    return NO_VALUE;
+
+  Value ciphertext = String_create(vm, text->s, text->len);
 
   // https://en.wikipedia.org/wiki/Caesar_cipher
-  for (size_t i = 0; i < s->len; i++) {
-    const char c = s->s[i];
+  for (size_t i = 0; i < text->len; i++) {
+    const char c = text->s[i];
 
     if (!isalpha(c))
       ciphertext.as.string->s[i] = c;
 
     else {
-      char ciphered_c = (((toupper(c) - 'A') + shift_n) % 26) + 'A';
+      char ciphered_c = (((toupper(c) - 'A') + shift) % 26) + 'A';
       if (islower(c))
         ciphered_c = (char)tolower(ciphered_c);
 

@@ -38,6 +38,9 @@ typedef enum {
   OP_GEQ,
   OP_CONCAT,
 
+  OP_INIT_BUILTINS,
+  OP_DISCARD_BUILTINS,
+
   var(OP_CONST),
   OP_ZERO,
   OP_ONE,

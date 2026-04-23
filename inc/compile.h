@@ -118,6 +118,7 @@ struct Parse {
   struct Compiler *c;
   Varmint *vm;
   String *source;
+  bool builtins_emitted;
 };
 
 // Compiler for a procedure

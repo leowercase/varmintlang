@@ -170,13 +170,18 @@ static void mark_obj(Varmint *vm, Value obj)
 static void mark(Varmint *vm)
 {
   // 1. Move root objects to the "greys" worklist.
-  // Among the roots are: compiler roots, the operation stack
+  // Among the roots are: compiler roots, the operation stack, builtins
 
   for (size_t i = 0; i < vm->compiler_roots.len; i++)
     add_grey(vm, vm->compiler_roots.data[i]);
 
   for (size_t i = 0; i < vm->op_stack.len; i++) {
     Value val = vm->op_stack.data[i];
+    if (is_heaped_value(val)) add_grey(vm, val);
+  }
+
+  for (size_t i = 0; i < vm->builtins.len; i++) {
+    Value val = vm->builtins.data[i].value;
     if (is_heaped_value(val)) add_grey(vm, val);
   }
 
@@ -254,9 +259,9 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
 
 void sweep(Varmint *vm)
 {
-  if (vm->gc_objects == NULL) return;
-
   for (Value **head = &vm->gc_objects, *obj = vm->gc_objects; obj != NULL;) {
+    assert(is_heaped_value(*obj));
+
     GCData *data = obj->as.gc_data;
 
     if (data->is_safe) {
@@ -309,6 +314,8 @@ void gc_end(Varmint *vm)
   for (Value *obj = vm->gc_objects; obj != NULL;) {
     Typetag t = obj->type;
     GCData *data = obj->as.gc_data;
+
+    assert(is_heaped_value(*obj));
 
     Value *next_obj = data->next;
 

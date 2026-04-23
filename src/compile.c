@@ -210,6 +210,10 @@ static Procedure *return_compiler(Parse *p)
   Procedure *procedure = p->c->procedure;
   GCList_pop(&p->vm->compiler_roots);
 
+  // Discard builtins if at program scope.
+  if (p->c->enclosing == NULL)
+    emit_byte(p, p->current, OP_DISCARD_BUILTINS);
+
   // Return from procedure.
   emit_byte(p, p->current, OP_RETURN);
   descend_compilers(p);
@@ -236,6 +240,8 @@ Parse init_parse(Varmint *vm)
   Parse p;
   p.vm = vm;
 
+  p.builtins_emitted = false;
+
   SemanticDatum sem;
   sem.assign_fn = sem.compound_assign_fn = NULL;
   sem.indent.initial = sem.indent.continued = 0;
@@ -250,6 +256,7 @@ Parse init_parse(Varmint *vm)
   p.had_error = false;
 
   Locals initial_locals = arg_list_init(NULL_STR);
+
   p.c = NULL;
   init_compiler(&p, initial_locals);
 
@@ -1356,7 +1363,7 @@ static void var_bind(Parse *p)
   size_t decl_count = 0;
 
   // Declarations start here
-  Local *locals = Locals_top(&p->c->locals) + 1;
+  size_t locals_idx = p->c->locals.len;
   p->c->depth++;
 
   for (;;) {
@@ -1386,6 +1393,7 @@ static void var_bind(Parse *p)
       break; // Trailing comma.
   }
 
+  Local *locals = &p->c->locals.data[locals_idx];
   var_resolve(p, locals, decl_count);
 
   if (is_statement) {
@@ -1428,7 +1436,7 @@ static void as_bind(Parse *p, int min_bp)
   bool is_statement = semantic(p)->in_stmts;
   size_t decl_count = 0;
 
-  Local *first_local = Locals_top(&p->c->locals) + 1;
+  size_t first_local_idx = p->c->locals.len;
   p->c->depth++;
 
   // Consume declarations
@@ -1451,7 +1459,7 @@ static void as_bind(Parse *p, int min_bp)
 
   if (is_statement && peek_linewise(p).type != TK_IN) {
     // Statement style `as`.
-    first_local->depth--;
+    p->c->locals.data[first_local_idx].depth--;
     p->c->depth--;
 
     // Slot is already accounted for.
@@ -1918,6 +1926,18 @@ Procedure *compile(Varmint *vm, Parse *p, bool discard_state, String *source)
     initial_slot_count = p->c->stack_slot_count;
 
   init_new_code(p, source);
+
+  // Initialize builtins.
+  if (!p->builtins_emitted) {
+    for (size_t i = 0; i < p->vm->builtins.len; i++) {
+      Str name = vm->builtins.data[i].name;
+      create_local_var(p, name)->initialized = true;
+      p->c->stack_slot_count++;
+    }
+
+    emit_byte(p, p->current, OP_INIT_BUILTINS);
+    p->builtins_emitted = true;
+  }
 
   // Parse program.
   if (p->current.type == TK_EOF) {

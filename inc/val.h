@@ -11,10 +11,15 @@
 
 struct Varmint;
 struct Value;
+struct ArgList;
 
 // Native function.
 typedef struct Value (*NativeFn)(struct Varmint *vm,
-                                 size_t argc, struct Value *argv);
+                                  struct ArgList *args);
+
+// Parse arguments of a native function.
+bool varm_arg(struct Varmint *vm,
+    struct ArgList *args, const char *format, ...);
 
 // Dynamic typing; values carry a typetag during runtime.
 typedef enum {
@@ -71,6 +76,8 @@ bool value_is_falsey(Value val);
 // Obtain the 64-bit hash of a value.
 uint64_t hash_value(Value val);
 bool value_is_hashable(Typetag t);
+
+bool value_is_callable(Typetag t);
 
 const char *value_type_cstring(Typetag type);
 Value value_to_string(struct Varmint *vm, Value val);

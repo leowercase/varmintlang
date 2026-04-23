@@ -40,24 +40,26 @@ Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val);
 /* INTERNAL FUNCTIONS */
 
 // typeof(val) -> string
-Value _typeof(Varmint *vm, Value *args);
-// lenof(collection) -> number
-Value _lenof(Varmint *vm, Value *args);
-
-// put(output: string)
-Value _put(Varmint *vm, Value *args);
-// putln(output: string)
-Value _putln(Varmint *vm, Value *args);
-
-// input() -> string
-Value _input(Varmint *vm, Value *_);
-// prompt(prompt: string) -> string
-Value _prompt(Varmint *vm, Value *args);
+Value _typeof(Varmint *vm, ArgList *args);
+// len(collection) -> number
+Value _len(Varmint *vm, ArgList *args);
 
 // to_number(val) -> maybe(number)
-Value _to_number(Varmint *vm, Value *args);
+Value _to_number(Varmint *vm, ArgList *args);
+// unwrap(val: maybe) -> ?
+Value _unwrap(Varmint *vm, ArgList *args);
+
+// put(output: string)
+Value _put(Varmint *vm, ArgList *args);
+// putln(output: string)
+Value _putln(Varmint *vm, ArgList *args);
+// input(prompt: string) -> string
+Value _input(Varmint *vm, ArgList *args);
+
+// time() -> number
+Value _time(Varmint *vm, ArgList *args);
 
 // rot(shift: number, text: string) -> string
-Value _rot(Varmint *vm, Value *args);
+Value _rot(Varmint *vm, ArgList *args);
 
 #endif
