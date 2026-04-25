@@ -182,6 +182,9 @@ static Token word(Lex *lex)
   while (is_ident(*lex->current))
     next(lex);
 
+  while (is_ident_end(*lex->current))
+    next(lex);
+
   Token word = token(lex, TK_WORD);
 
   TokenType keyword = is_keyword(word.slice);

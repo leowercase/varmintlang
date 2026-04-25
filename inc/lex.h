@@ -85,7 +85,13 @@ bool is_ident_beginning(char c)
 static inline
 bool is_ident(char c)
 {
-  return is_ident_beginning(c) || isdigit(c) || c == '\'';
+  return is_ident_beginning(c) || isdigit(c);
+}
+
+static inline
+bool is_ident_end(char c)
+{
+  return c == '\'';
 }
 
 static inline
