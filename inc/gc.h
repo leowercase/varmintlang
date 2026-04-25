@@ -29,7 +29,7 @@ void gc_free(struct Varmint *vm, void *ptr, size_t size);
 void gc_own_bytes(struct Varmint *vm, size_t nbytes);
 
 // Create a new GC object.
-Value *create_gc_obj(struct Varmint *vm, Typetag type, size_t size);
+GCData *create_gc_obj(struct Varmint *vm, Typetag type, size_t size);
 
 // Trigger garbage collection.
 void gcollect(struct Varmint *vm);

@@ -17,6 +17,7 @@ static const NameValue default_builtins[] = {
   { str_from("len"),       value_new(_len,        native) },
 
   { str_from("to_number"), value_new(_to_number,  native) },
+  { str_from("to_string"), value_new(_to_string,  native) },
   { str_from("unwrap"),    value_new(_unwrap,     native) },
 
   { str_from("put"),       value_new(_put,        native) },

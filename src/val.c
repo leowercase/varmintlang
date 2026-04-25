@@ -74,54 +74,56 @@ bool varm_arg(struct Varmint *vm,
 
 Value Maybe_some(Varmint *vm, Value raw)
 {
-  Value val = *create_gc_obj(vm, V_maybe, sizeof(Maybe));
-  val.as.maybe->raw = raw;
-  return val;
+  Maybe *mbe = (Maybe *)create_gc_obj(vm, V_maybe, sizeof(Maybe));
+  mbe->raw = raw;
+  return value_new(mbe, maybe);
 }
 
 Value Maybe_none(void)
 {
   // None isn't GC'd.
-  Value val;
-  val.type = V_maybe;
-  val.as.maybe = NULL;
+  Value val = {V_maybe, .as.maybe = NULL};
   return val;
 }
 
 Value List_create(Varmint *vm, size_t cap)
 {
-  Value val = *create_gc_obj(vm, V_list, sizeof(List));
+  List *l = (List *)create_gc_obj(vm, V_list, sizeof(List));
 
-  List *l = val.as.list;
   l->len = l->cap = 0;
   l->data = NULL;
 
   List_adjust_cap(vm, l, cap);
-  return val;
+  return value_new(l, list);
 }
 
 Value Table_create(Varmint *vm, size_t entry_count)
 {
-  Value val = *create_gc_obj(vm, V_table, sizeof(Table));
+  Table *tb = (Table *)create_gc_obj(vm, V_table, sizeof(Table));
 
-  Table *tb = val.as.table;
   tb->entry_count = tb->cap = 0;
   tb->entries = NULL;
 
   if (entry_count > 0) Table_reserve_size(vm, tb, entry_count);
-  return val;
+  return value_new(tb, table);
+}
+
+static Value String_bare(Varmint *vm, char *s, size_t len)
+{
+  String *t = (String *)create_gc_obj(vm, V_string, sizeof(String));
+  t->s = s;
+  t->len = len;
+  return value_new(t, string);
 }
 
 Value String_create(Varmint *vm, const char *s, size_t len)
 {
-  Value val = *create_gc_obj(vm, V_string, sizeof(String));
-  val.as.string->len = len;
+  char *allocd_chars = gc_alloc(vm, NULL, 0, len * sizeof(char) + sizeof('\0'));
 
-  val.as.string->s = gc_alloc(vm, NULL, 0, len * sizeof(char) + sizeof('\0'));
-  memcpy(val.as.string->s, s, len);
-  val.as.string->s[len] = '\0';
+  memcpy(allocd_chars, s, len);
+  allocd_chars[len] = '\0';
 
-  return val;
+  return String_bare(vm, allocd_chars, len);
 }
 
 Value String_from(Varmint *vm, const char *s)
@@ -131,21 +133,15 @@ Value String_from(Varmint *vm, const char *s)
 
 Value String_own(Varmint *vm, char *allocated_cstring)
 {
-  Value val = *create_gc_obj(vm, V_string, sizeof(String));
-
   size_t len = strlen(allocated_cstring);
-  val.as.string->len = len;
-
-  val.as.string->s = allocated_cstring;
   gc_own_bytes(vm, len * sizeof(char));
 
-  return val;
+  return String_bare(vm, allocated_cstring, len);
 }
 
-Value String_copy(Varmint *vm, Value *string_val)
+Value String_copy(Varmint *vm, String *string)
 {
-  return String_create(vm,
-      string_val->as.string->s, string_val->as.string->len);
+  return String_create(vm, string->s, string->len);
 }
 
 // Format strings just like sprintf et al., except retaining sanity
@@ -179,10 +175,7 @@ Value String_fmt(Varmint *vm, const char *fmt, ...)
     runtime_error(vm, "string formatting failed");
   }
 
-  Value val = *create_gc_obj(vm, V_string, sizeof(String));
-  val.as.string->len = len;
-  val.as.string->s = s;
-  return val;
+  return String_bare(vm, s, len);
 }
 
 Value String_concat(Varmint *vm, Value *head, Value *tail)
@@ -194,24 +187,17 @@ Value String_concat(Varmint *vm, Value *head, Value *tail)
   memcpy(s, head_s->s, head_s->len);
   memcpy(s + head_s->len, tail_s->s, tail_s->len + 1);
 
-  Value result = *create_gc_obj(vm, V_string, sizeof(String));
-  result.as.string->s = s;
-  result.as.string->len = len;
-  return result;
+  return String_bare(vm, s, len);
 }
 
 Value String_readline(Varmint *vm, const char *prompt)
 {
   char *line = readline(prompt);
 
-  if (line == NULL) {
-    Value empty = *create_gc_obj(vm, V_string, sizeof(String));
-    empty.as.string->s = NULL;
-    empty.as.string->len = 0;
-    return empty;
-  }
-
-  return String_own(vm, line);
+  if (line == NULL)
+    return String_bare(vm, NULL, 0);
+  else
+    return String_own(vm, line);
 }
 
 Str String_as_str(Value *val)
@@ -221,8 +207,8 @@ Str String_as_str(Value *val)
 
 Value Procedure_create(Varmint *vm, size_t arity, String *source)
 {
-  Value val = *create_gc_obj(vm, V_procedure, sizeof(Procedure));
-  Procedure *proc = val.as.procedure;
+  Procedure *proc = (Procedure *)
+    create_gc_obj(vm, V_procedure, sizeof(Procedure));
 
   // Initialize p-code
   proc->code.constants = Constants_init();
@@ -237,7 +223,7 @@ Value Procedure_create(Varmint *vm, size_t arity, String *source)
 
   proc->arity = arity;
   proc->name = NULL_STR;
-  return val;
+  return value_new(proc, procedure);
 }
 
 // Allocate a closure and its upvalues.
@@ -246,24 +232,23 @@ Value Closure_create(Varmint *vm, Procedure *procedure)
   ClosureDesc desc = procedure->closure_desc;
 
   size_t size = sizeof(Closure) + desc.len * sizeof(Upval *);
-  Value val = *create_gc_obj(vm, V_closure, size);
+  Closure *c = (Closure *)create_gc_obj(vm, V_closure, size);
 
-  Closure *c = val.as.closure;
   c->upvalue_count = desc.len;
   c->procedure = procedure;
 
-  return val;
+  return value_new(c, closure);
 }
 
 // Allocate a partial application.
 Value Partial_create(Varmint *vm, Value callee, size_t count)
 {
   size_t size = sizeof(Partial) + count * sizeof(Value);
-  Value val = *create_gc_obj(vm, V_partial, size);
+  Partial *p = (Partial *)create_gc_obj(vm, V_partial, size);
 
-  val.as.partial->callee = callee;
-  val.as.partial->application_count = count;
-  return val;
+  p->callee = callee;
+  p->application_count = count;
+  return value_new(p, partial);
 }
 
 bool values_eq(Value a, Value b)
@@ -357,7 +342,7 @@ Value value_to_string(Varmint *vm, Value val)
     else
       return value_to_string(vm, val.as.maybe->raw);
   case V_string:
-    return String_copy(vm, &val);
+    return String_copy(vm, val.as.string);
   case V_list:
     return String_from(vm, "<list>");
   case V_table:

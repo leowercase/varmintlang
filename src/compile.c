@@ -22,7 +22,7 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
   sem.if_else_chained = false;
   sem.is_stmts = false;
   sem.in_stmts = semantic(p)->is_stmts;
-  sem.led_fail = false;
+  sem.led_end = false;
   sem.panic = semantic(p)->panic;
 
   return SemanticData_push(&p->semantic, sem);
@@ -65,6 +65,78 @@ static inline size_t upval_idx(Compiler *c, UpvalDesc *upval)
   return (size_t)(upval - c->procedure->closure_desc.data);
 }
 
+// Returns the index of the hoisted `var` upvalue in the upvalues array.
+static size_t deferred_var_idx(Parse *p, Token tok)
+{
+  DeferredVar *deferred_var = &p->c->enclosing->deferred_var;
+
+  // Create a new upvalue that will be resolved at the end of the `var`.
+  UpvalDesc *upval = create_upval(p, p->c, tok.slice);
+  DeferredVar_push(deferred_var, (DeferredLookup){upval, tok});
+  return upval_idx(p->c, upval);
+}
+
+// Local variable lookup.
+static Local *resolve_local(Compiler *c, Str name)
+{
+  if (c->locals.len == 0)
+    return NULL;
+
+  // Try to find a local in the current function.
+  for (Local *local = Locals_top(&c->locals);
+      local >= c->locals.data;
+      local--)
+    if (strs_eq(local->name, name))
+      return local;
+
+  return NULL;
+}
+
+static UpvalDesc *resolve_upval(Parse *p, Compiler *c, Str name);
+
+// Upvalue lookup.
+static UpvalDesc *resolve_upval_from(Parse *p,
+    Compiler *enclosing, UpvalDesc *upval)
+{
+  if (enclosing == NULL)
+    return NULL;
+
+  size_t idx;
+  bool captures_local;
+  Local *local;
+  UpvalDesc *enclosing_upval;
+
+  // Look at the enclosing function's locals.
+  if ((local = resolve_local(enclosing, upval->name))
+      != NULL) {
+    // Upvalue to local variable slot
+    idx = local->stack_slot;
+    captures_local = local->is_captured = true;
+  }
+
+  // Look at the enclosing function's upvalues.
+  else if ((enclosing_upval = resolve_upval(p, enclosing, upval->name))
+      != NULL) {
+    // Upvalue to another upvalue
+    idx = upval_idx(enclosing, enclosing_upval);
+    captures_local = false;
+  }
+
+  // Return NULL when unable to resolve the identifier.
+  else return NULL;
+
+  // Initialize & return the resolved upval.
+  upval->idx = idx;
+  upval->captures_local = captures_local;
+  return upval;
+}
+
+static UpvalDesc *resolve_upval(Parse *p, Compiler *c, Str name)
+{
+  UpvalDesc *upval = create_upval(p, c, name);
+  return resolve_upval_from(p, c->enclosing, upval);
+}
+
 static void clear_local_scope(Parse *p)
 {
   if (p->c->locals.len == 0)
@@ -91,84 +163,13 @@ static void end_block(Parse *p, Token block_tok, size_t slots)
     emit_var_op(p, block_tok, OP_END_BLOCK, slots);
 }
 
-// Local variable lookup.
-static Local *resolve_local(Compiler *c, Str name)
-{
-  if (c->locals.len == 0)
-    return NULL;
-
-  // Try to find a local in the current function.
-  for (Local *local = Locals_top(&c->locals);
-      local >= c->locals.data;
-      local--)
-    if (strs_eq(local->name, name))
-      return local;
-
-  return NULL;
-}
-
-// Upvalue lookup.
-// Create a new upvalue or reuse an old one
-static UpvalDesc *resolve_upval(Parse *p, Compiler *c,
-    Str name, UpvalDesc *upval)
-{
-  if (c->enclosing == NULL)
-    return NULL;
-
-  size_t idx;
-  bool captures_local;
-  Local *local;
-  UpvalDesc *enclosing_upval;
-
-  // Look at the enclosing function's locals.
-  if ((local =
-        resolve_local(c->enclosing, name)) != NULL) {
-    // Upvalue to local variable slot
-    local->is_captured = true;
-    idx = local->stack_slot;
-    captures_local = true;
-  }
-
-  // Look at the enclosing function's upvalues.
-  else if ((enclosing_upval =
-        resolve_upval(p, c->enclosing, name, NULL)) != NULL) {
-    // Upvalue to another upvalue
-    idx = upval_idx(c->enclosing, enclosing_upval);
-    captures_local = false;
-  }
-
-  // Return NULL when unable to resolve the identifier.
-  else return NULL;
-
-  // Initialize & return the resolved upval.
-  if (upval == NULL) upval = create_upval(p, c, name);
-  upval->idx = idx;
-  upval->captures_local = captures_local;
-  return upval;
-}
-
-// Hoisted `var` declaration lookup.
-static size_t resolve_deferred_var(Parse *p, Token tok)
-{
-  DeferredVar *deferred = &p->c->enclosing->deferred_var;
-
-  // Try to recycle an existing deferred declaration
-  for (size_t i = 0; i < deferred->len; i++)
-    if (strs_eq(deferred->data[i].tok.slice, tok.slice))
-      return upval_idx(p->c, deferred->data[i].upval);
-
-  // Else, create a new upvalue that will be resolved at the end of the `var`.
-  UpvalDesc *upval = create_upval(p, p->c, tok.slice);
-  DeferredVar_push(deferred, (DeferredLookup){upval, tok});
-  return upval_idx(p->c, upval);
-}
-
 // The first slots of a call frame are reserved for the function value itself
 // and the parameters that were passed in.
 static inline Locals arg_list_init(Str name)
 {
   Locals arg_list = Locals_with_cap(1);
-  create_local(&arg_list, name, 0, true); // Local representing the fn itself.
+  create_local(&arg_list, name, 0, true)
+    ->stack_slot = 0; // Local representing the fn itself.
   return arg_list;
 }
 
@@ -247,7 +248,7 @@ Parse init_parse(Varmint *vm)
   sem.indent.initial = sem.indent.continued = 0;
   sem.if_else_chained = false;
   sem.is_stmts = sem.in_stmts = false;
-  sem.led_fail = false;
+  sem.led_end = false;
   sem.panic = false;
 
   p.semantic = SemanticData_init();
@@ -490,7 +491,7 @@ static void leds(Parse *p, int min_bp)
     semantic(p)->panic = false; // Synchronize error state
     op_rule(p, min_bp);
 
-    if (semantic(p)->led_fail)
+    if (semantic(p)->led_end)
       break; // Precedence too small or op_token otherwise cannot be a LED
   }
 }
@@ -523,7 +524,7 @@ static void indentation(Parse *p, int min_bp)
   size_t indent = p->current.slice.len;
 
   if (!set_continued_line_indent(p, indent)) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
   next(p); // Line token
@@ -542,6 +543,10 @@ static void stmts(Parse *p, TokenType end, bool end_scope)
   // Consume statements
   while (!match(p, end)) {
     if (match(p, TK_SEMICOLON)); // Delimiter.
+
+    else if (match(p, TK_EOF))
+      parse_error(p, p->current, false, "expect end of statements");
+
     else {
       // Expression statement.
       if (!is_expr(p->current.type))
@@ -587,37 +592,39 @@ static void assign_upval(Parse *p)
 static void emit_identifier(Parse *p, Token ident_tok,
     bool assign, bool access)
 {
-  Str ident = ident_tok.slice;
+  Str identifier = ident_tok.slice;
 
   Local *local = NULL;
   UpvalDesc *upval = NULL;
 
-  size_t idx;
   Opcode get_op;
+  size_t operand;
   bool initialized;
   semantic(p)->assigned_tok = ident_tok;
   semantic(p)->compound_assign_fn = NULL;
 
-  if ((local = resolve_local(p->c, ident)) != NULL) {
+  if ((local = resolve_local(p->c, identifier)) != NULL) {
+    // The identifier refers to a slot on the operation stack.
     semantic(p)->assign_fn = assign_local;
     semantic(p)->assignable.local = local;
-    idx = local->stack_slot;
+    operand = local->stack_slot;
     get_op = OP_GET;
     initialized = local->initialized;
   }
 
   else if (p->c->var_declaration) {
-    // Assume the variable is further defined in the `var`.
+    // For now assume the variable is further defined in the `var`.
     semantic(p)->assign_fn = assign_upval;
-    semantic(p)->assignable.upval_idx = idx
-      = resolve_deferred_var(p, ident_tok);
+    semantic(p)->assignable.upval_idx = operand
+      = deferred_var_idx(p, ident_tok);
     get_op = OP_GET_UPVALUE;
     initialized = true;
   }
 
-  else if ((upval = resolve_upval(p, p->c, ident, NULL)) != NULL) {
+  else if ((upval = resolve_upval(p, p->c, identifier)) != NULL) {
+    // Closed over variable.
     semantic(p)->assign_fn = assign_upval;
-    semantic(p)->assignable.upval_idx = idx
+    semantic(p)->assignable.upval_idx = operand
       = upval_idx(p->c, upval);
     get_op = OP_GET_UPVALUE;
     initialized = true;
@@ -625,17 +632,17 @@ static void emit_identifier(Parse *p, Token ident_tok,
 
   else {
     parse_error(p, ident_tok, true, "undeclared variable %.*s",
-        (int)ident.len, ident.s);
+        (int)identifier.len, identifier.s);
     return;
   }
 
   if (access) {
     // Access.
     if (initialized)
-      emit_var_op(p, ident_tok, get_op, idx);
+      emit_var_op(p, ident_tok, get_op, operand);
     else
       parse_error(p, ident_tok, true, "variable %.*s has not been initialized",
-          (int)ident.len, ident.s);
+          (int)identifier.len, identifier.s);
   }
   if (!assign)
     semantic(p)->assign_fn = NULL;
@@ -699,7 +706,7 @@ static bool match_assignment(Parse *p)
 static inline void assignage(Parse *p, int min_bp, Opcode op_shorthand)
 {
   if (PREC_ASSIGN < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
 
@@ -791,14 +798,14 @@ static void infix_op(Parse *p, int min_bp)
   Token op_token = p->current;
   BinaryOp op = infix_ops[op_token.type];
 
-  // Assignment shorthand
   if (peek(p).type == TK_ASSIGN) {
+    // Compound assignment
     assignage(p, min_bp, op.type);
     return;
   }
 
   if ((int)op.precedence < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
 
@@ -822,7 +829,7 @@ static void postfix_op(Parse *p, int min_bp)
 
   int l_bp = (int)op.precedence;
   if (l_bp < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
 
@@ -925,17 +932,17 @@ static void cmp_chain(Parse *p, bool is_continuation)
   }
 }
 
-// Chained comparison operators.
+// Chainable comparison operators.
 // a > b >= c /= d
 static void cmp(Parse *p, int min_bp)
 {
   if (PREC_CMP < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
 
-  // Assignment shorthand
   if (peek(p).type == TK_ASSIGN) {
+    // Compound assignment
     assignage(p, min_bp, infix_ops[p->current.type].type);
     return;
   }
@@ -1151,7 +1158,7 @@ static void identifier(Parse *p)
 static void subscript(Parse *p, int min_bp)
 {
   if (PREC_CALL < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
 
@@ -1166,7 +1173,7 @@ static void subscript(Parse *p, int min_bp)
 static void invocation(Parse *p, int min_bp)
 {
   if (PREC_CALL < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
   Token paren = p->current;
@@ -1182,7 +1189,7 @@ static void invocation(Parse *p, int min_bp)
 static void juxtaposed(Parse *p, int min_bp)
 {
   if (PREC_CALL < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
   Token tok = p->current;
@@ -1196,7 +1203,7 @@ static void juxtaposed(Parse *p, int min_bp)
 static void ufcs(Parse *p, int min_bp)
 {
   if (PREC_UFCS < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
 
@@ -1297,7 +1304,7 @@ static void single_arg_maplet(Parse *p, Str arg)
 {
   Locals arg_list = Locals_with_cap(2);
 
-  create_local(&arg_list, NULL_STR, 0, true); // Fn local
+  create_local(&arg_list, NULL_STR, 0, true)->stack_slot = 0; // Fn local
   create_local(&arg_list, arg, 0, true)->stack_slot = 1; // Argument local
 
   maplet(p, arg_list);
@@ -1320,40 +1327,45 @@ static void fn_var(Parse *p, Str name)
 }
 
 // Deferred name resolution.
-static void var_resolve(Parse *p, Local *locals, size_t ndecls)
+static void resolve_var(Parse *p, Local *locals, size_t ndecls)
 {
-  for (size_t i = 0; i < p->c->deferred_var.len; i++) {
+  for (size_t i = 0, n = p->c->deferred_var.len;
+      i < n; i++) {
     DeferredLookup *deferred = &p->c->deferred_var.data[i];
-    Str ident = deferred->tok.slice;
+    Str identifier = deferred->tok.slice;
 
-    Local *deferred_local = NULL;
+    Local *deferred_decl = NULL;
 
-    // First try to resolve from the clauses bottom up
+    // First try to resolve from the variables the clauses declare, bottom up
     for (size_t j = 0; j < ndecls; j++)
-      if (strs_eq(ident, locals[j].name)) {
-        deferred_local = &locals[j];
+      if (strs_eq(identifier, locals[j].name)) {
+        deferred_decl = &locals[j];
         break;
       }
 
-    if (deferred_local != NULL) {
-      deferred->upval->idx = deferred_local->stack_slot;
-      deferred->upval->captures_local = deferred_local->is_captured = true;
+    if (deferred_decl != NULL) {
+      deferred->upval->idx = deferred_decl->stack_slot;
+      deferred->upval->captures_local = deferred_decl->is_captured = true;
       continue;
     }
 
-    // If that fails, try to resolve the upvalue.
-    if (resolve_upval(p, p->c, ident, deferred->upval) != NULL)
+    // If that fails, resolve the identifier just like any other upvalue.
+    if (resolve_upval_from(p, p->c, deferred->upval) != NULL)
       continue;
 
+    // upvalue resolution: try to resolve from the enclosing scope (this one)
+    // - a local
+    // - an upvalue (recursive)
+
     parse_error(p, deferred->tok, true, "undeclared variable %.*s",
-        (int)ident.len, ident.s);
+        (int)identifier.len, identifier.s);
   }
 
   p->c->deferred_var.len = 0;
 }
 
-// `var` binds variables to values.
-// Can be a statement, or an expression.
+// `var` declares variables.
+// Can be a statement or an expression.
 // https://en.wikipedia.org/wiki/Let_expression
 static void var_bind(Parse *p)
 {
@@ -1394,7 +1406,7 @@ static void var_bind(Parse *p)
   }
 
   Local *locals = &p->c->locals.data[locals_idx];
-  var_resolve(p, locals, decl_count);
+  resolve_var(p, locals, decl_count);
 
   if (is_statement) {
     if (!match(p, TK_IN)) {
@@ -1422,12 +1434,12 @@ static void var_bind(Parse *p)
   p->c->depth--;
 }
 
-// Alternative syntax for name binding.
+// `as` is alternative syntax for name binding.
 // ... as x
 static void as_bind(Parse *p, int min_bp)
 {
   if (PREC_TOP < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
 
@@ -1521,7 +1533,7 @@ static void else_elif(Parse *p, int min_bp)
 {
   // else and elif are left-denoted operators.
   if (PREC_ELSE < min_bp) {
-    semantic(p)->led_fail = true;
+    semantic(p)->led_end = true;
     return;
   }
   Token else_tok = p->current;
@@ -1817,7 +1829,7 @@ static void parens(Parse *p)
 static void led_end(Parse *p, int _)
 {
   // Skip further LED parsing at this depth.
-  semantic(p)->led_fail = true;
+  semantic(p)->led_end = true;
 }
 
 static const ParseRule parse_rules[] =

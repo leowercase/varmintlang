@@ -96,8 +96,8 @@ typedef struct SemanticDatum {
   // Whether the current surrounding is a statement or inside one
   bool is_stmts, in_stmts;
 
-  // Whether the latest left-denoted parse failed.
-  bool led_fail;
+  // Whether to stop a chain of left-denoted parses.
+  bool led_end;
 
   // When an error is reached, we ignore any further ones until we
   // hit a synchronization point.

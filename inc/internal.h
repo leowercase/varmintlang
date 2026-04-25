@@ -46,6 +46,8 @@ Value _len(Varmint *vm, ArgList *args);
 
 // to_number(val) -> maybe(number)
 Value _to_number(Varmint *vm, ArgList *args);
+// to_string(val) -> string
+Value _to_string(Varmint *vm, ArgList *args);
 // unwrap(val: maybe) -> ?
 Value _unwrap(Varmint *vm, ArgList *args);
 

@@ -85,7 +85,8 @@ void print_value(FILE *restrict stream, Value val);
 
 // GC'd values have the same initial sequence, GCData.
 typedef struct GCData {
-  Value *next;
+  Typetag type;
+  struct GCData *next;
   bool is_safe;
 } GCData;
 
@@ -152,7 +153,7 @@ Value Table_create(struct Varmint *vm, size_t cap);
 Value String_create(struct Varmint *vm, const char *s, size_t len);
 Value String_from(struct Varmint *vm, const char *cstring);
 Value String_own(struct Varmint *vm, char *allocated_cstring);
-Value String_copy(struct Varmint *vm, Value *string_val);
+Value String_copy(struct Varmint *vm, String *string);
 Value String_fmt(struct Varmint *vm, const char *fmt, ...);
 Value String_concat(struct Varmint *vm, Value *head, Value *tail);
 Value String_readline(struct Varmint *vm, const char *prompt);

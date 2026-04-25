@@ -81,7 +81,7 @@ static inline Upval *capture_local(Varmint *vm, size_t stack_slot)
     return upval;
 
   // Create a new upvalue.
-  Upval *new_upval = create_gc_obj(vm, V_upval, sizeof(Upval))->as.upval;
+  Upval *new_upval = (Upval *)create_gc_obj(vm, V_upval, sizeof(Upval));
   new_upval->loc = slot;
 
   // Insert into open upvalues list (at the right location).

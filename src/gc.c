@@ -72,20 +72,18 @@ void gc_own_bytes(Varmint *vm, size_t nbytes)
   record_bytes_delta(vm, 0, nbytes);
 }
 
-Value *create_gc_obj(Varmint *vm, Typetag type, size_t size)
+GCData *create_gc_obj(Varmint *vm, Typetag type, size_t size)
 {
   GCData *data = gc_alloc(vm, NULL, 0, size);
   data->is_safe = false;
 
-  Value *obj = gc_alloc(vm, NULL, 0, sizeof(Value));
-  obj->type = type;
-  obj->as.gc_data = data;
+  data->type = type;
 
   // Insert into objects list
   data->next = vm->gc_objects;
-  vm->gc_objects = obj;
+  vm->gc_objects = data;
 
-  return obj;
+  return data;
 }
 
 static inline void add_grey(Varmint *vm, Value obj)
@@ -192,13 +190,14 @@ static void mark(Varmint *vm)
     mark_obj(vm, GCList_pop(&vm->grey_worklist));
 }
 
-static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
+static void free_gc_obj(Varmint *vm, GCData *data)
 {
 #define FREE(T) gc_free(vm, data, sizeof(T))
 
-  GC_DBG_FMT_MSG("free %p of type %s\n", (void *)data, value_type_cstring(t));
+  GC_DBG_FMT_MSG("free %p of type %s\n",
+      (void *)data, value_type_cstring(data->type));
 
-  switch (t) {
+  switch (data->type) {
   case V_no:
   case V_number:
   case V_boolean:
@@ -259,29 +258,28 @@ static void free_obj_data(Varmint *vm, Typetag t, GCData *data)
 
 void sweep(Varmint *vm)
 {
-  for (Value **head = &vm->gc_objects, *obj = vm->gc_objects; obj != NULL;) {
-    assert(is_heaped_value(*obj));
+  for (GCData **head_ptr = &vm->gc_objects, *obj = vm->gc_objects;
+      obj != NULL;) {
+    if (obj->is_safe) {
+      // "Safe"
+      // Reset status for the next GC run.
+      obj->is_safe = false;
 
-    GCData *data = obj->as.gc_data;
-
-    if (data->is_safe) {
-      // Reset "safe" status for the next GC run.
-      data->is_safe = false;
       // Next.
-      head = &obj;
-      obj = data->next;
+      head_ptr = &((*head_ptr)->next); // Head points to the current obj ptr
+      obj = obj->next;
     }
     else {
-      Value *next = data->next;
-      // Remove from objects.
-      (*head)->as.gc_data->next = next;
+      // "DOOMED"
+      GCData *next_obj = obj->next;
 
-      // Free.
-      free_obj_data(vm, obj->type, data);
-      gc_free(vm, obj, sizeof(Value));
+      // Remove from objects.
+      *head_ptr = next_obj;
+      // Free memory.
+      free_gc_obj(vm, obj);
 
       // Next.
-      obj = next;
+      obj = next_obj;
     }
   }
 }
@@ -311,17 +309,9 @@ void gc_end(Varmint *vm)
   free(vm->compiler_roots.data);
 
   // Free objects registered.
-  for (Value *obj = vm->gc_objects; obj != NULL;) {
-    Typetag t = obj->type;
-    GCData *data = obj->as.gc_data;
-
-    assert(is_heaped_value(*obj));
-
-    Value *next_obj = data->next;
-
-    free_obj_data(vm, t, data);
-    free(obj);
-
+  for (GCData *obj = vm->gc_objects; obj != NULL;) {
+    GCData *next_obj = obj->next;
+    free_gc_obj(vm, obj);
     obj = next_obj;
   }
 }

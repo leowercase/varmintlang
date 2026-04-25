@@ -322,6 +322,15 @@ no_num:
   return Maybe_none();
 }
 
+Value _to_string(Varmint *vm, ArgList *args)
+{
+  Value val;
+  if (!varm_arg(vm, args, "v", &val))
+    return NO_VALUE;
+
+  return value_to_string(vm, val);
+}
+
 Value _unwrap(Varmint *vm, ArgList *args)
 {
   Maybe *unwrappee;
@@ -381,7 +390,7 @@ Value _rot(Varmint *vm, ArgList *args)
   if (!varm_arg(vm, args, "iS", &shift, &text))
     return NO_VALUE;
 
-  Value ciphertext = String_create(vm, text->s, text->len);
+  Value ciphertext = String_copy(vm, text);
 
   // https://en.wikipedia.org/wiki/Caesar_cipher
   for (size_t i = 0; i < text->len; i++) {

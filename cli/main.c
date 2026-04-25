@@ -192,6 +192,8 @@ static void run_repl(void)
   // https://en.wikipedia.org/wiki/GNU_Readline#Sample_code
   using_history();
 
+  printf("type :? for help\n");
+
   for (;;) {
     char *input = readline("vm> ");
     if (!input) break;
@@ -273,7 +275,7 @@ int main(int argc, const char **argv)
 
     else if ((size_t)argc != i + 1) {
       print_usage(program_name);
-      printf("Run `%s --help` for help\n", program_name);
+      printf("Run `%s -?` for help\n", program_name);
       exit(EX_USAGE);
     }
 
