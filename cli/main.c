@@ -3,7 +3,6 @@
 #include "../inc/dis.h"
 #include "../inc/lex.h"
 #include "../inc/varmint.h"
-#include "../inc/vm.h"
 
 #include <sysexits.h>
 #include <stdio.h>

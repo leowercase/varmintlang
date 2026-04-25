@@ -413,14 +413,15 @@ void print_value(FILE *restrict stream, Value val)
   case V_table:
     {
       Table *table = val.as.table;
-      fprintf(stream, ANSI_MAGENTA "{" ANSI_RESET);
+      fprintf(stream, ANSI_MAGENTA "@[" ANSI_RESET);
+
       for (size_t i = 0, ents = 0; i < table->cap; i++) {
         TableEntry ent = table->entries[i];
+
         if (ent.is_tomb || ent.key.type == V_no) continue;
         ents++;
 
         if (ent.key.type == V_string) {
-          fprintf(stream, ".");
           String *key = ent.key.as.string;
           fprintf(stream, "%.*s", (int)key->len, key->s);
         }
@@ -436,7 +437,8 @@ void print_value(FILE *restrict stream, Value val)
         if (ents < table->entry_count)
           fprintf(stream, ", ");
       }
-      fprintf(stream, ANSI_MAGENTA "}" ANSI_RESET "(%li)",
+
+      fprintf(stream, ANSI_MAGENTA "]" ANSI_RESET "(%li)",
           table->entry_count);
       break;
     }

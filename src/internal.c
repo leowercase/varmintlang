@@ -169,25 +169,20 @@ static size_t index_into(Varmint *vm, size_t len, Value idx)
   return actual_idx;
 }
 
-static inline Value *index_list(Varmint *vm, List *list, Value idx)
+static Value *index_list(Varmint *vm, List *list, Value idx)
 {
   return &list->data[index_into(vm, list->len, idx)];
 }
 
-static inline Value *index_table(Varmint *vm, Table *table, Value key)
+static bool valid_table_key(Varmint *vm, Value key)
 {
-  if (!value_is_hashable(key.type))
+  if (!value_is_hashable(key.type)) {
     runtime_error(vm, "expect hashable key type, got %s",
         value_type_cstring(key.type));
 
-  Value *result = Table_get(table, key);
-
-  if (result == NULL) {
-    String *s = value_to_string(vm, key).as.string;
-    runtime_error(vm, "no value matching [%s] in table", (int)s->len, s->s);
+    return false;
   }
-
-  return result;
+  else return true;
 }
 
 Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
@@ -202,7 +197,22 @@ Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
   case V_list:
     return *index_list(vm, collection.as.list, idx);
   case V_table:
-    return *index_table(vm, collection.as.table, idx);
+    {
+      if (!valid_table_key(vm, idx))
+        return NO_VALUE;
+
+      Value *result = Table_get(collection.as.table, idx);
+
+      if (result == NULL) {
+        String *s = value_to_string(vm, idx).as.string;
+
+        runtime_error(vm, "no value matching key [%.*s] in table",
+            (int)s->len, s->s);
+        return NO_VALUE;
+      }
+
+      return *result;
+    }
   default:
     runtime_error(vm, "cannot index into %s",
         value_type_cstring(collection.type));
@@ -227,7 +237,13 @@ Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
   case V_list:
     return *index_list(vm, collection.as.list, idx) = val;
   case V_table:
-    return *index_table(vm, collection.as.table, idx) = val;
+    {
+      if (!valid_table_key(vm, idx))
+        return NO_VALUE;
+
+      Table_set(vm, collection.as.table, idx, val);
+      return val;
+    }
   default:
     runtime_error(vm, "cannot index into %s",
         value_type_cstring(collection.type));
@@ -262,6 +278,26 @@ Value _len(Varmint *vm, ArgList *args)
         value_type_cstring(collection.type));
     return NO_VALUE;
   }
+}
+
+Value _push(Varmint *vm, ArgList *args)
+{
+  List *list;
+  Value val;
+  if (!varm_arg(vm, args, "Lv", &list, &val))
+    return NO_VALUE;
+
+  List_push(vm, list, val);
+  return args->argv[0]; // List
+}
+
+Value _pop(Varmint *vm, ArgList *args)
+{
+  List *list;
+  if (!varm_arg(vm, args, "L", &list))
+    return NO_VALUE;
+
+  return List_pop(list);
 }
 
 Value _to_number(Varmint *vm, ArgList *args)

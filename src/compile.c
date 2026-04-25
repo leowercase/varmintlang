@@ -31,6 +31,7 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
 static inline void end_semantic_scope(Parse *p)
 {
   SemanticDatum sem = SemanticData_pop(&p->semantic);
+  // Expressions inherit indentation.
   semantic(p)->indent.continued = sem.indent.continued;
 }
 
@@ -48,7 +49,7 @@ static Local *create_local_var(Parse *p, Str name)
 {
   Local *local = create_local(&p->c->locals,
                       name, p->c->depth, false);
-  // Because variables are declared in a stack-like manner,
+  // Because local variables are declared in a LIFO manner,
   // we can predict the op stack slot they will occupy
   local->stack_slot = p->c->stack_slot_count;
   return local;
@@ -953,7 +954,7 @@ static void cmp(Parse *p, int min_bp)
 static inline void grouping_end(Parse *p)
 {
   expr(p, PREC_NONE);
-  consume(p, TK_RPAREN, "expect grouping end"); // )
+  consume(p, TK_RPAREN, "expect grouping end");
 }
 
 // { ... }
@@ -1030,8 +1031,7 @@ static size_t delim_listing(Parse *p,
       if (len == 0 || allow_trailing_delim)
         return len;
       else
-        parse_error(p, p->current, true,
-            "invalid trailing %s in listing", token_cstring(delim));
+        parse_error(p, p->current, true, "invalid trailing delimiter");
     }
 
     expr(p, PREC_NONE);
@@ -1041,8 +1041,7 @@ static size_t delim_listing(Parse *p,
       return len;
   } while (match(p, delim)); // ,
 
-  parse_error(p, p->current, true,
-      "expect %s in listing", token_cstring(delim));
+  parse_error(p, p->current, true, "expect listing delimiter");
   next(p);
   consume(p, end, "expect listing end");
   return 0;
@@ -1057,7 +1056,7 @@ static void list(Parse *p)
   emit_var_op(p, bracket, OP_BUILD_LIST, list_len);
 }
 
-// Consume `.key` syntax of a table initializer.
+// .key
 static void table_ident_key(Parse *p)
 {
   Token key = consume(p, TK_WORD, "expect table key");
@@ -1082,39 +1081,47 @@ static bool element_accessor(Parse *p)
   return true;
 }
 
-static inline void table_entry(Parse *p, bool consumed_first_key)
+// [key] := value
+static void table_entry(Parse *p)
 {
-  size_t nesting = consumed_first_key ? 1 : 0;
+  size_t key_nesting = 0;
+
+  if (peek_linewise(p).type == TK_WORD) {
+    // First identifier key occurrence is without a `.` prefix
+    key_nesting++;
+    table_ident_key(p);
+  }
 
   // Consume consecutive keys
-  for (; element_accessor(p); nesting++);
+  while (element_accessor(p)) key_nesting++;
 
   // Consume value.
   consume(p, TK_ASSIGN, "expect `:=` after table key");
   expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT);
 
   // Emit nested entries.
-  // .a.b["c"] := value
-  if (nesting > 1)
-    emit_var_op(p, p->current, OP_NESTED_TABLE_ENTRIES, nesting - 1);
+  // a.b.c["d"] := value
+  if (key_nesting > 1)
+    emit_var_op(p, p->current, OP_NESTED_TABLE_ENTRIES, key_nesting - 1);
 }
 
-// {.key := value}
-static void table_end(Parse *p)
+static void table(Parse *p)
 {
-  // The first key has already been consumed.
-  table_entry(p, true);
-  size_t entry_count = 1;
+  next(p); // @[
+  size_t entry_count = 0;
 
   // Consume entries.
-  for (; match(p, TK_COMMA); entry_count++) {
-    if (peek_linewise(p).type == TK_RCURLY)
-      break; // Trailing comma
+  do {
+    TokenType t = peek_linewise(p).type;
+    if (t != TK_WORD && t != TK_LBRACK) break; // Trailing comma or `]`.
 
-    table_entry(p, false);
-  }
+    table_entry(p);
+    entry_count++;
+  } while (match(p, TK_COMMA));
 
-  Token curly = consume(p, TK_RCURLY, "expect `}` after table initializer");
+  Token curly = consume(p, TK_RBRACK,
+      "expect `]` after table initializer");
+
   // Emit table
   emit_var_op(p, curly, OP_BUILD_TABLE, entry_count);
 }
@@ -1773,6 +1780,8 @@ static void returnage(Parse *p)
   emit_byte(p, tok, OP_RETURN);
 }
 
+// Parentheses and braces are both an ambiguous case in the grammar.
+
 // (...)
 static void parens(Parse *p)
 {
@@ -1813,7 +1822,7 @@ static void parens(Parse *p)
     break;
   }
 
-  // We are in a grouping, looking at an identifier followed by a comma.
+  // We are parenthesized, looking at an identifier followed by a comma.
   // This has to be a maplet's argument list.
   Locals arg_list = consume_arg_list(p, NULL_STR);
   consume(p, TK_RPAREN, "expect argument list end");
@@ -1896,11 +1905,12 @@ static const ParseRule parse_rules[] =
     [TK_LPAREN]    = { parens,     invocation  },
     [TK_RPAREN]    = { NULL,       led_end     },
 
+    [TK_LBRACK]    = { list,       subscript   },
+    [TK_AT_LBRACK] = { table,      NULL        },
+    [TK_RBRACK]    = { NULL,       led_end     },
+
     [TK_LCURLY]    = { code_block, NULL        },
     [TK_RCURLY]    = { NULL,       led_end     },
-
-    [TK_LBRACK]    = { list,       subscript   },
-    [TK_RBRACK]    = { NULL,       led_end     },
 
     [TK_COLON]     = { NULL,       ufcs        },
     [TK_SEMICOLON] = { NULL,       led_end     },
@@ -1936,13 +1946,13 @@ Procedure *compile(Varmint *vm, Parse *p, bool discard_state, String *source)
     p = &new_parse;
   }
   else
-    // Continue with the parsing we've been doing.
     initial_slot_count = p->c->stack_slot_count;
 
   init_new_code(p, source);
 
   // Initialize builtins.
-  if (!p->builtins_emitted) {
+  bool builtins_emitted = p->builtins_emitted;
+  if (!builtins_emitted) {
     for (size_t i = 0; i < p->vm->builtins.len; i++) {
       Str name = vm->builtins.data[i].name;
       create_local_var(p, name)->initialized = true;
@@ -1975,8 +1985,9 @@ Procedure *compile(Varmint *vm, Parse *p, bool discard_state, String *source)
   }
 
   if (!ad_hoc && discard_state) {
-    // Reset error state for the next run.
+    // Reset parse state for the next run.
     p->had_error = semantic(p)->panic = false;
+    p->builtins_emitted = builtins_emitted;
 
     // Delete top level locals
     while (Locals_top(&p->c->locals)->stack_slot >= initial_slot_count)

@@ -44,6 +44,11 @@ Value _typeof(Varmint *vm, ArgList *args);
 // len(collection) -> number
 Value _len(Varmint *vm, ArgList *args);
 
+// push(list, val) -> ?
+Value _push(Varmint *vm, ArgList *args);
+// pop(list) -> ?
+Value _pop(Varmint *vm, ArgList *args);
+
 // to_number(val) -> maybe(number)
 Value _to_number(Varmint *vm, ArgList *args);
 // to_string(val) -> string

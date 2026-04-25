@@ -452,7 +452,14 @@ Token lex_token(Lex *lex)
   case '|':
     if (match(lex, '|'))
       return token(lex, TK_2PIPE);
-    break;
+    else
+      break;
+
+  case '@':
+    if (match(lex, '['))
+      return token(lex, TK_AT_LBRACK);
+    else
+      break;
   }
 
   return error_token(lex, "illegal token");
@@ -487,7 +494,7 @@ char *token_cstring(const TokenType type)
   case_(ARROW)
   case_(MAPS_TO)
   case_(LPAREN) case_(RPAREN)
-  case_(LBRACK) case_(RBRACK)
+  case_(LBRACK) case_(AT_LBRACK) case_(RBRACK)
   case_(LCURLY) case_(RCURLY)
   case_(LIST_COMP) case_(TABLE_COMP)
   case_(COLON) case_(SEMICOLON) case_(COMMA)
