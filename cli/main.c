@@ -140,7 +140,7 @@ static char *read_file(const char *filename)
   file = fopen(filename, "r");
 
   if (file == NULL) {
-    error_out("Could not open file %s\n", filename);
+    error_out("could not open file %s\n", filename);
     exit(EX_NOINPUT);
   }
 
@@ -148,7 +148,7 @@ static char *read_file(const char *filename)
   char *contents = malloc(sizeof(char) * (size + 1));
 
   if (contents == NULL) {
-    error_out("Not enough memory to read %s\n", filename);
+    error_out("not enough memory to read %s\n", filename);
     exit(EX_OSERR);
   }
 
@@ -157,7 +157,7 @@ static char *read_file(const char *filename)
   contents[bytes_read] = '\0';
 
   if (bytes_read < size) {
-    error_out("Could not read file %s\n", filename);
+    error_out("could not read file %s\n", filename);
     exit(EX_NOINPUT);
   }
 
@@ -275,7 +275,7 @@ int main(int argc, const char **argv)
 
     else if ((size_t)argc != i + 1) {
       print_usage(program_name);
-      printf("Run `%s -?` for help\n", program_name);
+      printf("run `%s -?` for help\n", program_name);
       exit(EX_USAGE);
     }
 
