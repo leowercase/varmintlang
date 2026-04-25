@@ -1716,7 +1716,9 @@ static Loop *resolve_loop(Parse *p, Token control_flow)
 // Emit the result of a control flow keyword
 static void control_flow_result(Parse *p)
 {
-  bool has_result = is_expr(p->current.type);
+  bool has_result = p->current.type == TK_LINE
+    ? is_continued_line(p, p->current.slice.len) : is_expr(p->current.type);
+
   if (has_result)
     expr_rhs(p, PREC_FLOW, ASSOC_LEFT); // Parse resulting value.
   else
