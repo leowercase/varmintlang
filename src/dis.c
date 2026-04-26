@@ -143,6 +143,7 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_var_op(SET_UPVALUE, upval)
   case_i(GET_ELEM)
   case_i(SET_ELEM)
+  case_i(MAYBE_GET_ELEM)
 
   case_i(POP)
   case_i(SWAP)

@@ -497,7 +497,7 @@ void run_bytecode(Varmint *vm)
       {
         Value idx = pop(vm),
               collection = pop(vm);
-        push(vm, _vm_get_elem(vm, collection, idx));
+        push(vm, _vm_get_elem(vm, collection, idx, false));
         break;
       }
       // Set an element of a collection.
@@ -508,6 +508,15 @@ void run_bytecode(Varmint *vm)
               collection = pop(vm);
         validate_assign(vm, val.type);
         push(vm, _vm_set_elem(vm, collection, idx, val));
+        break;
+      }
+
+      // Try to get an element from a collection, wrap result in a Maybe
+    case OP_MAYBE_GET_ELEM:
+      {
+        Value idx = pop(vm),
+              collection = pop(vm);
+        push(vm, _vm_get_elem(vm, collection, idx, true));
         break;
       }
 

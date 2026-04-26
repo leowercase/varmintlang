@@ -58,6 +58,7 @@ typedef enum {
   var(OP_SET_UPVALUE),
   OP_GET_ELEM,
   OP_SET_ELEM,
+  OP_MAYBE_GET_ELEM,
 
   OP_POP,
   OP_SWAP,

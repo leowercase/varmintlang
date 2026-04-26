@@ -460,6 +460,13 @@ Token lex_token(Lex *lex)
       return token(lex, TK_AT_LBRACK);
     else
       break;
+
+  case '?':
+    if (match(lex, '.'))
+      return token(lex, TK_Q_DOT);
+    else
+      if (match(lex, '['))
+        return token(lex, TK_Q_LBRACK);
   }
 
   return error_token(lex, "illegal token");
@@ -499,6 +506,7 @@ char *token_cstring(const TokenType type)
   case_(LIST_COMP) case_(TABLE_COMP)
   case_(COLON) case_(SEMICOLON) case_(COMMA)
   case_(DOT) case_(DOTDOT)
+  case_(Q_DOT) case_(Q_LBRACK)
   case_(NUMERAL)
   case_(STRCONT) case_(STREND)
   case_(WORD) case_(LABEL)

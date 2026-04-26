@@ -151,27 +151,40 @@ Value _vm_notin(Varmint *vm, Value x, Value collection)
       value_is_falsey(_vm_in(vm, x, collection)), boolean);
 }
 
-// Allow indexing from the top with negative numbers.
-static size_t index_into(Varmint *vm, size_t len, Value idx)
+typedef struct {
+  size_t idx;
+  bool success;
+} IndexResult;
+
+static IndexResult index_into(Varmint *vm, size_t len, Value idx)
 {
-  float64_t _idx = typechecked(vm, idx, number);
-
+  float64_t i = typechecked(vm, idx, number);
   size_t actual_idx;
-  if (_idx < 0)
-    // Index from top.
-    actual_idx = (size_t)((float64_t)len + _idx);
-  else
-    actual_idx = (size_t)_idx;
 
-  if (actual_idx >= len)
-    runtime_error(vm, "index [%li] out of range (length %li)", _idx, len);
+  if (i >= 0)
+    // Index normally.
+    actual_idx = (size_t)i;
 
-  return actual_idx;
+  else {
+    // Index from the top with a negative number.
+    size_t abs_i = (size_t)-i;
+    if (abs_i > len) goto out_of_range;
+    actual_idx = len - abs_i;
+  }
+
+  if (actual_idx >= len) goto out_of_range;
+
+  return (IndexResult){actual_idx, .success = true};
+
+out_of_range:
+  // Index is out of range for the collection.
+  return (IndexResult){0, .success = false};
 }
 
-static Value *index_list(Varmint *vm, List *list, Value idx)
+static inline void index_out_of_range(Varmint *vm, size_t len, Value idx)
 {
-  return &list->data[index_into(vm, list->len, idx)];
+  runtime_error(vm, "index %g out of range (length %li)",
+      idx.as.number, len);
 }
 
 static bool valid_table_key(Varmint *vm, Value key)
@@ -185,57 +198,98 @@ static bool valid_table_key(Varmint *vm, Value key)
   else return true;
 }
 
-Value _vm_get_elem(Varmint *vm, Value collection, Value idx)
+Value _vm_get_elem(Varmint *vm, Value collection, Value idx, bool wrap_maybe)
 {
+  Value elem;
+  bool success = false;
+
   switch (collection.type) {
   case V_string:
     {
       String *string = collection.as.string;
-      char c = string->s[index_into(vm, string->len, idx)];
-      return String_create(vm, &c, 1);
+      IndexResult result = index_into(vm, string->len, idx);
+
+      if (result.success) {
+        elem = String_create(vm, &string->s[result.idx], 1);
+        success = true;
+      }
+      else if (!wrap_maybe)
+        index_out_of_range(vm, string->len, idx);
+      break;
     }
   case V_list:
-    return *index_list(vm, collection.as.list, idx);
+    {
+      List *list = collection.as.list;
+      IndexResult result = index_into(vm, list->len, idx);
+
+      if (result.success) {
+        elem = list->data[result.idx];
+        success = true;
+      }
+      else if (!wrap_maybe)
+        index_out_of_range(vm, list->len, idx);
+      break;
+    }
   case V_table:
     {
-      if (!valid_table_key(vm, idx))
-        return NO_VALUE;
+      if (!valid_table_key(vm, idx)) break;
 
       Value *result = Table_get(collection.as.table, idx);
 
-      if (result == NULL) {
-        String *s = value_to_string(vm, idx).as.string;
-
-        runtime_error(vm, "no value matching key [%.*s] in table",
-            (int)s->len, s->s);
-        return NO_VALUE;
+      if (result != NULL) {
+        elem = *result;
+        success = true;
       }
-
-      return *result;
+      else if (!wrap_maybe) {
+        String *s = value_to_string(vm, idx).as.string;
+        runtime_error(vm,
+            "no value for key %.*s in table", (int)s->len, s->s);
+      }
+      break;
     }
   default:
     runtime_error(vm, "cannot index into %s",
         value_type_cstring(collection.type));
-    return NO_VALUE;
   }
-}
 
-static Value set_string_idx(Varmint *vm, String *string, Value idx, Value val)
-{
-  if (val.type != V_string || val.as.string->len - 1 != 1)
-    runtime_error(vm, "string index assignment must be a single character");
-
-  string->s[index_into(vm, string->len, idx)] = val.as.string->s[0];
-  return val;
+  if (wrap_maybe)
+    return success ? Maybe_some(vm, elem) : Maybe_none();
+  else
+    return success ? elem : NO_VALUE;
 }
 
 Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
 {
   switch (collection.type) {
   case V_string:
-    return set_string_idx(vm, collection.as.string, idx, val);
+    {
+      String *string = collection.as.string;
+
+      if (val.type != V_string || val.as.string->len != 1) {
+        runtime_error(vm,
+            "string index assignment must be a single character");
+        return NO_VALUE;
+      }
+
+      IndexResult result = index_into(vm, string->len, idx);
+
+      if (result.success) {
+        string->s[result.idx] = val.as.string->s[0];
+        return val;
+      }
+      else
+        return NO_VALUE;
+    }
   case V_list:
-    return *index_list(vm, collection.as.list, idx) = val;
+    {
+      List *list = collection.as.list;
+      IndexResult result = index_into(vm, list->len, idx);
+
+      if (result.success)
+        return list->data[result.idx] = val;
+      else
+        return NO_VALUE;
+    }
   case V_table:
     {
       if (!valid_table_key(vm, idx))

@@ -1160,7 +1160,7 @@ static void identifier(Parse *p)
   }
 }
 
-// a.[i]
+// a[i]
 // tb.key
 static void subscript(Parse *p, int min_bp)
 {
@@ -1174,6 +1174,30 @@ static void subscript(Parse *p, int min_bp)
 
   bool access = peek_linewise(p).type != TK_ASSIGN;
   emit_elem(p, tok, peek_assignment(p), access);
+}
+
+// a?[i]
+// tb?.key
+static void q_subscript(Parse *p, int min_bp)
+{
+  if (PREC_CALL < min_bp) {
+    semantic(p)->led_end = true;
+    return;
+  }
+
+  Token tok = eat(p);
+
+  if (tok.type == TK_Q_DOT)
+    // Identifier syntax.
+    table_ident_key(p);
+
+  else if (tok.type == TK_Q_LBRACK) {
+    // Subscript syntax.
+    expr(p, PREC_NONE);
+    consume(p, TK_RBRACK, "expect `]`");
+  }
+
+  emit_byte(p, tok, OP_MAYBE_GET_ELEM);
 }
 
 // f(...)
@@ -1918,6 +1942,9 @@ static const ParseRule parse_rules[] =
 
     [TK_DOT]       = { NULL,       subscript   },
     [TK_DOTDOT]    = { NULL,       NULL        },
+
+    [TK_Q_DOT]     = { NULL,       q_subscript },
+    [TK_Q_LBRACK]  = { NULL,       q_subscript },
 
     [TK_NUMERAL]   = { number,     NULL        },
 

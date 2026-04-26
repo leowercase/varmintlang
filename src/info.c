@@ -73,6 +73,8 @@ static const uint8_t HALT_INSTRUCTION = OP_HALT;
 
 void runtime_error(Varmint *vm, const char *fmt, ...)
 {
+  if (vm->status == VM_RUNTIME_ERR) return;
+
   va_list args;
 
   va_start(args, fmt);

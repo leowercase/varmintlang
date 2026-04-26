@@ -34,7 +34,7 @@ Value _vm_concat(Varmint *vm, Value head, Value tail);
 Value _vm_in(Varmint *vm, Value x, Value collection);
 Value _vm_notin(Varmint *vm, Value x, Value collection);
 
-Value _vm_get_elem(Varmint *vm, Value collection, Value idx);
+Value _vm_get_elem(Varmint *vm, Value collection, Value idx, bool wrap_maybe);
 Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val);
 
 /* INTERNAL FUNCTIONS */
