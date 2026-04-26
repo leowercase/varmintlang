@@ -6,8 +6,6 @@
 #include <stdio.h>
 #include <readline/readline.h>
 
-#include <math.h>
-
 static const NameValue default_builtins[] = {
   { str_from("e"),         value_new(VARMINT_E,   number) },
   { str_from("pi"),        value_new(VARMINT_PI,  number) },
@@ -49,6 +47,7 @@ Varmint varmint_start(void)
 
   // Initialize builtins.
   vm.builtins = NameValues_with_cap(default_builtin_count);
+  vm.builtins_emitted = false;
 
   for (size_t i = 0; i < default_builtin_count; i++)
     NameValues_push(&vm.builtins, default_builtins[i]);

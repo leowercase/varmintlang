@@ -203,6 +203,16 @@ static void descend_compilers(Parse *p)
   p->c = enclosing;
 }
 
+static void emit_return(Parse *p, bool early_return)
+{
+  // Discard stack slots on early return.
+  if (early_return)
+    emit_byte(p, p->current, OP_END_SLOTS);
+
+  // Return from procedure.
+  emit_byte(p, p->current, OP_RETURN);
+}
+
 // Return from compiler.
 static Procedure *return_compiler(Parse *p)
 {
@@ -212,12 +222,7 @@ static Procedure *return_compiler(Parse *p)
   Procedure *procedure = p->c->procedure;
   GCList_pop(&p->vm->compiler_roots);
 
-  // Discard builtins if at program scope.
-  if (p->c->enclosing == NULL)
-    emit_byte(p, p->current, OP_DISCARD_BUILTINS);
-
-  // Return from procedure.
-  emit_byte(p, p->current, OP_RETURN);
+  emit_return(p, false);
   descend_compilers(p);
 
   return procedure;
@@ -242,8 +247,6 @@ Parse init_parse(Varmint *vm)
   Parse p;
   p.vm = vm;
 
-  p.builtins_emitted = false;
-
   SemanticDatum sem;
   sem.assign_fn = sem.compound_assign_fn = NULL;
   sem.indent.initial = sem.indent.continued = 0;
@@ -257,10 +260,16 @@ Parse init_parse(Varmint *vm)
 
   p.had_error = false;
 
-  Locals initial_locals = arg_list_init(NULL_STR);
-
   p.c = NULL;
-  init_compiler(&p, initial_locals);
+  init_compiler(&p, arg_list_init(NULL_STR));
+
+  // Builtin locals
+  for (size_t i = 0; i < vm->builtins.len; i++) {
+    Str name = vm->builtins.data[i].name;
+
+    create_local_var(&p, name)->initialized = true;
+    p.c->stack_slot_count++;
+  }
 
   return p;
 }
@@ -819,8 +828,8 @@ static void infix_op(Parse *p, int min_bp)
 }
 
 static const UnaryOp postfix_ops[] = {
-  [TK_PERCENT]   = { OP_PERCENTAGE, PREC_PERCENT   },
-  [TK_BANG]      = { OP_FACTORIAL,  PREC_FACTORIAL },
+  [TK_PERCENT]     = { OP_PERCENTAGE,  PREC_PERCENT   },
+  [TK_BANG]        = { OP_FACTORIAL,   PREC_FACTORIAL },
 };
 
 static void postfix_op(Parse *p, int min_bp)
@@ -1198,6 +1207,23 @@ static void q_subscript(Parse *p, int min_bp)
   }
 
   emit_byte(p, tok, OP_MAYBE_GET_ELEM);
+}
+
+// result?!
+static void interrobang(Parse *p, int min_bp)
+{
+  if (PREC_CALL < min_bp) {
+    semantic(p)->led_end = true;
+    return;
+  }
+
+  Token tok = next(p); // ?!
+  size_t operand_idx = defer_op(p, tok, OP_ELSE);
+
+  emit_byte(p, tok, OP_MAKE_NONE);
+  emit_return(p, true);
+
+  patch_jump(p, tok, operand_idx);
 }
 
 // f(...)
@@ -1799,12 +1825,10 @@ static void loop_flow(Parse *p)
 // return [value]
 static void returnage(Parse *p)
 {
-  Token tok = eat(p);
+  next(p);
   control_flow_result(p);
-  emit_byte(p, tok, OP_RETURN);
+  emit_return(p, true);
 }
-
-// Parentheses and braces are both an ambiguous case in the grammar.
 
 // (...)
 static void parens(Parse *p)
@@ -1869,90 +1893,91 @@ static void led_end(Parse *p, int _)
 
 static const ParseRule parse_rules[] =
   {
-/*  token type         NUD         LED        */
-    [TK_EOF]       = { NULL,       led_end     },
-    [TK_ERR]       = { NULL,       NULL        },
+/*  token type           NUD         LED        */
+    [TK_EOF]         = { NULL,       led_end     },
+    [TK_ERR]         = { NULL,       NULL        },
 
-    [TK_LINE]      = { NULL,       indentation },
+    [TK_LINE]        = { NULL,       indentation },
 
-    [TK_PLUS]      = { unary_plus, infix_op    },
-    [TK_MINUS]     = { prefix_op,  infix_op    },
-    [TK_STAR]      = { NULL,       infix_op    },
-    [TK_SLASH]     = { NULL,       infix_op    },
-    [TK_CARET]     = { NULL,       infix_op    },
-    [TK_PERCENT]   = { NULL,       led_op      },
-    [TK_BANG]      = { NULL,       postfix_op  },
-    [TK_2PIPE]     = { NULL,       infix_op    },
+    [TK_PLUS]        = { unary_plus, infix_op    },
+    [TK_MINUS]       = { prefix_op,  infix_op    },
+    [TK_STAR]        = { NULL,       infix_op    },
+    [TK_SLASH]       = { NULL,       infix_op    },
+    [TK_CARET]       = { NULL,       infix_op    },
+    [TK_PERCENT]     = { NULL,       led_op      },
+    [TK_BANG]        = { NULL,       postfix_op  },
+    [TK_2PIPE]       = { NULL,       infix_op    },
 
-    [TK_EQ]        = { NULL,       cmp         },
-    [TK_NEQ]       = { NULL,       cmp         },
-    [TK_LT]        = { NULL,       cmp         },
-    [TK_GT]        = { NULL,       cmp         },
-    [TK_LEQ]       = { NULL,       cmp         },
-    [TK_GEQ]       = { NULL,       cmp         },
+    [TK_EQ]          = { NULL,       cmp         },
+    [TK_NEQ]         = { NULL,       cmp         },
+    [TK_LT]          = { NULL,       cmp         },
+    [TK_GT]          = { NULL,       cmp         },
+    [TK_LEQ]         = { NULL,       cmp         },
+    [TK_GEQ]         = { NULL,       cmp         },
 
-    [TK_ASSIGN]    = { NULL,       assign      },
+    [TK_ASSIGN]      = { NULL,       assign      },
 
-    [TK_VAR]       = { var_bind,   NULL        },
-    [TK_AS]        = { NULL,       as_bind     },
+    [TK_VAR]         = { var_bind,   NULL        },
+    [TK_AS]          = { NULL,       as_bind     },
 
-    [TK_IN]        = { NULL,       led_end     },
+    [TK_IN]          = { NULL,       led_end     },
 
-    [TK_NOT]       = { prefix_op,  NULL        },
-    [TK_AND]       = { NULL,       infix_op    },
-    [TK_OR]        = { NULL,       infix_op    },
+    [TK_NOT]         = { prefix_op,  NULL        },
+    [TK_AND]         = { NULL,       infix_op    },
+    [TK_OR]          = { NULL,       infix_op    },
 
-    [TK_MOD]       = { NULL,       infix_op    },
+    [TK_MOD]         = { NULL,       infix_op    },
 
-    [TK_IF]        = { if_expr,    NULL        },
-    [TK_THEN]      = { NULL,       led_end     },
-    [TK_ELSE]      = { NULL,       else_elif   },
-    [TK_ELIF]      = { NULL,       else_elif   },
+    [TK_IF]          = { if_expr,    NULL        },
+    [TK_THEN]        = { NULL,       led_end     },
+    [TK_ELSE]        = { NULL,       else_elif   },
+    [TK_ELIF]        = { NULL,       else_elif   },
 
-    [TK_LOOP]      = { loop_expr,  NULL        },
-    [TK_FOR]       = { loop_expr,  NULL        },
-    [TK_WHILE]     = { loop_expr,  NULL        },
+    [TK_LOOP]        = { loop_expr,  NULL        },
+    [TK_FOR]         = { loop_expr,  NULL        },
+    [TK_WHILE]       = { loop_expr,  NULL        },
 
-    [TK_BREAK]     = { loop_flow,  NULL        },
-    [TK_CONTINUE]  = { loop_flow,  NULL        },
-    [TK_RETURN]    = { returnage,  NULL        },
+    [TK_BREAK]       = { loop_flow,  NULL        },
+    [TK_CONTINUE]    = { loop_flow,  NULL        },
+    [TK_RETURN]      = { returnage,  NULL        },
 
-    [TK_TRUE]      = { boolean,    NULL        },
-    [TK_FALSE]     = { boolean,    NULL        },
+    [TK_TRUE]        = { boolean,    NULL        },
+    [TK_FALSE]       = { boolean,    NULL        },
 
-    [TK_SOME]      = { some,       NULL        },
-    [TK_NONE]      = { none,       NULL        },
+    [TK_SOME]        = { some,       NULL        },
+    [TK_NONE]        = { none,       NULL        },
 
-    [TK_ARROW]     = { NULL,       infix_op    },
-    [TK_MAPS_TO]   = { NULL,       NULL        },
+    [TK_ARROW]       = { NULL,       infix_op    },
+    [TK_MAPS_TO]     = { NULL,       NULL        },
 
-    [TK_LPAREN]    = { parens,     invocation  },
-    [TK_RPAREN]    = { NULL,       led_end     },
+    [TK_LPAREN]      = { parens,     invocation  },
+    [TK_RPAREN]      = { NULL,       led_end     },
 
-    [TK_LBRACK]    = { list,       subscript   },
-    [TK_AT_LBRACK] = { table,      NULL        },
-    [TK_RBRACK]    = { NULL,       led_end     },
+    [TK_LBRACK]      = { list,       subscript   },
+    [TK_AT_LBRACK]   = { table,      NULL        },
+    [TK_RBRACK]      = { NULL,       led_end     },
 
-    [TK_LCURLY]    = { code_block, NULL        },
-    [TK_RCURLY]    = { NULL,       led_end     },
+    [TK_LCURLY]      = { code_block, NULL        },
+    [TK_RCURLY]      = { NULL,       led_end     },
 
-    [TK_COLON]     = { NULL,       ufcs        },
-    [TK_SEMICOLON] = { NULL,       led_end     },
-    [TK_COMMA]     = { NULL,       led_end     },
+    [TK_COLON]       = { NULL,       ufcs        },
+    [TK_SEMICOLON]   = { NULL,       led_end     },
+    [TK_COMMA]       = { NULL,       led_end     },
 
-    [TK_DOT]       = { NULL,       subscript   },
-    [TK_DOTDOT]    = { NULL,       NULL        },
+    [TK_DOT]         = { NULL,       subscript   },
+    [TK_DOTDOT]      = { NULL,       NULL        },
 
-    [TK_Q_DOT]     = { NULL,       q_subscript },
-    [TK_Q_LBRACK]  = { NULL,       q_subscript },
+    [TK_Q_DOT]       = { NULL,       q_subscript },
+    [TK_Q_LBRACK]    = { NULL,       q_subscript },
+    [TK_INTERROBANG] = { NULL,       interrobang },
 
-    [TK_NUMERAL]   = { number,     NULL        },
+    [TK_NUMERAL]     = { number,     NULL        },
 
-    [TK_STRCONT]   = { metastring, NULL        },
-    [TK_STREND]    = { string,     NULL        },
+    [TK_STRCONT]     = { metastring, NULL        },
+    [TK_STREND]      = { string,     NULL        },
 
-    [TK_WORD]      = { identifier, NULL        },
-    [TK_LABEL]     = { NULL,       led_end     },
+    [TK_WORD]        = { identifier, NULL        },
+    [TK_LABEL]       = { NULL,       led_end     },
  };
 
 static const ParseRule *parse_rule(TokenType type)
@@ -1976,19 +2001,6 @@ Procedure *compile(Varmint *vm, Parse *p, bool discard_state, String *source)
     initial_slot_count = p->c->stack_slot_count;
 
   init_new_code(p, source);
-
-  // Initialize builtins.
-  bool builtins_emitted = p->builtins_emitted;
-  if (!builtins_emitted) {
-    for (size_t i = 0; i < p->vm->builtins.len; i++) {
-      Str name = vm->builtins.data[i].name;
-      create_local_var(p, name)->initialized = true;
-      p->c->stack_slot_count++;
-    }
-
-    emit_byte(p, p->current, OP_INIT_BUILTINS);
-    p->builtins_emitted = true;
-  }
 
   // Parse program.
   if (p->current.type == TK_EOF) {
@@ -2014,7 +2026,6 @@ Procedure *compile(Varmint *vm, Parse *p, bool discard_state, String *source)
   if (!ad_hoc && discard_state) {
     // Reset parse state for the next run.
     p->had_error = semantic(p)->panic = false;
-    p->builtins_emitted = builtins_emitted;
 
     // Delete top level locals
     while (Locals_top(&p->c->locals)->stack_slot >= initial_slot_count)

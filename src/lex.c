@@ -70,6 +70,12 @@ static Token error_token(Lex *lex, const char *msg)
   return tok;
 }
 
+static Token eof(Lex *lex)
+{
+  lex->line--; // Last line goes beyond the source string.
+  return token(lex, TK_EOF);
+}
+
 static Token number(Lex *lex)
 {
   while (isdigit(*lex->current))
@@ -323,7 +329,7 @@ static Token new_line(Lex *lex)
     end_lex(lex);
 
     lex->start = lex->current;
-    return token(lex, TK_EOF);
+    return eof(lex);
   }
 
   else if (lex->on_new_line) {
@@ -370,7 +376,7 @@ Token lex_token(Lex *lex)
 
   if (c == '\0') {
     end_lex(lex);
-    return token(lex, TK_EOF);
+    return eof(lex);
   }
 
   // One or two character tokens
@@ -464,9 +470,11 @@ Token lex_token(Lex *lex)
   case '?':
     if (match(lex, '.'))
       return token(lex, TK_Q_DOT);
-    else
-      if (match(lex, '['))
-        return token(lex, TK_Q_LBRACK);
+    if (match(lex, '['))
+      return token(lex, TK_Q_LBRACK);
+    if (match(lex, '!'))
+      return token(lex, TK_INTERROBANG);
+    break;
   }
 
   return error_token(lex, "illegal token");
@@ -507,6 +515,7 @@ char *token_cstring(const TokenType type)
   case_(COLON) case_(SEMICOLON) case_(COMMA)
   case_(DOT) case_(DOTDOT)
   case_(Q_DOT) case_(Q_LBRACK)
+  case_(INTERROBANG)
   case_(NUMERAL)
   case_(STRCONT) case_(STREND)
   case_(WORD) case_(LABEL)

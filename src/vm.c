@@ -254,6 +254,14 @@ void call_program(Varmint *vm, Procedure *program)
   // Reset calls
   vm->call_stack.len = 0;
   call(vm, program, slot, NULL, 0);
+
+  // Emit builtins.
+  if (!vm->builtins_emitted) {
+    for (size_t i = 0; i < vm->builtins.len; i++)
+      push(vm, vm->builtins.data[i].value);
+
+    vm->builtins_emitted = true;
+  }
 }
 
 void run_bytecode(Varmint *vm)
@@ -308,20 +316,6 @@ void run_bytecode(Varmint *vm)
     case OP_GEQ: BINARY(_vm_greater_than_or_eq(vm, lhs, rhs))
 
     case OP_CONCAT: BINARY(_vm_concat(vm, lhs, rhs))
-
-      // Initialize builtin stack slots
-    case OP_INIT_BUILTINS:
-      for (size_t i = 0; i < vm->builtins.len; i++)
-        push(vm, vm->builtins.data[i].value);
-      break;
-      // ...Discard them.
-    case OP_DISCARD_BUILTINS:
-      {
-        Value top = pop(vm);
-        popn(vm, vm->builtins.len);
-        push(vm, top);
-        break;
-      }
 
       // Load a constant value.
     case_var_op(OP_CONST, idx,
@@ -532,6 +526,22 @@ void run_bytecode(Varmint *vm)
         push(vm, block_val);
         break;
       })
+      // Get rid of stack slots used by function
+    case OP_END_SLOTS:
+      {
+        Value result = peek(vm, 0);
+
+        vm->op_stack.len =
+          (size_t)(vm->frame->op_stack - vm->op_stack.data)
+          + vm->frame->procedure->arity + 1;
+
+        if (vm->call_stack.len == 1)
+          // On program level, take builtin slots into account
+          vm->op_stack.len += vm->builtins.len;
+
+        push(vm, result);
+        break;
+      }
 
       // Jump over some code
     case OP_JMP:
@@ -803,6 +813,16 @@ void run_bytecode(Varmint *vm)
         Value return_val = pop(vm);
         CallFrame frame = CallStack_pop(&vm->call_stack);
 
+        bool return_from_program = vm->call_stack.len == 0;
+
+        // Discard builtins.
+        if (return_from_program) {
+          assert(vm->builtins_emitted);
+
+          popn(vm, vm->builtins.len);
+          vm->builtins_emitted = false;
+        }
+
         // Pop function parameters
         popn(vm, (size_t)frame.procedure->arity);
         // Pop the function itself off the stack.
@@ -811,8 +831,7 @@ void run_bytecode(Varmint *vm)
         // Ensure a balanced stack after the call!
         assert(&vm->op_stack.data[vm->op_stack.len] == frame.op_stack);
 
-        if (vm->call_stack.len == 0) {
-          // Return from program.
+        if (return_from_program) {
           vm->result = return_val;
           return;
         }

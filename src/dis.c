@@ -109,9 +109,6 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_i(GEQ)
   case_i(CONCAT)
 
-  case_i(INIT_BUILTINS)
-  case_i(DISCARD_BUILTINS)
-
   case_var_op(CONST, constant)
   case_(ZERO,
     {
@@ -154,6 +151,7 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
 
   case_i(RESERVE_SLOT)
   case_var_op(END_BLOCK, size)
+  case_i(END_SLOTS)
 
   case_op(JMP, jump_fwd)
   case_op(JMP_WHEN_FALSE, jump_fwd)

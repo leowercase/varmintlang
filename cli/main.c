@@ -101,10 +101,8 @@ static void run(Varmint *vm, Opt opt, String *source,
     }
     break;
   case OPT_HELP:
-    if (in_repl) {
+    if (in_repl)
       print_opts(":", ":");
-      printf("\n");
-    }
     else {
       print_usage(program_name);
       printf("  " ANSI_YELLOW "(default)" ANSI_RESET "\n    run REPL\n");

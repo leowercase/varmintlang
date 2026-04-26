@@ -118,7 +118,6 @@ struct Parse {
   struct Compiler *c;
   Varmint *vm;
   String *source;
-  bool builtins_emitted;
 };
 
 // Compiler for a procedure
@@ -162,7 +161,7 @@ typedef enum {
   PREC_SIGN,      // + -
   PREC_FACTORIAL, // !
   PREC_PERCENT,   // %
-  PREC_CALL,      // () []
+  PREC_CALL,      // () [] ?!
   PREC_UFCS,      // :
 } Precedence;
 

@@ -38,9 +38,6 @@ typedef enum {
   OP_GEQ,
   OP_CONCAT,
 
-  OP_INIT_BUILTINS,
-  OP_DISCARD_BUILTINS,
-
   var(OP_CONST),
   OP_ZERO,
   OP_ONE,
@@ -69,6 +66,7 @@ typedef enum {
 
   OP_RESERVE_SLOT,
   var(OP_END_BLOCK),
+  OP_END_SLOTS,
 
   OP_JMP,
   OP_JMP_WHEN_FALSE,

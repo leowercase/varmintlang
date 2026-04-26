@@ -25,6 +25,7 @@ typedef struct Varmint {
 
   // Builtin variables that are included in every program by default
   NameValues builtins;
+  bool builtins_emitted;
 
   GCData *gc_objects; // GC'd values are stored as a singly linked list.
   GCList grey_worklist;

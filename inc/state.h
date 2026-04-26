@@ -60,10 +60,11 @@ typedef DYN_ARRAY_STRUCT(NameValue) NameValues;
 typedef struct Parse Parse;
 
 // Taken from the GNU C library.
-#define VARMINT_E 2.7182818284590452354
-#define VARMINT_PI 3.14159265358979323846
+static const float64_t VARMINT_E = 2.7182818284590452354;
+static const float64_t VARMINT_PI = 3.14159265358979323846;
 
 // https://www.tauday.com/tau-digits
-#define VARMINT_TAU (float64_t)6.2831853071795864769252867665590057683943L
+static const float64_t VARMINT_TAU =
+  6.2831853071795864769252867665590057683943;
 
 #endif
