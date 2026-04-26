@@ -1095,10 +1095,18 @@ static void table_entry(Parse *p)
 {
   size_t key_nesting = 0;
 
-  if (peek_linewise(p).type == TK_WORD) {
+  Token ident_tok;
+  if ((ident_tok = peek_linewise(p)).type == TK_WORD) {
     // First identifier key occurrence is without a `.` prefix
     key_nesting++;
     table_ident_key(p);
+
+    TokenType next = peek_linewise(p).type;
+    if (next == TK_COMMA || next == TK_RBRACK) {
+      // Identifier shorthand.
+      emit_identifier(p, ident_tok, false, true);
+      return;
+    }
   }
 
   // Consume consecutive keys
