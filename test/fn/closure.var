@@ -1,0 +1,4 @@
+var adder(x) := y => x + y # closes over x
+
+var teen := adder(10)
+teen(4) # 14

@@ -1,2 +1,0 @@
-using rot, putln:
-  putln(rot(13, "EBG13 ebpxf!"))

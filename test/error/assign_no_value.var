@@ -1,0 +1,4 @@
+var x
+x := put "this function has no value."
+
+# invalid assign to expression without value

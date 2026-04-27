@@ -1,7 +1,0 @@
-for i in ["Fee", "Fi", "Fo", "Fum"] loop
-  using putln: putln(i)
-# Fee
-# Fi
-# Fo
-# Fum
-# None

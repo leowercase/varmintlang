@@ -1,0 +1,4 @@
+putln "Ahoy! Something here!"
+return
+
+putln "This code is never executed."

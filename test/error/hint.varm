@@ -1,5 +1,0 @@
-{
-  1 + 2
-  let x = 3
-}
-# did you mean `:=`?

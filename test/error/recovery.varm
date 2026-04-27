@@ -1,8 +1,0 @@
-{
-  12 * / 5
-  let (;-)
-}
-# expect expression, got `/`
-# expect identifier
-# expect expression, got `)`
-# invalid statement

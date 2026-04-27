@@ -1,0 +1,11 @@
+loop 'outer {
+  put "Hello from outer! "
+
+  loop 'inner {
+    put "Hello from inner! "
+    input "" # Prevent excessive output
+
+    continue 'outer
+  }
+}
+# Hello from outer! Hello from inner! Hello from outer! [...]

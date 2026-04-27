@@ -1,0 +1,3 @@
+var x := 1 in
+  x + 2 := 3
+  # lhs is not assignable

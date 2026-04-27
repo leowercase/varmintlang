@@ -1,0 +1,6 @@
+12 * / 5
+var (;-)
+# expect expression, got `/`
+# expect identifier
+# expect expression, got `)`
+# invalid statement

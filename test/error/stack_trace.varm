@@ -1,4 +1,0 @@
-let add_em(one, two) := one + two
-add_em(5, "Heyo!")
-# expect type number for addend, got string
-# [stack trace...]

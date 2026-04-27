@@ -1,0 +1,5 @@
+var n := 0
+loop
+  n := to_number input "Type a number! "
+       else break n
+# Some(n)

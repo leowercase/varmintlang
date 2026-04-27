@@ -1,0 +1,11 @@
+var failure := False
+
+var n := input("Type a number! "):to_number()
+         else { failure := True; 1 }
+
+if n <= 0 then
+  putln "Type a positive number."
+elif failure then
+  putln "You must type a number."
+else
+  putln "Two to the power of your number is \(2^n)"

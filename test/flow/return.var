@@ -1,0 +1,6 @@
+var divisible(x, y) :=
+  if x mod y = 0 then return True
+                 else return False
+
+[divisible(4, 2), divisible(5, 3)]
+# [True, False]

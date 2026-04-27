@@ -1,8 +1,0 @@
-using prompt, to_number:
-{
-  let n := 0
-  loop
-    n := to_number(prompt("Type a number! "))
-    else break n
-}
-# Some(n)

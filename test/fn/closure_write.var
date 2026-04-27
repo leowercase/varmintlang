@@ -1,0 +1,24 @@
+var make_mem() := {
+  var memory := "..."
+
+  var recall() := putln memory,
+      overwrite(x) := memory := x
+
+  [recall, overwrite]
+}
+
+var mem := make_mem(),
+    recall := mem[0], overwrite := mem[1]
+
+recall()
+
+overwrite "apple"
+recall()
+
+overwrite "pizza"
+overwrite "pineapple"
+recall()
+# ...
+# apple
+# pineapple
+

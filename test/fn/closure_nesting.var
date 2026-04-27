@@ -1,0 +1,22 @@
+#  Example stolen from Crafting Interpreters :]
+#  https://craftinginterpreters.com/closures.html#flattening-upvalues
+var outer() := {
+  var x := "value"
+
+  var middle() := {
+    var inner() := putln x
+
+    putln "Create inner closure"
+    inner
+  }
+
+  putln "Return from outer"
+  middle
+}
+
+var mid := outer(),
+    inr := mid()
+inr()
+# Return from outer
+# Create inner closure
+# value
