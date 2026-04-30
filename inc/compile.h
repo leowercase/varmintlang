@@ -35,7 +35,7 @@ typedef DYN_ARRAY_STRUCT(Local) Locals;
 #define ARR Locals
 #include "generic/dyn_array.inc"
 
-// Stack of jumps queued to a loop.
+// Stack of queued jumps.
 typedef DYN_ARRAY_STRUCT(size_t) JumpIndices;
 #define T size_t
 #define ARR JumpIndices
@@ -49,7 +49,7 @@ typedef struct {
   size_t stack_slot;
   size_t start, // Index of the first instruction in the loop.
          iter; // Index of the looping instruction
-  bool is_for, is_list_compre;
+  bool is_for;
 } Loop;
 
 // Similar to the locals array, except for loop labels.
@@ -88,9 +88,12 @@ typedef struct SemanticDatum {
     size_t continued; // Indentation level of the continuation
   } indent;
 
-  size_t if_jmp_op_idx;
-  // if..else..elif chains are optimized a bit to avoid useless shuffling
-  bool if_else_chained;
+  // When possible, a False `if` condition jumps straight to a corresponding
+  // `else` clause without creating a None result value.
+  // Similarly, a loop can have an optional `else` clause that it jumps to when
+  // terminating without a single cycle.
+  size_t else_jmp_idx;
+  bool else_chained;
 
   size_t statement_count;
   // Whether the current surrounding is a statement or inside one

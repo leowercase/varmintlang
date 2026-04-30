@@ -26,7 +26,7 @@ Value _vm_negate(Varmint *vm, Value invertee)
 
 Value _vm_factorial(Varmint *vm, Value n)
 {
-  float64_t _n = typechecked(vm, n, number);
+  int _n = (int)typechecked(vm, n, number);
 
   float64_t f = 1;
   for (int i = 0; i < _n; i++) f *= i;
@@ -392,7 +392,7 @@ Value _to_number(Varmint *vm, ArgList *args)
       n = strtod(val.as.string->s, &endptr);
 
       if (*endptr != '\0')
-        // Invalid tailing characters!
+        // Invalid trailing characters!
         goto no_num;
 
       break;
@@ -403,6 +403,7 @@ Value _to_number(Varmint *vm, ArgList *args)
   case V_table:
   case V_procedure:
   case V_closure:
+  case V_cclosure:
   case V_partial:
     goto no_num;
   }
@@ -473,6 +474,47 @@ Value _time(Varmint *vm, ArgList *args)
   return value_new((float64_t)time, number);
 }
 
+static Value range_iter(Varmint *vm, ArgList *args, Value *upvalues)
+{
+  if (!varm_arg(vm, args, ""))
+    return NO_VALUE;
+
+  float64_t *iter = &upvalues[0].as.number;
+
+  float64_t end = upvalues[1].as.number,
+            step = upvalues[2].as.number;
+
+  float64_t i = *iter;
+
+  if (step >= 0) {
+    // Positive step
+    if (i >= end) return NO_VALUE;
+  }
+  else {
+    // Negative step
+    if (i <= end) return NO_VALUE;
+  }
+
+  (*iter) += step;
+  return value_new(i, number);
+}
+
+Value _range(Varmint *vm, ArgList *args)
+{
+  float64_t start, end, step;
+
+  if (!varm_arg(vm, args, "nnn", &start, &end, &step))
+    return NO_VALUE;
+
+  Value upvalues[] = {
+    value_new(start, number),
+    value_new(end, number),
+    value_new(step, number),
+  };
+
+  return Cclosure_create(vm, range_iter, 3, upvalues);
+}
+
 Value _rot(Varmint *vm, ArgList *args)
 {
   int shift;
@@ -500,4 +542,3 @@ Value _rot(Varmint *vm, ArgList *args)
 
   return ciphertext;
 }
-

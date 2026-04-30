@@ -75,18 +75,11 @@ typedef enum {
   OP_ELSE,
   OP_ELIF,
 
-  OP_LIST_COMPREHEND,
+  OP_INIT_LOOP,
   OP_LOOP,
-  OP_LOOP_LIST,
-  OP_WHILE,
-  OP_WHILE_LIST,
   OP_FOR,
-  OP_FOR_LIST,
-  var(OP_FOR_INCREMENT),
-  OP_BREAK,
-  OP_BREAK_LIST,
-  OP_DISCARD_FOR,
-  OP_DISCARD_FOR_LIST,
+  OP_FOR_JMP,
+  OP_FOR_DISCARD,
 
   OP_CLOSURE,
   OP_HOIST_UPVALUE,
@@ -184,7 +177,7 @@ typedef struct Closure {
 } Closure;
 
 // Upvalues can be referenced even after their lifetime ends;
-// they're hoisted onto the heap when the scope ends.
+// they're hoisted onto the heap when the scope exits.
 typedef struct Upval {
   GCData gc_data;
   Value *loc;

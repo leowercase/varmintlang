@@ -40,11 +40,16 @@ typedef enum {
   V_procedure,
   V_upval,
   V_closure,
+  V_cclosure,
   V_partial,
 } Typetag;
 
 // Union of Varmint values.
 typedef union {
+  struct {
+    bool loop_has_run;
+  } metadata;
+
   float64_t number;
   int boolean;
   NativeFn native;
@@ -57,6 +62,7 @@ typedef union {
   struct Procedure *procedure;
   struct Upval *upval;
   struct Closure *closure;
+  struct Cclosure *cclosure;
   struct Partial *partial;
 } Valueu;
 
@@ -143,6 +149,17 @@ typedef struct Partial {
   Value applied[];
 } Partial;
 
+typedef Value (*CclosureFn)(struct Varmint *vm,
+                             struct ArgList *args, Value *upvalues);
+
+// C side approximation of a closure
+typedef struct Cclosure {
+  GCData gc_data;
+  CclosureFn fn;
+  size_t upvalue_count;
+  Value upvalues[];
+} Cclosure;
+
 Value Maybe_some(struct Varmint *vm, Value value);
 Value Maybe_none(void);
 
@@ -162,6 +179,9 @@ Str String_as_str(Value *val);
 Value Procedure_create(struct Varmint *vm, size_t arity, String *source);
 
 Value Closure_create(struct Varmint *vm, struct Procedure *procedure);
+
+Value Cclosure_create(struct Varmint *vm,
+    CclosureFn fn, size_t upvalue_count, Value *initial_upvalues);
 
 Value Partial_create(struct Varmint *vm, Value callee, size_t count);
 

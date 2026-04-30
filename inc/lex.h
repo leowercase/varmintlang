@@ -32,6 +32,7 @@ typedef enum {
   TK_MOD,
   TK_IF, TK_THEN, TK_ELSE, TK_ELIF,
   TK_LOOP, TK_FOR, TK_WHILE,
+  TK_DO,
   TK_BREAK, TK_CONTINUE,
   TK_RETURN,
   TK_TRUE, TK_FALSE,
@@ -41,7 +42,6 @@ typedef enum {
   TK_LPAREN, TK_RPAREN,
   TK_LBRACK, TK_AT_LBRACK, TK_RBRACK,
   TK_LCURLY, TK_RCURLY,
-  TK_LIST_COMP, TK_TABLE_COMP,
   TK_COLON, TK_SEMICOLON, TK_COMMA,
   TK_DOT, TK_DOTDOT,
   TK_Q_DOT, TK_Q_LBRACK,
@@ -114,6 +114,7 @@ TokenType is_keyword(Str str)
     [TK_LOOP]     = str_from("loop"),
     [TK_FOR]      = str_from("for"),
     [TK_WHILE]    = str_from("while"),
+    [TK_DO]       = str_from("do"),
     [TK_BREAK]    = str_from("break"),
     [TK_CONTINUE] = str_from("continue"),
     [TK_RETURN]   = str_from("return"),
@@ -163,7 +164,6 @@ typedef struct {
   bool ended;
   bool on_new_line;
   struct { bool use_spaces, use_tabs; } indent;
-  TokenType comprehension;
   bool escaping_string;
   TemplateNesting template_nesting;
 } Lex;
@@ -179,7 +179,6 @@ Lex lex_new(char *source)
 
   lex.indent.use_spaces = lex.indent.use_tabs = false;
 
-  lex.comprehension = (TokenType)false;
   lex.escaping_string = false;
   lex.template_nesting = template_nesting_init();
 

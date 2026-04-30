@@ -84,7 +84,7 @@ void patch_jump_to(Parse *p, Token loop_tok,
 
 void patch_jump(Parse *p, Token jmp_tok, size_t jmp_operand_idx)
 {
-  // 2 slots account for the 16-bit operand.
+  // 2 accounts for the 16-bit operand.
   size_t jumpable_code = code(p)->instructions.len - jmp_operand_idx - 2;
   patch_jump_to(p, jmp_tok, jmp_operand_idx, jumpable_code);
 }

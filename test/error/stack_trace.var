@@ -1,4 +1,7 @@
 var add_em(one, two) := one + two
-add_em(5, "Heyo!")
+
+var tomfoolery() := add_em(5, "Heyo!")
+tomfoolery()
+
 # expect type number for addend, got string
 # [stack trace...]

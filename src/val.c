@@ -240,6 +240,21 @@ Value Closure_create(Varmint *vm, Procedure *procedure)
   return value_new(c, closure);
 }
 
+// Allocate a C closure
+Value Cclosure_create(Varmint *vm,
+    CclosureFn fn, size_t upvalue_count, Value *initial_upvalues)
+{
+  size_t upvalues_size = upvalue_count * sizeof(Value),
+         size = sizeof(Cclosure) + upvalues_size;
+
+  Cclosure *c = (Cclosure *)create_gc_obj(vm, V_cclosure, size);
+  c->fn = fn;
+  c->upvalue_count = upvalue_count;
+  memcpy(c->upvalues, initial_upvalues, upvalues_size);
+
+  return value_new(c, cclosure);
+}
+
 // Allocate a partial application.
 Value Partial_create(Varmint *vm, Value callee, size_t count)
 {
@@ -274,6 +289,8 @@ bool values_eq(Value a, Value b)
       }
     case V_string:
       return strs_eq(String_as_str(&a), String_as_str(&b));
+    case V_cclosure:
+      return a.as.cclosure->fn == b.as.cclosure->fn;
     case V_list:
     case V_table:
     case V_procedure:
@@ -311,6 +328,7 @@ const char *value_type_cstring(Typetag type)
   case_(procedure)
   case_(upval)
   case_(closure)
+  case_(cclosure)
   case_(partial)
   }
 
@@ -335,7 +353,7 @@ Value value_to_string(Varmint *vm, Value val)
   case V_boolean:
     return val.as.boolean ? String_from(vm, "True") : String_from(vm, "False");
   case V_native:
-    return String_from(vm, "native fn");
+    return String_from(vm, "<native fn>");
   case V_maybe:
     if (val.as.maybe == NULL)
       return String_from(vm, "");
@@ -351,6 +369,8 @@ Value value_to_string(Varmint *vm, Value val)
     return fn_to_string(vm, "fn", val.as.procedure->name);
   case V_closure:
     return fn_to_string(vm, "closure", val.as.closure->procedure->name);
+  case V_cclosure:
+    return String_from(vm, "<native closure>");
   case V_partial:
     return String_from(vm, "<partial>");
   }
@@ -450,6 +470,9 @@ void print_value(FILE *restrict stream, Value val)
   case V_closure:
     print_fn(stream, "closure", val.as.closure->procedure->name);
     break;
+  case V_cclosure:
+    fprintf(stream, ANSI_GREEN "<native closure>" ANSI_RESET); break;
+    break;
   case V_partial:
     fprintf(stream, "partial [%li] ", val.as.partial->application_count);
     print_value(stream, val.as.partial->callee);
@@ -483,7 +506,6 @@ bool value_is_hashable(Typetag t)
     unreachable();
   case V_number:
   case V_boolean:
-  case V_native:
   case V_maybe:
   case V_string:
     return true;
@@ -498,6 +520,7 @@ bool value_is_callable(Typetag t)
   case V_native:
   case V_procedure:
   case V_closure:
+  case V_cclosure:
   case V_partial:
     return true;
   default:

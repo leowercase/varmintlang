@@ -19,7 +19,7 @@ static inline SemanticDatum *new_semantic_scope(Parse *p)
   sem.compound_assign_fn = NULL;
   sem.indent.initial = semantic(p)->indent.initial;
   sem.indent.continued = semantic(p)->indent.continued;
-  sem.if_else_chained = false;
+  sem.else_chained = NULL;
   sem.is_stmts = false;
   sem.in_stmts = semantic(p)->is_stmts;
   sem.led_end = false;
@@ -138,20 +138,21 @@ static UpvalDesc *resolve_upval(Parse *p, Compiler *c, Str name)
   return resolve_upval_from(p, c->enclosing, upval);
 }
 
+static void clear_local(Parse *p)
+{
+  Local local = Locals_pop(&p->c->locals);
+
+  if (local.is_captured)
+    // Hoist upvalue.
+    emit_byte(p, p->current, OP_HOIST_UPVALUE);
+}
+
 static void clear_local_scope(Parse *p)
 {
-  if (p->c->locals.len == 0)
-    return;
+  Locals *locals = &p->c->locals;
 
-  for (Local *local = Locals_top(&p->c->locals);
-      local >= p->c->locals.data && local->depth == p->c->depth;
-      local--) {
-    if (local->is_captured)
-      // Hoist upvalue.
-      emit_byte(p, p->current, OP_HOIST_UPVALUE);
-
-    Locals_pop(&p->c->locals);
-  }
+  while (locals->len > 0 && Locals_top(locals)->depth == p->c->depth)
+    clear_local(p);
 }
 
 // Emit the end of a block, clearing stack slots
@@ -199,6 +200,7 @@ static void descend_compilers(Parse *p)
   Compiler *enclosing = p->c->enclosing;
   free(p->c->locals.data);
   free(p->c->deferred_var.data);
+  free(p->c->loops.data);
   free(p->c);
   p->c = enclosing;
 }
@@ -250,7 +252,7 @@ Parse init_parse(Varmint *vm)
   SemanticDatum sem;
   sem.assign_fn = sem.compound_assign_fn = NULL;
   sem.indent.initial = sem.indent.continued = 0;
-  sem.if_else_chained = false;
+  sem.else_chained = NULL;
   sem.is_stmts = sem.in_stmts = false;
   sem.led_end = false;
   sem.panic = false;
@@ -678,9 +680,9 @@ static void emit_elem(Parse *p, Token elem_tok, bool assign, bool access)
   semantic(p)->assign_fn = elem_assign;
   semantic(p)->compound_assign_fn = elem_compound_assign;
 
-  if (access) {
+  if (access)
     emit_byte(p, elem_tok, OP_GET_ELEM);
-  }
+
   if (!assign)
     semantic(p)->assign_fn = NULL;
 }
@@ -1418,10 +1420,6 @@ static void resolve_var(Parse *p, Local *locals, size_t ndecls)
     if (resolve_upval_from(p, p->c, deferred->upval) != NULL)
       continue;
 
-    // upvalue resolution: try to resolve from the enclosing scope (this one)
-    // - a local
-    // - an upvalue (recursive)
-
     parse_error(p, deferred->tok, true, "undeclared variable %.*s",
         (int)identifier.len, identifier.s);
   }
@@ -1566,7 +1564,7 @@ static inline bool is_else(Parse *p)
   return tok.type == TK_ELSE || tok.type == TK_ELIF;
 }
 
-static void if_expr(Parse *p)
+static void if_then(Parse *p)
 {
   Token if_tok = eat(p);
 
@@ -1579,13 +1577,14 @@ static void if_expr(Parse *p)
   expr(p, PREC_IF);
 
   if (is_else(p)) {
+    // When directly chaining with `else`, don't bother creating a Maybe
     change_opcode(p, operand_idx, OP_JMP_WHEN_FALSE);
 
-    // Allow else on the same indentation level as if
+    // Allow `else` on the same indentation level as `if`
     skip_line(p);
 
-    semantic(p)->if_else_chained = true;
-    semantic(p)->if_jmp_op_idx = operand_idx;
+    semantic(p)->else_chained = true;
+    semantic(p)->else_jmp_idx = operand_idx;
   }
   else {
     // Create an optional value.
@@ -1594,9 +1593,10 @@ static void if_expr(Parse *p)
   }
 }
 
-static void else_elif(Parse *p, int min_bp)
+// else elif
+static void else_clause(Parse *p, int min_bp)
 {
-  // else and elif are left-denoted operators.
+  // Left-denoted operator.
   if (PREC_ELSE < min_bp) {
     semantic(p)->led_end = true;
     return;
@@ -1605,17 +1605,16 @@ static void else_elif(Parse *p, int min_bp)
   bool is_elif = else_tok.type == TK_ELIF;
 
   Opcode opcode =
-    semantic(p)->if_else_chained ? OP_JMP
-                                 : (is_elif ? OP_ELIF : OP_ELSE);
+    semantic(p)->else_chained ? OP_JMP
+                              : (is_elif ? OP_ELIF : OP_ELSE);
   size_t operand_idx =
     defer_op(p, else_tok, opcode);
 
-  if (semantic(p)->if_else_chained)
-    patch_jump(p, else_tok, semantic(p)->if_jmp_op_idx);
+  // Patch any jumps into the `else`
+  if (semantic(p)->else_chained)
+    patch_jump(p, else_tok, semantic(p)->else_jmp_idx);
 
-  semantic(p)->if_else_chained = false;
-
-  if (is_elif) if_expr(p);
+  if (is_elif) if_then(p);
   else { next(p); expr_rhs(p, PREC_ELSE, ASSOC_RIGHT); }
 
   patch_jump(p, else_tok, operand_idx);
@@ -1629,11 +1628,6 @@ static Str loop_label(Parse *p)
     return label;
   }
   else return NULL_STR;
-}
-
-static inline bool consume_comprehension(Parse *p)
-{
-  return match(p, TK_LBRACK) && match(p, TK_RBRACK);
 }
 
 static inline Loop *init_loop(Parse *p)
@@ -1662,98 +1656,102 @@ static inline void end_loop(Parse *p, Token loop_tok, Loop *loop)
     size_t continue_idx = loop->continues.data[i];
     patch_jump_to(p, loop_tok,
         continue_idx,
-        // 2 accounts for the operands
+        // Whereas the breaks jump to the end, continues jump to the beginning.
+        // 2 accounts for the 16-bit operand of the instruction
         loop->iter - continue_idx - 2);
   }
 
   LoopStack_pop(&p->c->loops);
 }
 
-// loop for while
-static void loop_expr(Parse *p)
+// loop for while.
+static void loop(Parse *p)
 {
-  // TODO: Broken
-  abort();
+  // The p-code of a loop is generally aligned as follows:
+  // --- HEAD ---
+  // (0) Stack slot of the `for` iterable
+  // (1) Slot for the result of the loop (initialized as `no` type)
+  //
+  // --- BODY ---
+  // (2) Conditional jump: if condition is false, go to END
+  // (3) Loop expression
+  //
+  // --- ITERATION ---
+  // (4) If captured, the loop variable gets hoisted
+  // (5) `for` advances its iterable
+  // (6) Loop back to BODY
+  //
+  // --- END ---
 
   Token tok = eat(p);
   TokenType type = tok.type;
 
-  // Loops can do something similar to Python list comprehension.
-  // https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions
-  bool is_list_compre = consume_comprehension(p);
+  Str for_identifier;
 
-  Str for_var_ident;
-  size_t for_counter_slot;
-  // Initialize stack slots occupied before the loop
+  // `for` loop initializer
   if (type == TK_FOR) {
-    for_var_ident = consume(p, TK_WORD, "expect identifier").slice;
+    for_identifier = consume(p, TK_WORD, "expect identifier").slice;
     consume(p, TK_IN, "expect `in`");
 
-    expr(p, PREC_NONE); // Iterable
-    emit_byte(p, tok, OP_ZERO); // Counter
-    for_counter_slot = p->c->stack_slot_count += 2;
-  }
-
-  // Initial value for the result of the last cycle.
-  // Either an empty slot, or an empty list ready for comprehension
-  if (is_list_compre) {
-    emit_byte(p, tok, OP_LIST_COMPREHEND);
+    // Iterable value
+    expr(p, PREC_NONE);
     p->c->stack_slot_count++;
   }
-  else emit_byte(p, tok, OP_RESERVE_SLOT);
 
-  // Loop start
+  // Reserve initial value slot for the result of the last cycle.
+  emit_byte(p, tok, OP_INIT_LOOP);
+
+  // Loop start!
   Loop *loop = init_loop(p);
   loop->is_for = type == TK_FOR;
-  loop->is_list_compre = is_list_compre;
 
   // Emit conditional jump
-  size_t jmp_idx = false;
+  size_t cond_jmp_idx;
   switch (type) {
+  default: unreachable();
+
   case TK_LOOP:
     // No conditional jump, but discard what the last cycle evaluated to
-    if (!is_list_compre) emit_byte(p, tok, OP_POP);
-    jmp_idx = false; break;
+    cond_jmp_idx = false;
+    break;
 
   case TK_WHILE:
-    expr(p, PREC_NONE); // Condition
-    jmp_idx = defer_op(p, tok,
-        is_list_compre ? OP_WHILE_LIST : OP_WHILE); break;
+    // `while` has its conditional jump.
+    expr(p, PREC_NONE);
+    cond_jmp_idx = defer_op(p, tok, OP_JMP_WHEN_FALSE);
+    break;
 
   case TK_FOR:
-    // Create loop variable
-    create_local_var(p, for_var_ident)->initialized = true;
+    // `for` creates a loop variable.
+    create_local_var(p, for_identifier)->initialized = true;
     p->c->stack_slot_count++;
-    jmp_idx = defer_op(p, tok,
-        is_list_compre ? OP_FOR_LIST : OP_FOR); break;
 
-  default: unreachable();
+    // The variable is initialized with the next value from the iterable.
+    // If the iterable is finished, termination ensues.
+    emit_byte(p, tok, OP_FOR);
+    cond_jmp_idx = defer_op(p, tok, OP_FOR_JMP);
+    break;
   }
+
+  // `do` separates the head and the body.
+  if (type != TK_LOOP) consume(p, TK_DO, "expect `do`");
 
   // Parse loop body
-  //construct_body(p, PREC_TOP, 0);
+  expr(p, PREC_TOP);
+
   loop->iter = code_idx(p);
 
-  // Increment counter variable at the end of for
   if (type == TK_FOR)
-    emit_var_op(p, tok, OP_FOR_INCREMENT, for_counter_slot);
+    // The loop variable is created and moved out of scope on each iteration.
+    // Any closures in the loop body will each get their own copy.
+    clear_local(p);
 
-  // Emit the looping instruction
-  emit_loop(p, tok,
-      is_list_compre ? OP_LOOP_LIST : OP_LOOP,
-      loop->start);
-
-  // Loop end
+  // Loop end!
+  emit_loop(p, tok, OP_LOOP, loop->start);
   end_loop(p, tok, loop);
-  // Land the conditional jump here.
-  if (jmp_idx) patch_jump(p, tok, jmp_idx);
 
-  if (type == TK_FOR) {
-    Locals_pop(&p->c->locals); // Loop variable
-    p->c->stack_slot_count -= 3;
-  }
-  if (is_list_compre)
-    p->c->stack_slot_count--;
+  // Land the conditional jump here.
+  if (cond_jmp_idx) patch_jump(p, tok, cond_jmp_idx);
 }
 
 static Loop *resolve_loop(Parse *p, Token control_flow)
@@ -1779,7 +1777,7 @@ static Loop *resolve_loop(Parse *p, Token control_flow)
 }
 
 // Emit the result of a control flow keyword
-static void control_flow_result(Parse *p)
+static bool control_flow_result(Parse *p)
 {
   bool has_result = p->current.type == TK_LINE
     ? is_continued_line(p, p->current.slice.len) : is_expr(p->current.type);
@@ -1788,6 +1786,8 @@ static void control_flow_result(Parse *p)
     expr_rhs(p, PREC_FLOW, ASSOC_LEFT); // Parse resulting value.
   else
     emit_byte(p, p->current, OP_RESERVE_SLOT);
+
+  return has_result;
 }
 
 // break [value]
@@ -1795,38 +1795,37 @@ static void control_flow_result(Parse *p)
 static void loop_flow(Parse *p)
 {
   Token tok = eat(p);
-
   Loop *loop = resolve_loop(p, tok);
   control_flow_result(p);
 
   if (loop == NULL) return;
 
-  Opcode opcode;
-  JumpIndices *worklist;
-
   // 1 accounts for the resulting value.
   size_t slots = p->c->stack_slot_count - loop->stack_slot + 1;
 
   if (tok.type == TK_CONTINUE && loop->is_for)
-    slots--; // Don't discard the loop variable yet.
+    slots--; // Don't discard the loop variable.
 
-  // Discard the stack slots occupied.
+  // Discard the stack slots occupied by the loop.
   emit_var_op(p, tok, OP_END_BLOCK, slots);
 
-  if (tok.type == TK_BREAK) {
+  JumpIndices *worklist;
+
+  switch (tok.type) {
+  default: unreachable();
+
+  case TK_BREAK:
     worklist = &loop->breaks;
-    opcode = loop->is_list_compre ? OP_BREAK_LIST : OP_BREAK;
-
     if (loop->is_for)
-      emit_byte(p, tok,
-          loop->is_list_compre ? OP_DISCARD_FOR_LIST : OP_DISCARD_FOR);
-  }
-  else {
+      emit_byte(p, tok, OP_FOR_DISCARD);
+    break;
+
+  case TK_CONTINUE:
     worklist = &loop->continues;
-    opcode = OP_JMP;
+    break;
   }
 
-  size_t jmp_idx = defer_op(p, tok, opcode);
+  size_t jmp_idx = defer_op(p, tok, OP_JMP);
   JumpIndices_push(worklist, jmp_idx);
 }
 
@@ -1936,14 +1935,15 @@ static const ParseRule parse_rules[] =
 
     [TK_MOD]         = { NULL,       infix_op    },
 
-    [TK_IF]          = { if_expr,    NULL        },
+    [TK_IF]          = { if_then,    NULL        },
     [TK_THEN]        = { NULL,       led_end     },
-    [TK_ELSE]        = { NULL,       else_elif   },
-    [TK_ELIF]        = { NULL,       else_elif   },
+    [TK_ELSE]        = { NULL,       else_clause },
+    [TK_ELIF]        = { NULL,       else_clause },
 
-    [TK_LOOP]        = { loop_expr,  NULL        },
-    [TK_FOR]         = { loop_expr,  NULL        },
-    [TK_WHILE]       = { loop_expr,  NULL        },
+    [TK_LOOP]        = { loop,       NULL        },
+    [TK_FOR]         = { loop,       NULL        },
+    [TK_WHILE]       = { loop,       NULL        },
+    [TK_DO]          = { NULL,       led_end     },
 
     [TK_BREAK]       = { loop_flow,  NULL        },
     [TK_CONTINUE]    = { loop_flow,  NULL        },

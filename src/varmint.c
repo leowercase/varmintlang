@@ -27,6 +27,8 @@ static const NameValue default_builtins[] = {
 
   { str_from("time"),      value_new(_time,       native) },
 
+  { str_from("range"),     value_new(_range,      native) },
+
   { str_from("rot"),       value_new(_rot,        native) },
 };
 static const size_t default_builtin_count =

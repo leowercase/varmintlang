@@ -36,10 +36,11 @@ typedef double float64_t;
 #define uint8_to_16(uints) \
   (uint16_t)(((uints)[0] << 8) | (uints)[1])
 
-#define uint16_to_8(uint) { \
-  (uint8_t)(((uint) & 0xff00) >> 8), \
-  (uint8_t)((uint) & 0x00ff), \
-}
+#define uint16_to_8(uint) \
+  { \
+    (uint8_t)(((uint) & 0xff00) >> 8), \
+    (uint8_t)((uint) & 0x00ff), \
+  }
 
 // Modulo is hecka slow (on modern computers).
 // Bitwise AND on the other hand...

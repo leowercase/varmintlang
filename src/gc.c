@@ -152,8 +152,23 @@ static void mark_obj(Varmint *vm, Value obj)
       break;
     }
   case V_closure:
-    mark_procedure(vm, obj.as.closure->procedure);
-    break;
+    {
+      Closure *c = obj.as.closure;
+      mark_procedure(vm, c->procedure);
+
+      for (size_t i = 0; i < c->upvalue_count; i++)
+        mark_obj(vm, value_new(c->upvalues[i], upval));
+      break;
+    }
+  case V_cclosure:
+    {
+      Cclosure *c = obj.as.cclosure;
+
+      for (size_t i = 0; i < c->upvalue_count; i++)
+        if (is_heaped_value(c->upvalues[i]))
+          mark_obj(vm, obj);
+      break;
+    }
   case V_partial:
     {
       Partial *partial = obj.as.partial;
@@ -247,6 +262,9 @@ static void free_gc_obj(Varmint *vm, GCData *data)
     break;
   case V_closure:
     FREE(Closure);
+    break;
+  case V_cclosure:
+    FREE(Cclosure);
     break;
   case V_partial:
     FREE(Partial);

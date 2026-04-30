@@ -105,48 +105,6 @@ static inline Value validate_table_key(Varmint *vm, Value key)
   return key;
 }
 
-static void loop_result(Varmint *vm, Value result)
-{
-  push(vm, result.type == V_no
-      ? Maybe_none() : Maybe_some(vm, result));
-}
-
-static void list_comprehend(Varmint *vm, Value value)
-{
-  if (value.type == V_no)
-    runtime_error(vm, "must provide value for list comprehension");
-
-  Value list_val = peek(vm, 0);
-  assert(list_val.type == V_list);
-
-  List_push(vm, list_val.as.list, value);
-}
-
-static bool for_loop_next(Varmint *vm, Value iterable, size_t counter)
-{
-  // Value of the loop variable
-  Value val = NO_VALUE;
-
-  switch (iterable.type) {
-  case V_list:
-    if (counter < iterable.as.list->len)
-      val = iterable.as.list->data[counter];
-    else return false;
-    break;
-  case V_string:
-    if (counter < iterable.as.string->len)
-      val = String_create(vm, &iterable.as.string->s[counter], 1);
-    else return false;
-    break;
-  default:
-    runtime_error(vm, "cannot use %s as iterable in for loop",
-        value_type_cstring(iterable.type));
-  }
-
-  push(vm, val);
-  return true;
-}
-
 // Call a procedure.
 static void call(Varmint *vm,
     Procedure *procedure, Value *op_stack,
@@ -261,6 +219,37 @@ void call_program(Varmint *vm, Procedure *program)
       push(vm, vm->builtins.data[i].value);
 
     vm->builtins_emitted = true;
+  }
+}
+
+static void iterable_next(Varmint *vm, Value *iterable)
+{
+  switch (iterable->type) {
+  case V_no:
+    // Advance already initialized iterable.
+
+    break;
+
+  case V_table:
+  case V_list:
+  case V_string:
+    // Initialize iterable.
+
+    break;
+
+  case V_native:
+  case V_procedure:
+  case V_closure:
+  case V_cclosure:
+  case V_partial:
+    // The loop variable is initialized with the return value of the callable.
+    push(vm, *iterable);
+    call_val(vm, iterable, 0);
+    break;
+
+  default:
+    runtime_error(vm, "cannot use value of type %s as iterable",
+        value_type_cstring(iterable->type));
   }
 }
 
@@ -533,7 +522,7 @@ void run_bytecode(Varmint *vm)
 
         vm->op_stack.len =
           (size_t)(vm->frame->op_stack - vm->op_stack.data)
-          + vm->frame->procedure->arity + 1;
+            + vm->frame->procedure->arity + 1;
 
         if (vm->call_stack.len == 1)
           // On program level, take builtin slots into account
@@ -552,10 +541,10 @@ void run_bytecode(Varmint *vm)
       // Jump when value is False.
     case OP_JMP_WHEN_FALSE:
       {
-        size_t jumpable_code = read_16(vm);
+        size_t jump = read_16(vm);
 
         if (value_is_falsey(pop(vm)))
-          vm->frame->ip += jumpable_code;
+          vm->frame->ip += jump;
         break;
       }
 
@@ -563,10 +552,10 @@ void run_bytecode(Varmint *vm)
       // If lhs is False, jump over the Some()-constructing body and push None
     case OP_IF:
       {
-        size_t jumpable_code = read_16(vm);
+        size_t jump = read_16(vm);
 
         if (value_is_falsey(pop(vm))) {
-          vm->frame->ip += jumpable_code;
+          vm->frame->ip += jump;
           push(vm, Maybe_none());
         }
         break;
@@ -575,13 +564,13 @@ void run_bytecode(Varmint *vm)
       // If lhs is Some(), jump over the body and push the unwrapped value.
     case OP_ELSE:
       {
-        size_t jumpable_code = read_16(vm);
+        size_t jump = read_16(vm);
 
         Value lhs = pop(vm);
         Maybe *optional = typechecked(vm, lhs, maybe);
 
         if (optional != NULL) {
-          vm->frame->ip += jumpable_code;
+          vm->frame->ip += jump;
           push(vm, optional->raw);
         }
         break;
@@ -590,142 +579,55 @@ void run_bytecode(Varmint *vm)
       // If lhs Some(), jump over the if body and push the Some()
     case OP_ELIF:
       {
-        size_t jumpable_code = read_16(vm);
+        size_t jump = read_16(vm);
 
         Value lhs = pop(vm);
 
         if (typechecked(vm, lhs, maybe) != NULL) {
-          vm->frame->ip += jumpable_code;
+          vm->frame->ip += jump;
           push(vm, lhs);
         }
         break;
       }
 
-      // Create a list for list comprehension
-    case OP_LIST_COMPREHEND:
-      push(vm, List_create(vm, 0));
-      break;
+      // Initialize loop result slot
+    case OP_INIT_LOOP:
+      {
+        Value initial_result = NO_VALUE;
+        initial_result.as.metadata.loop_has_run = false;
 
+        push(vm, initial_result);
+        break;
+      }
+      // Set loop result and jump back to the top of the loop code
     case OP_LOOP:
       {
-        vm->frame->ip -= read_16(vm);
-        break;
-      }
-      // List comprehension.
-      // A loop that creates a list from its cycles' values
-    case OP_LOOP_LIST:
-      {
-        list_comprehend(vm, pop(vm));
-        vm->frame->ip -= read_16(vm);
-        break;
-      }
+        size_t jump = read_16(vm);
+        vm->frame->ip -= jump;
 
-      // Start a while loop cycle.
-    case OP_WHILE:
-      {
-        size_t jumpable_code = read_16(vm);
-
-        Value cond = pop(vm);
         Value result = pop(vm);
+        if (result.type == V_no)
+          result.as.metadata.loop_has_run = true;
 
-        if (value_is_falsey(cond)) {
-          vm->frame->ip += jumpable_code;
-          loop_result(vm, result);
-        }
+        *top(vm) = result;
         break;
       }
-      // Start a while list comprehension cycle.
-    case OP_WHILE_LIST:
-      {
-        size_t jumpable_code = read_16(vm);
-
-        Value cond = pop(vm);
-
-        if (value_is_falsey(cond))
-          vm->frame->ip += jumpable_code;
-        break;
-      }
-
-      // Start a for loop cycle.
+      // Initialize loop variable with next value from iterable.
     case OP_FOR:
+      iterable_next(vm, &top(vm)[-1]);
+      break;
+      // Break from the loop if the iterable is finished.
+    case OP_FOR_JMP:
       {
-        size_t jumpable_code = read_16(vm);
-
-        Value result = pop(vm);
-
-        size_t counter = (size_t)peek(vm, 0).as.number;
-        Value iterable = peek(vm, 1);
-
-        if (!for_loop_next(vm, iterable, counter)) {
-          popn(vm, 2);
-          vm->frame->ip += jumpable_code;
-          loop_result(vm, result);
-        }
+        size_t jump = read_16(vm);
+        if (peek(vm, 0).type == V_no) vm->frame->ip += jump;
         break;
       }
-      // Start a for list comprehension cycle.
-    case OP_FOR_LIST:
+      // Discard iterable.
+    case OP_FOR_DISCARD:
       {
-        size_t jumpable_code = read_16(vm);
-
-        size_t counter = (size_t)peek(vm, 1).as.number;
-        Value iterable = peek(vm, 2);
-
-        if (!for_loop_next(vm, iterable, counter)) {
-          Value result_list = pop(vm);
-          popn(vm, 2);
-          push(vm, result_list);
-          vm->frame->ip += jumpable_code;
-        }
-        break;
-      }
-      // Discard loop variable slot & increment counter
-    case_var_op(OP_FOR_INCREMENT, stack_slot,
-      {
-        Value result = pop(vm);
-        pop(vm); // Loop variable
-
-        Value *counter = get_stack_slot(vm, stack_slot);
-        assert(counter->type == V_number);
-        counter->as.number++;
-
-        push(vm, result);
-        break;
-      })
-
-    case OP_BREAK:
-      {
-        loop_result(vm, pop(vm));
-        vm->frame->ip += read_16(vm);
-        break;
-      }
-    case OP_BREAK_LIST:
-      {
-        list_comprehend(vm, pop(vm));
-        vm->frame->ip += read_16(vm);
-        break;
-      }
-
-    case OP_DISCARD_FOR:
-      {
-        Value result = pop(vm);
-
-        // Discard the counter and iterable
-        popn(vm, 2);
-
-        push(vm, result);
-        break;
-      }
-    case OP_DISCARD_FOR_LIST:
-      {
-        Value result = pop(vm);
-        Value list = pop(vm);
-
-        // Discard the counter and iterable
-        popn(vm, 2);
-
-        push(vm, list);
-        push(vm, result);
+        Value result_val = pop(vm);
+        *top(vm) = result_val;
         break;
       }
 
@@ -824,7 +726,7 @@ void run_bytecode(Varmint *vm)
         }
 
         // Pop function parameters
-        popn(vm, (size_t)frame.procedure->arity);
+        popn(vm, frame.procedure->arity);
         // Pop the function itself off the stack.
         pop(vm);
 

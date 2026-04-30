@@ -1,8 +1,8 @@
 var age := 15 * 1.5,
-    fancy_job_name := "occupation"
+    job_name := "occupation"
 
 var person := @[
   name := "Sally Smith",
   age,
-  [fancy_job_name] := "CS Student",
+  [job_name] := "astrobiologist",
 ]
