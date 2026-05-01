@@ -157,6 +157,16 @@ static void call_val(Varmint *vm, Value *callee, size_t argc)
       *top(vm) = result;
       break;
     }
+  case V_cclosure:
+    {
+      Cclosure *c = callee->as.cclosure;
+      ArgList args = {argc, argv};
+      Value result = c->fn(vm, &args, c->upvalues);
+
+      popn(vm, argc); // Pop parameters off the op stack
+      *top(vm) = result;
+      break;
+    }
   case V_procedure:
     {
       Procedure *fn = callee->as.procedure;
@@ -219,37 +229,6 @@ void call_program(Varmint *vm, Procedure *program)
       push(vm, vm->builtins.data[i].value);
 
     vm->builtins_emitted = true;
-  }
-}
-
-static void iterable_next(Varmint *vm, Value *iterable)
-{
-  switch (iterable->type) {
-  case V_no:
-    // Advance already initialized iterable.
-
-    break;
-
-  case V_table:
-  case V_list:
-  case V_string:
-    // Initialize iterable.
-
-    break;
-
-  case V_native:
-  case V_procedure:
-  case V_closure:
-  case V_cclosure:
-  case V_partial:
-    // The loop variable is initialized with the return value of the callable.
-    push(vm, *iterable);
-    call_val(vm, iterable, 0);
-    break;
-
-  default:
-    runtime_error(vm, "cannot use value of type %s as iterable",
-        value_type_cstring(iterable->type));
   }
 }
 
@@ -599,7 +578,7 @@ void run_bytecode(Varmint *vm)
         push(vm, initial_result);
         break;
       }
-      // Set loop result and jump back to the top of the loop code
+      // Update result slot and jump back to the top of the loop code
     case OP_LOOP:
       {
         size_t jump = read_16(vm);
@@ -614,13 +593,42 @@ void run_bytecode(Varmint *vm)
       }
       // Initialize loop variable with next value from iterable.
     case OP_FOR:
-      iterable_next(vm, &top(vm)[-1]);
-      break;
+      {
+        Value *iterable = &top(vm)[-1];
+
+        if (value_is_callable(iterable->type)) {
+          push(vm, *iterable);
+          call_val(vm, iterable, 0);
+        }
+        else runtime_error(vm, "iterable %s is not a callable value",
+            value_type_cstring(iterable->type));
+
+        break;
+      }
       // Break from the loop if the iterable is finished.
     case OP_FOR_JMP:
       {
         size_t jump = read_16(vm);
-        if (peek(vm, 0).type == V_no) vm->frame->ip += jump;
+        Value next_val = peek(vm, 0);
+
+        if (next_val.type != V_maybe)
+          runtime_error(vm, "expect maybe return type for iterable, got %s",
+              value_type_cstring(next_val.type));
+
+        else if (next_val.as.maybe == NULL) {
+          // Iterable returned None
+          // -> Discard the slots of the loop variable and the iterable.
+          pop(vm);
+          Value loop_result = pop(vm);
+          *top(vm) = loop_result;
+
+          // Break from loop.
+          vm->frame->ip += jump;
+        }
+        else
+          // Iterable returned Some.
+          *top(vm) = next_val.as.maybe->raw;
+
         break;
       }
       // Discard iterable.
@@ -730,8 +738,13 @@ void run_bytecode(Varmint *vm)
         // Pop the function itself off the stack.
         pop(vm);
 
+#ifdef VARMINT_DEBUG
         // Ensure a balanced stack after the call!
-        assert(&vm->op_stack.data[vm->op_stack.len] == frame.op_stack);
+        if (&vm->op_stack.data[vm->op_stack.len] != frame.op_stack) {
+          print_op_stack(vm);
+          assert(false);
+        }
+#endif
 
         if (return_from_program) {
           vm->result = return_val;

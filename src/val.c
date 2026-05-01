@@ -11,6 +11,13 @@
 bool varm_arg(struct Varmint *vm,
     struct ArgList *args, const char *format, ...)
 {
+  size_t len = strlen(format);
+
+  if (len != args->argc) {
+    runtime_error(vm, "expect %li args to function, got %li", len, args->argc);
+    return false;
+  }
+
   va_list ap;
   va_start(ap, format);
 
@@ -22,6 +29,7 @@ bool varm_arg(struct Varmint *vm,
     switch (format[i]) {
       // Value
     case 'v':
+      if (argt == V_no) runtime_error(vm, "got no value as argument");
       *va_arg(ap, Value *) = arg;
       break;
       // Number
@@ -54,19 +62,17 @@ bool varm_arg(struct Varmint *vm,
       break;
       // Callable
     case 'C':
-      if (!value_is_callable(argt))
+      if (!value_is_callable(argt)) {
         runtime_error(vm, "expect callable arg, got %s",
             value_type_cstring(argt));
+        break;
+      }
       *va_arg(ap, Value *) = arg;
       break;
     default:
       unreachable();
     }
   }
-
-  if (i != args->argc)
-    runtime_error(vm, "expect %li args to function, got %li",
-        i, args->argc);
 
   va_end(ap);
   return vm->status == VM_A_OK;
@@ -242,7 +248,8 @@ Value Closure_create(Varmint *vm, Procedure *procedure)
 
 // Allocate a C closure
 Value Cclosure_create(Varmint *vm,
-    CclosureFn fn, size_t upvalue_count, Value *initial_upvalues)
+    CclosureFn fn,
+    size_t upvalue_count, Value initial_upvalues[upvalue_count])
 {
   size_t upvalues_size = upvalue_count * sizeof(Value),
          size = sizeof(Cclosure) + upvalues_size;

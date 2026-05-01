@@ -181,7 +181,8 @@ Value Procedure_create(struct Varmint *vm, size_t arity, String *source);
 Value Closure_create(struct Varmint *vm, struct Procedure *procedure);
 
 Value Cclosure_create(struct Varmint *vm,
-    CclosureFn fn, size_t upvalue_count, Value *initial_upvalues);
+    CclosureFn fn,
+    size_t upvalue_count, Value initial_upvalues[upvalue_count]);
 
 Value Partial_create(struct Varmint *vm, Value callee, size_t count);
 

@@ -458,14 +458,22 @@ static bool match_op(Parse *p, TokenType expected)
 
 static const ParseRule *parse_rule(TokenType t);
 
-static inline bool is_expr(TokenType type) // Null denoted expression
+static inline bool is_nud(TokenType type) // Null denotation
 {
-  return parse_rule(type)->nud != NULL || type == TK_LINE;
+  return parse_rule(type)->nud != NULL;
 }
 
 static inline bool is_led(TokenType type) // Left denotation
 {
   return parse_rule(type)->led != NULL;
+}
+
+static inline bool is_expr(Parse *p, Token token)
+{
+  if (token.type == TK_LINE)
+    return is_continued_line(p, token.slice.len);
+  else
+    return is_nud(token.type);
 }
 
 // Consume a null-denoted parse.
@@ -491,7 +499,7 @@ static void leds(Parse *p, int min_bp)
     LedRule op_rule = parse_rule(op_token.type)->led;
 
     if (op_rule == NULL) {
-      if (is_expr(op_token.type)) op_rule = juxtaposed;
+      if (is_expr(p, op_token)) op_rule = juxtaposed;
       else {
         parse_error(p, op_token, true, "expect operator, got `%.*s`",
             (int)op_token.slice.len, op_token.slice.s);
@@ -561,11 +569,17 @@ static void stmts(Parse *p, TokenType end, bool end_scope)
 
     else {
       // Expression statement.
-      if (!is_expr(p->current.type))
+
+      if (p->current.type == TK_LINE) {
+        set_initial_line_indent(p, p->current.slice.len);
+        next(p);
+      }
+
+      if (!is_nud(p->current.type))
         parse_error(p, p->current, true, "invalid statement");
 
       expr(p, PREC_NONE);
-      scope->statement_count++;
+      semantic(p)->statement_count++;
       p->c->stack_slot_count++;
     }
 
@@ -580,7 +594,7 @@ static void stmts(Parse *p, TokenType end, bool end_scope)
 
   if (end_scope) {
     clear_local_scope(p);
-    end_block(p, p->current, scope->statement_count);
+    end_block(p, p->current, semantic(p)->statement_count);
   }
   p->c->depth--;
 
@@ -879,7 +893,7 @@ static void led_op(Parse *p, int min_bp)
   TokenType op_t = op_token.type,
             next_t = next_token.type;
 
-  if (!is_expr(next_t))
+  if (!is_expr(p, next_token))
     // Next token is not a valid rhs expression.
     goto postfix;
 
@@ -1303,7 +1317,7 @@ static void ufcs(Parse *p, int min_bp)
         break;
       }
 
-      else if (is_expr(tok.type)) {
+      else if (is_expr(p, tok)) {
         // Single juxtaposed operand.
         expr_rhs(p, PREC_CALL, ASSOC_RIGHT);
         emit_var_op(p, tok, OP_CALL, colon_count + 1);
@@ -1700,6 +1714,7 @@ static void loop(Parse *p)
 
   // Reserve initial value slot for the result of the last cycle.
   emit_byte(p, tok, OP_INIT_LOOP);
+  p->c->stack_slot_count++;
 
   // Loop start!
   Loop *loop = init_loop(p);
@@ -1722,29 +1737,37 @@ static void loop(Parse *p)
     break;
 
   case TK_FOR:
-    // `for` creates a loop variable.
+    // `for` creates a loop variable which is initialized with the next value
+    // from the iterable.
+    emit_byte(p, tok, OP_FOR);
     create_local_var(p, for_identifier)->initialized = true;
     p->c->stack_slot_count++;
 
-    // The variable is initialized with the next value from the iterable.
     // If the iterable is finished, termination ensues.
-    emit_byte(p, tok, OP_FOR);
     cond_jmp_idx = defer_op(p, tok, OP_FOR_JMP);
     break;
   }
 
   // `do` separates the head and the body.
-  if (type != TK_LOOP) consume(p, TK_DO, "expect `do`");
+  if (type != TK_LOOP)
+    consume(p, TK_DO, "expect `do`");
 
   // Parse loop body
   expr(p, PREC_TOP);
 
   loop->iter = code_idx(p);
 
-  if (type == TK_FOR)
-    // The loop variable is created and moved out of scope on each iteration.
-    // Any closures in the loop body will each get their own copy.
+  if (type == TK_FOR) {
+    // The `for` loop variable is created and moved out of scope on each
+    // iteration. This ensures that any closures over the variable will get the
+    // version of it seen in their loop cycle.
     clear_local(p);
+    // Discard the variable's slot.
+    end_block(p, tok, 2);
+
+    // The iterable also ends it's lifetime here.
+    p->c->stack_slot_count--;
+  }
 
   // Loop end!
   emit_loop(p, tok, OP_LOOP, loop->start);
@@ -1752,6 +1775,20 @@ static void loop(Parse *p)
 
   // Land the conditional jump here.
   if (cond_jmp_idx) patch_jump(p, tok, cond_jmp_idx);
+}
+
+// Emit the result of a control flow keyword
+static bool control_flow_result(Parse *p)
+{
+  bool has_result = p->current.type == TK_LINE
+    ? is_continued_line(p, p->current.slice.len) : is_expr(p, p->current);
+
+  if (has_result)
+    expr_rhs(p, PREC_FLOW, ASSOC_LEFT); // Parse resulting value.
+  else
+    emit_byte(p, p->current, OP_RESERVE_SLOT);
+
+  return has_result;
 }
 
 static Loop *resolve_loop(Parse *p, Token control_flow)
@@ -1774,20 +1811,6 @@ static Loop *resolve_loop(Parse *p, Token control_flow)
 
   parse_error(p, label_tok, true, "invalid label");
   return NULL;
-}
-
-// Emit the result of a control flow keyword
-static bool control_flow_result(Parse *p)
-{
-  bool has_result = p->current.type == TK_LINE
-    ? is_continued_line(p, p->current.slice.len) : is_expr(p->current.type);
-
-  if (has_result)
-    expr_rhs(p, PREC_FLOW, ASSOC_LEFT); // Parse resulting value.
-  else
-    emit_byte(p, p->current, OP_RESERVE_SLOT);
-
-  return has_result;
 }
 
 // break [value]

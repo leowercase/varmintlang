@@ -68,6 +68,8 @@ Value _time(Varmint *vm, ArgList *args);
 
 // range(start, end, step) -> cclosure
 Value _range(Varmint *vm, ArgList *args);
+// items(collection) -> cclosure
+Value _items(Varmint *vm, ArgList *args);
 
 // rot(shift: number, text: string) -> string
 Value _rot(Varmint *vm, ArgList *args);

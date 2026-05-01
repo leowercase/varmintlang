@@ -227,5 +227,7 @@ void dis_source(FILE *restrict stream,
     Varmint *vm, Parse *parse, String *source, const char *name)
 {
   Procedure *procedure = compile(vm, parse, true, source);
-  dis(stream, procedure, name);
+
+  if (procedure != NULL)
+    dis(stream, procedure, name);
 }

@@ -488,15 +488,15 @@ static Value range_iter(Varmint *vm, ArgList *args, Value *upvalues)
 
   if (step >= 0) {
     // Positive step
-    if (i >= end) return NO_VALUE;
+    if (i >= end) return Maybe_none();
   }
   else {
     // Negative step
-    if (i <= end) return NO_VALUE;
+    if (i <= end) return Maybe_none();
   }
 
   (*iter) += step;
-  return value_new(i, number);
+  return Maybe_some(vm, value_new(i, number));
 }
 
 Value _range(Varmint *vm, ArgList *args)
@@ -513,6 +513,92 @@ Value _range(Varmint *vm, ArgList *args)
   };
 
   return Cclosure_create(vm, range_iter, 3, upvalues);
+}
+
+Value string_items_iter(Varmint *vm, ArgList *args, Value *upvalues)
+{
+  if (!varm_arg(vm, args, ""))
+    return NO_VALUE;
+
+  float64_t *idx = &upvalues[0].as.number;
+  String *s = upvalues[1].as.string;
+
+  size_t i = (size_t)*idx;
+  if (i >= s->len)
+    return Maybe_none();
+
+  Value result = String_create(vm, &s->s[i], 1);
+  (*idx)++;
+  return Maybe_some(vm, result);
+}
+
+Value list_items_iter(Varmint *vm, ArgList *args, Value *upvalues)
+{
+  if (!varm_arg(vm, args, ""))
+    return NO_VALUE;
+
+  float64_t *idx = &upvalues[0].as.number;
+  List *list = upvalues[1].as.list;
+
+  size_t i = (size_t)*idx;
+  if (i >= list->len)
+    return Maybe_none();
+
+  Value result = list->data[i];
+  (*idx)++;
+  return Maybe_some(vm, result);
+}
+
+Value table_items_iter(Varmint *vm, ArgList *args, Value *upvalues)
+{
+  if (!varm_arg(vm, args, ""))
+    return NO_VALUE;
+
+  float64_t *idx = &upvalues[0].as.number;
+  Table *table = upvalues[1].as.table;
+
+  size_t i = (size_t)*idx;
+
+  for (; i < table->cap; i++) {
+    bool is_empty_entry =
+      table->entries[i].is_tomb || table->entries[i].key.type == V_no;
+
+    if (!is_empty_entry) break;
+  }
+
+  (*idx) = (float64_t)i;
+
+  if (i >= table->cap)
+    return Maybe_none();
+  else
+    return Maybe_some(vm, table->entries[i].key);
+}
+
+Value _items(Varmint *vm, ArgList *args)
+{
+  Value val;
+  if (!varm_arg(vm, args, "v", &val))
+    return NO_VALUE;
+
+  Value upvalues[] = {
+    value_new(0, number),
+    val,
+  };
+  CclosureFn fn;
+
+  switch (val.type) {
+  case V_string:
+    fn = string_items_iter; break;
+  case V_list:
+    fn = list_items_iter; break;
+  case V_table:
+    fn = table_items_iter; break;
+  default:
+    runtime_error(vm, "expect collection type for arg");
+    return NO_VALUE;
+  }
+
+  return Cclosure_create(vm, fn, 2, upvalues);
 }
 
 Value _rot(Varmint *vm, ArgList *args)

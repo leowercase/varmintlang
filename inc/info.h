@@ -33,4 +33,6 @@ void runtime_error(Varmint *vm, const char *fmt, ...);
 
 void error_line_snip(char *source, size_t line, char *pointer_pos);
 
+void print_op_stack(Varmint *vm);
+
 #endif

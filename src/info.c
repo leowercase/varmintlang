@@ -69,6 +69,17 @@ void error_line_snip(char *source, size_t line, char *pointer_pos)
   }
 }
 
+void print_op_stack(Varmint *vm)
+{
+  info_out("operation stack:\n");
+
+  for (size_t i = 0; i < vm->op_stack.len; i++) {
+    info_out("[%li] ", i);
+    print_value(stderr, vm->op_stack.data[i]);
+    info_out("\n");
+  }
+}
+
 static const uint8_t HALT_INSTRUCTION = OP_HALT;
 
 void runtime_error(Varmint *vm, const char *fmt, ...)
@@ -105,13 +116,7 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
   }
 
 #ifdef VARMINT_DEBUG
-  info_out("operation stack:\n");
-
-  for (size_t i = 0; i < vm->op_stack.len; i++) {
-    info_out("[%li] ", i);
-    print_value(stderr, vm->op_stack.data[i]);
-    info_out("\n");
-  }
+  print_op_stack(vm);
 #endif
 
   vm->status = VM_RUNTIME_ERR;
