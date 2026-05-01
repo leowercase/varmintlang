@@ -66,6 +66,7 @@ typedef enum {
 
   OP_RESERVE_SLOT,
   var(OP_END_BLOCK),
+  var(OP_LEVEL_BLOCK),
   OP_END_SLOTS,
 
   OP_JMP,
@@ -75,7 +76,6 @@ typedef enum {
   OP_ELSE,
   OP_ELIF,
 
-  OP_INIT_LOOP,
   OP_LOOP,
   OP_FOR,
   OP_FOR_JMP,

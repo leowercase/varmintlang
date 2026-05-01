@@ -1,4 +1,4 @@
-for i in ["Fee", "Fi", "Fo", "Fum"] do
+for i in ["Fee", "Fi", "Fo", "Fum"]:items() do
   putln i
 # Fee
 # Fi

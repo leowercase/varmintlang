@@ -46,10 +46,6 @@ typedef enum {
 
 // Union of Varmint values.
 typedef union {
-  struct {
-    bool loop_has_run;
-  } metadata;
-
   float64_t number;
   int boolean;
   NativeFn native;

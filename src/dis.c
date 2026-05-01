@@ -151,6 +151,7 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
 
   case_i(RESERVE_SLOT)
   case_var_op(END_BLOCK, size)
+  case_var_op(LEVEL_BLOCK, size)
   case_i(END_SLOTS)
 
   case_op(JMP, jump_fwd)
@@ -160,7 +161,6 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_op(ELSE, jump_fwd)
   case_op(ELIF, jump_fwd)
 
-  case_i(INIT_LOOP)
   case_op(LOOP, jump_bkwd)
   case_i(FOR)
   case_op(FOR_JMP, jump_fwd)

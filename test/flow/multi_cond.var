@@ -1,5 +1,4 @@
 var failure := False
-
 var n := input("Type a number! "):to_number()
          else { failure := True; 1 }
 

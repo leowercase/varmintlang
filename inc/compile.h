@@ -146,12 +146,11 @@ void parse_error(Parse *p, Token offending_tok, bool pointer,
 
 typedef enum {
   PREC_NONE,
-  PREC_ASSIGN,    // :=
   PREC_TOP,       // var as loop for while
+  PREC_ASSIGN,    // :=
   PREC_ELSE,      // else elif
   PREC_IF,        // if
   PREC_FLOW,      // break continue return
-  PREC_MAPLET,    // =>
   PREC_OR,        // or
   PREC_AND,       // and
   PREC_I9N,       // ->

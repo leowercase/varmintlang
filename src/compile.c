@@ -15,8 +15,7 @@ static inline SemanticDatum *semantic(Parse *p)
 static inline SemanticDatum *new_semantic_scope(Parse *p)
 {
   SemanticDatum sem;
-  sem.assign_fn = semantic(p)->assign_fn;
-  sem.compound_assign_fn = NULL;
+  sem.assign_fn = sem.compound_assign_fn = NULL;
   sem.indent.initial = semantic(p)->indent.initial;
   sem.indent.continued = semantic(p)->indent.continued;
   sem.else_chained = NULL;
@@ -198,9 +197,11 @@ static void init_compiler(Parse *p, Locals arg_list)
 static void descend_compilers(Parse *p)
 {
   Compiler *enclosing = p->c->enclosing;
+
   free(p->c->locals.data);
   free(p->c->deferred_var.data);
   free(p->c->loops.data);
+
   free(p->c);
   p->c = enclosing;
 }
@@ -731,11 +732,6 @@ static bool match_assignment(Parse *p)
 // https://en.cppreference.com/w/c/language/operator_assignment.html#Compound_assignment
 static inline void assignage(Parse *p, int min_bp, Opcode op_shorthand)
 {
-  if (PREC_ASSIGN < min_bp) {
-    semantic(p)->led_end = true;
-    return;
-  }
-
   Token tok = eat(p); // op
   bool compound = op_shorthand != OP_NONE;
 
@@ -1644,17 +1640,16 @@ static Str loop_label(Parse *p)
   else return NULL_STR;
 }
 
-static inline Loop *init_loop(Parse *p)
+static inline Loop *init_loop(Parse *p, Str label)
 {
   Loop loop;
+  loop.label = label;
 
   loop.breaks = JumpIndices_init();
   loop.continues = JumpIndices_init();
+
   loop.start = code_idx(p);
-
   loop.stack_slot = p->c->stack_slot_count;
-
-  loop.label = loop_label(p);
 
   return LoopStack_push(&p->c->loops, loop);
 }
@@ -1670,10 +1665,12 @@ static inline void end_loop(Parse *p, Token loop_tok, Loop *loop)
     size_t continue_idx = loop->continues.data[i];
     patch_jump_to(p, loop_tok,
         continue_idx,
-        // Whereas the breaks jump to the end, continues jump to the beginning.
         // 2 accounts for the 16-bit operand of the instruction
         loop->iter - continue_idx - 2);
   }
+
+  free(loop->breaks.data);
+  free(loop->continues.data);
 
   LoopStack_pop(&p->c->loops);
 }
@@ -1700,6 +1697,8 @@ static void loop(Parse *p)
   Token tok = eat(p);
   TokenType type = tok.type;
 
+  Str label = loop_label(p);
+
   Str for_identifier;
 
   // `for` loop initializer
@@ -1713,11 +1712,11 @@ static void loop(Parse *p)
   }
 
   // Reserve initial value slot for the result of the last cycle.
-  emit_byte(p, tok, OP_INIT_LOOP);
+  emit_byte(p, tok, OP_RESERVE_SLOT);
   p->c->stack_slot_count++;
 
   // Loop start!
-  Loop *loop = init_loop(p);
+  Loop *loop = init_loop(p, label);
   loop->is_for = type == TK_FOR;
 
   // Emit conditional jump
@@ -1755,8 +1754,6 @@ static void loop(Parse *p)
   // Parse loop body
   expr(p, PREC_TOP);
 
-  loop->iter = code_idx(p);
-
   if (type == TK_FOR) {
     // The `for` loop variable is created and moved out of scope on each
     // iteration. This ensures that any closures over the variable will get the
@@ -1764,13 +1761,15 @@ static void loop(Parse *p)
     clear_local(p);
     // Discard the variable's slot.
     end_block(p, tok, 2);
-
-    // The iterable also ends it's lifetime here.
-    p->c->stack_slot_count--;
   }
 
-  // Loop end!
+  // Result slot
+  p->c->stack_slot_count--;
+
+  loop->iter = code_idx(p);
   emit_loop(p, tok, OP_LOOP, loop->start);
+
+  // Loop end!
   end_loop(p, tok, loop);
 
   // Land the conditional jump here.
@@ -1818,19 +1817,19 @@ static Loop *resolve_loop(Parse *p, Token control_flow)
 static void loop_flow(Parse *p)
 {
   Token tok = eat(p);
+
   Loop *loop = resolve_loop(p, tok);
-  control_flow_result(p);
+  bool has_result = control_flow_result(p);
 
   if (loop == NULL) return;
 
-  // 1 accounts for the resulting value.
-  size_t slots = p->c->stack_slot_count - loop->stack_slot + 1;
+  size_t stack_slot = loop->stack_slot;
+  // Don't discard result slot when `continue`-ing.
+  // OP_LOOP needs that!
+  if (tok.type == TK_CONTINUE)
+    stack_slot++;
 
-  if (tok.type == TK_CONTINUE && loop->is_for)
-    slots--; // Don't discard the loop variable.
-
-  // Discard the stack slots occupied by the loop.
-  emit_var_op(p, tok, OP_END_BLOCK, slots);
+  emit_var_op(p, tok, OP_LEVEL_BLOCK, stack_slot);
 
   JumpIndices *worklist;
 

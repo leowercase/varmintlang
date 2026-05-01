@@ -132,14 +132,18 @@ static void call(Varmint *vm,
   vm->frame = CallStack_push(&vm->call_stack, frame);
 }
 
-static void check_fn_argc(Varmint *vm, size_t arity, Str name, size_t argc)
+static bool check_fn_argc(Varmint *vm, size_t arity, Str name, size_t argc)
 {
   if (name.len == 0)
     name = str_from("function");
 
-  if (arity != argc)
+  if (arity != argc) {
     runtime_error(vm, "expect %li parameters to %.*s but got %li",
         arity, (int)name.len, name.s, argc);
+
+    return false;
+  }
+  else return true;
 }
 
 // Call a value.
@@ -170,7 +174,7 @@ static void call_val(Varmint *vm, Value *callee, size_t argc)
   case V_procedure:
     {
       Procedure *fn = callee->as.procedure;
-      check_fn_argc(vm, fn->arity, fn->name, argc);
+      if (!check_fn_argc(vm, fn->arity, fn->name, argc)) return;
 
       call(vm, fn, callee, NULL, 0);
       break;
@@ -179,7 +183,7 @@ static void call_val(Varmint *vm, Value *callee, size_t argc)
     {
       Closure *c = callee->as.closure;
       Procedure *fn = c->procedure;
-      check_fn_argc(vm, fn->arity, fn->name, argc);
+      if (!check_fn_argc(vm, fn->arity, fn->name, argc)) return;
 
       call(vm, fn, callee, c->upvalues, c->upvalue_count);
       break;
@@ -494,6 +498,17 @@ void run_bytecode(Varmint *vm)
         push(vm, block_val);
         break;
       })
+      // Discard stack slots until operand slot
+    case_var_op(OP_LEVEL_BLOCK, stack_slot,
+      {
+        Value block_val = peek(vm, 0);
+        size_t new_len =
+          (size_t)(&vm->frame->op_stack[stack_slot] - vm->op_stack.data);
+
+        vm->op_stack.len = new_len;
+        *top(vm) = block_val;
+        break;
+      })
       // Get rid of stack slots used by function
     case OP_END_SLOTS:
       {
@@ -569,15 +584,6 @@ void run_bytecode(Varmint *vm)
         break;
       }
 
-      // Initialize loop result slot
-    case OP_INIT_LOOP:
-      {
-        Value initial_result = NO_VALUE;
-        initial_result.as.metadata.loop_has_run = false;
-
-        push(vm, initial_result);
-        break;
-      }
       // Update result slot and jump back to the top of the loop code
     case OP_LOOP:
       {
@@ -585,9 +591,6 @@ void run_bytecode(Varmint *vm)
         vm->frame->ip -= jump;
 
         Value result = pop(vm);
-        if (result.type == V_no)
-          result.as.metadata.loop_has_run = true;
-
         *top(vm) = result;
         break;
       }
@@ -612,7 +615,7 @@ void run_bytecode(Varmint *vm)
         Value next_val = peek(vm, 0);
 
         if (next_val.type != V_maybe)
-          runtime_error(vm, "expect maybe return type for iterable, got %s",
+          runtime_error(vm, "expect return type of maybe for iterable, got %s",
               value_type_cstring(next_val.type));
 
         else if (next_val.as.maybe == NULL) {
@@ -634,8 +637,8 @@ void run_bytecode(Varmint *vm)
       // Discard iterable.
     case OP_FOR_DISCARD:
       {
-        Value result_val = pop(vm);
-        *top(vm) = result_val;
+        Value loop_result = pop(vm);
+        *top(vm) = loop_result;
         break;
       }
 

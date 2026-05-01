@@ -14,7 +14,9 @@ bool varm_arg(struct Varmint *vm,
   size_t len = strlen(format);
 
   if (len != args->argc) {
-    runtime_error(vm, "expect %li args to function, got %li", len, args->argc);
+    runtime_error(vm,
+        "expect %li parameters to function, got %li",
+        len, args->argc);
     return false;
   }
 
@@ -313,8 +315,11 @@ bool value_is_falsey(Value val)
 {
   if (val.type == V_boolean)
     return !val.as.boolean;
-  else
-    return false;
+
+  else if (val.type == V_maybe)
+    return val.as.maybe == NULL;
+
+  else return false;
 }
 
 const char *value_type_cstring(Typetag type)

@@ -1,4 +1,3 @@
 putln "Ahoy! Something here!"
 return
-
-putln "This code is never executed."
+putln "Yarrghh! This code is never executed."

@@ -1,0 +1,9 @@
+var is_even(x) := x mod 2 = 0
+
+for x in range(0, 9, 1) do {
+  if x:is_even() then {
+    putln "even!"
+    continue
+  }
+  else putln "\(2^x)"
+}

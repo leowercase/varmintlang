@@ -1,5 +1,5 @@
 var n := 0
 loop
-  n := to_number input "Type a number! "
+  n := input("Type a number! "):to_number()
        else break n
-# Some(n)
+# n
