@@ -280,7 +280,9 @@ bool values_eq(Value a, Value b)
   if (a.type != b.type) return false;
   else {
     switch (a.type) {
-    case V_no: case V_upval:
+    case V_no:
+      return false;
+    case V_upval:
       unreachable();
     case V_number:
       return a.as.number == b.as.number;
