@@ -1,0 +1,8 @@
+var x := 0
+
+if x > 5 then
+  if x < 6 then putln "foo"
+elif x = 1 then
+  if x / 2 = 1.5 then putln "bar"
+else
+  if x * 2 = 0 then putln "quux"

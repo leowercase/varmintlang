@@ -1570,7 +1570,16 @@ static void as_bind(Parse *p, int min_bp)
 
 static inline bool is_else(Parse *p)
 {
-  Token tok = peek_linewise(p);
+  Token tok = p->current;
+
+  // Allow `else` on the same indentation level as `if`
+  if (tok.type == TK_LINE) {
+    if (tok.slice.len >= semantic(p)->indent.initial)
+      tok = next(p);
+    else
+      return false;
+  }
+
   return tok.type == TK_ELSE || tok.type == TK_ELIF;
 }
 
@@ -1589,9 +1598,6 @@ static void if_then(Parse *p)
   if (is_else(p)) {
     // When directly chaining with `else`, don't bother creating a Maybe
     change_opcode(p, operand_idx, OP_JMP_WHEN_FALSE);
-
-    // Allow `else` on the same indentation level as `if`
-    skip_line(p);
 
     semantic(p)->else_chained = true;
     semantic(p)->else_jmp_idx = operand_idx;
@@ -1777,7 +1783,7 @@ static void loop(Parse *p)
 }
 
 // Emit the result of a control flow keyword
-static bool control_flow_result(Parse *p)
+static void control_flow_result(Parse *p)
 {
   bool has_result = p->current.type == TK_LINE
     ? is_continued_line(p, p->current.slice.len) : is_expr(p, p->current);
@@ -1786,8 +1792,6 @@ static bool control_flow_result(Parse *p)
     expr_rhs(p, PREC_FLOW, ASSOC_LEFT); // Parse resulting value.
   else
     emit_byte(p, p->current, OP_RESERVE_SLOT);
-
-  return has_result;
 }
 
 static Loop *resolve_loop(Parse *p, Token control_flow)
@@ -1819,7 +1823,7 @@ static void loop_flow(Parse *p)
   Token tok = eat(p);
 
   Loop *loop = resolve_loop(p, tok);
-  bool has_result = control_flow_result(p);
+  control_flow_result(p);
 
   if (loop == NULL) return;
 
