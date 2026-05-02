@@ -104,6 +104,11 @@ Value _range(Varmint *vm, ArgList *args);
 // items(collection) -> cclosure
 Value _items(Varmint *vm, ArgList *args);
 
+// asciify(n: number) -> string
+Value _asciify(Varmint *vm, ArgList *args);
+// char_ord(char: string) -> number
+Value _char_ord(Varmint *vm, ArgList *args);
+
 // rot(shift: number, text: string) -> string
 Value _rot(Varmint *vm, ArgList *args);
 

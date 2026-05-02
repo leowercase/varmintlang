@@ -2,6 +2,7 @@
 #include "../inc/val.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>
@@ -761,9 +762,29 @@ Value _items(Varmint *vm, ArgList *args)
   return Cclosure_create(vm, fn, 2, upvalues);
 }
 
+Value _asciify(Varmint *vm, ArgList *args)
+{
+  int64_t n;
+  if (!varm_arg(vm, args, "i", &n))
+    return NO_VALUE;
+
+  char c = (char)(n % (CHAR_MAX + 1));
+
+  return String_create(vm, &c, 1);
+}
+
+Value _char_ord(Varmint *vm, ArgList *args)
+{
+  char c;
+  if (!varm_arg(vm, args, "s", &c))
+    return NO_VALUE;
+
+  return value_new(c, number);
+}
+
 Value _rot(Varmint *vm, ArgList *args)
 {
-  int shift;
+  int64_t shift;
   String *text;
   if (!varm_arg(vm, args, "iS", &shift, &text))
     return NO_VALUE;

@@ -3,6 +3,7 @@
 #include "../inc/val.h"
 #include "../inc/code.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <readline/readline.h>
 // https://github.com/Cyan4973/xxHash
@@ -40,8 +41,14 @@ bool varm_arg(struct Varmint *vm,
       break;
       // Number cast to int
     case 'i':
-      *va_arg(ap, int *) = (int)typechecked(vm, arg, number);
-      break;
+      {
+        float64_t n = trunc(typechecked(vm, arg, number));
+        int64_t i =
+          n > (float64_t)INT64_MAX ? INT64_MAX : (int64_t)n;
+
+        *va_arg(ap, int64_t *) = i;
+        break;
+      }
       // Boolean
     case 'b':
       *va_arg(ap, bool *) = typechecked(vm, arg, boolean);
@@ -54,6 +61,17 @@ bool varm_arg(struct Varmint *vm,
     case 'S':
       *va_arg(ap, String **) = typechecked(vm, arg, string);
       break;
+      // Character
+    case 's':
+      {
+        String *arg_s = typechecked(vm, arg, string);
+
+        if (arg_s->len != 1)
+          runtime_error(vm, "expect single character as arg");
+
+        *va_arg(ap, char *) = arg_s->s[0];
+        break;
+      }
       // List
     case 'L':
       *va_arg(ap, List **) = typechecked(vm, arg, list);
