@@ -81,7 +81,7 @@ bool value_is_hashable(Typetag t);
 
 bool value_is_callable(Typetag t);
 
-const char *value_type_cstring(Typetag type);
+const char *typetag_cstring(Typetag type);
 Value value_to_string(struct Varmint *vm, Value val);
 void print_value(FILE *restrict stream, Value val);
 
@@ -163,6 +163,7 @@ Value List_create(struct Varmint *vm, size_t cap);
 
 Value Table_create(struct Varmint *vm, size_t cap);
 
+Value String_bare(struct Varmint *vm, char *s, size_t len);
 Value String_create(struct Varmint *vm, const char *s, size_t len);
 Value String_from(struct Varmint *vm, const char *cstring);
 Value String_own(struct Varmint *vm, char *allocated_cstring);

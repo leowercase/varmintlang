@@ -209,7 +209,7 @@ static void call_val(Varmint *vm, Value *callee, size_t argc)
     }
   default:
     runtime_error(vm, "cannot call value of type %s",
-        value_type_cstring(callee->type));
+        typetag_cstring(callee->type));
   }
 }
 
@@ -288,6 +288,7 @@ void run_bytecode(Varmint *vm)
     case OP_GEQ: BINARY(_vm_greater_than_or_eq(vm, lhs, rhs))
 
     case OP_CONCAT: BINARY(_vm_concat(vm, lhs, rhs))
+    case OP_NCAT:   BINARY(_vm_ncat(vm, lhs, rhs))
 
       // Load a constant value.
     case_var_op(OP_CONST, idx,
@@ -604,7 +605,7 @@ void run_bytecode(Varmint *vm)
           call_val(vm, iterable, 0);
         }
         else runtime_error(vm, "iterable %s is not a callable value",
-            value_type_cstring(iterable->type));
+            typetag_cstring(iterable->type));
 
         break;
       }
@@ -616,7 +617,7 @@ void run_bytecode(Varmint *vm)
 
         if (next_val.type != V_maybe)
           runtime_error(vm, "expect return type of maybe for iterable, got %s",
-              value_type_cstring(next_val.type));
+              typetag_cstring(next_val.type));
 
         else if (next_val.as.maybe == NULL) {
           // Iterable returned None

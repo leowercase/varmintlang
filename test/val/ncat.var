@@ -1,0 +1,2 @@
+var s := "developers" in
+  s || ", \(s)" |* 4

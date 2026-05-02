@@ -37,6 +37,7 @@ typedef enum {
   OP_LEQ,
   OP_GEQ,
   OP_CONCAT,
+  OP_NCAT,
 
   var(OP_CONST),
   OP_ZERO,

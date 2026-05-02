@@ -22,7 +22,7 @@ typedef enum {
   TK_CARET,
   TK_PERCENT,
   TK_BANG,
-  TK_2PIPE,
+  TK_2PIPE, TK_PIPESTAR,
   TK_EQ, TK_NEQ, TK_LT, TK_GT, TK_LEQ, TK_GEQ,
   TK_ASSIGN,
   TK_VAR, TK_AS,

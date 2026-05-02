@@ -29,7 +29,7 @@ void runtime_error(Varmint *vm, const char *fmt, ...);
     ? val_ident.as.t \
     : (runtime_error(vm, \
         "Expect type " #t " for " #val_ident ", got %s", \
-                   value_type_cstring(val_ident.type)), (Valueu){0}.t))
+                   typetag_cstring(val_ident.type)), (Valueu){0}.t))
 
 void error_line_snip(char *source, size_t line, char *pointer_pos);
 

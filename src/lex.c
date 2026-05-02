@@ -431,6 +431,8 @@ Token lex_token(Lex *lex)
   case '|':
     if (match(lex, '|'))
       return token(lex, TK_2PIPE);
+    else if (match(lex, '*'))
+      return token(lex, TK_PIPESTAR);
     else
       break;
 
@@ -465,7 +467,7 @@ char *token_cstring(const TokenType type)
   case_(CARET)
   case_(PERCENT)
   case_(BANG)
-  case_(2PIPE)
+  case_(2PIPE) case_(PIPESTAR)
   case_(EQ) case_(NEQ) case_(LT) case_(GT) case_(LEQ) case_(GEQ)
   case_(ASSIGN)
   case_(VAR) case_(AS)

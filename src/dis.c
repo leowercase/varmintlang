@@ -108,6 +108,7 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_i(LEQ)
   case_i(GEQ)
   case_i(CONCAT)
+  case_i(NCAT)
 
   case_var_op(CONST, constant)
   case_(ZERO,

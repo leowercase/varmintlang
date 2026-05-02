@@ -102,6 +102,53 @@ Value _vm_concat(Varmint *vm, Value head, Value tail)
   return String_concat(vm, &head, &tail);
 }
 
+Value _vm_ncat(Varmint *vm, Value cattee, Value n)
+{
+  size_t _n = (size_t)typechecked(vm, n, number);
+
+  switch (cattee.type) {
+  case V_string:
+    {
+      String *string = cattee.as.string;
+
+      size_t len = string->len * _n;
+
+      char *s = gc_alloc(vm, NULL, 0, len * sizeof(char) + sizeof('\0'));
+
+      for (size_t i = 0; i < _n; i++) {
+        size_t size = string->len * sizeof(char);
+        memcpy(&s[i * string->len], string->s, size);
+      }
+      s[len] = '\0';
+
+      return String_bare(vm, s, len);
+    }
+
+  case V_list:
+    {
+      List *list = cattee.as.list;
+
+      size_t len = list->len * _n;
+
+      Value result = List_create(vm, len);
+      result.as.list->len = len;
+
+      for (size_t i = 0; i < _n; i++) {
+        size_t size = list->len * sizeof(Value);
+        memcpy(&result.as.list->data[i * list->len], list->data, size);
+      }
+
+      return result;
+    }
+
+  default:
+    runtime_error(vm,
+        "expect type string or list for ncatenation, got %s",
+        typetag_cstring(cattee.type));
+    return NO_VALUE;
+  }
+}
+
 Value _vm_in(Varmint *vm, Value x, Value collection)
 {
   bool contains = false;
@@ -139,7 +186,7 @@ Value _vm_in(Varmint *vm, Value x, Value collection)
     break;
   default:
     runtime_error(vm, "`in`: expect collection, got %s",
-        value_type_cstring(collection.type));
+        typetag_cstring(collection.type));
   }
 
   return value_new(contains, boolean);
@@ -191,7 +238,7 @@ static bool valid_table_key(Varmint *vm, Value key)
 {
   if (!value_is_hashable(key.type)) {
     runtime_error(vm, "expect hashable key type, got %s",
-        value_type_cstring(key.type));
+        typetag_cstring(key.type));
 
     return false;
   }
@@ -249,7 +296,7 @@ Value _vm_get_elem(Varmint *vm, Value collection, Value idx, bool wrap_maybe)
     }
   default:
     runtime_error(vm, "cannot index into %s",
-        value_type_cstring(collection.type));
+        typetag_cstring(collection.type));
   }
 
   if (wrap_maybe)
@@ -300,7 +347,7 @@ Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val)
     }
   default:
     runtime_error(vm, "cannot index into %s",
-        value_type_cstring(collection.type));
+        typetag_cstring(collection.type));
     return NO_VALUE;
   }
 }
@@ -311,7 +358,7 @@ Value _typeof(Varmint *vm, ArgList *args)
   if (!varm_arg(vm, args, "v", &val))
     return NO_VALUE;
 
-  return String_from(vm, value_type_cstring(val.type));
+  return String_from(vm, typetag_cstring(val.type));
 }
 
 Value _len(Varmint *vm, ArgList *args)
@@ -329,7 +376,7 @@ Value _len(Varmint *vm, ArgList *args)
     return value_new((float64_t)collection.as.table->entry_count, number);
   default:
     runtime_error(vm, "expect collection type, got %s",
-        value_type_cstring(collection.type));
+        typetag_cstring(collection.type));
     return NO_VALUE;
   }
 }

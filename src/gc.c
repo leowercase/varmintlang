@@ -112,7 +112,7 @@ static void mark_obj(Varmint *vm, Value obj)
   data->is_safe = true;
   add_grey(vm, obj);
 
-  GC_DBG_FMT_MSG("mark %p of type %s\n", (void *)data, value_type_cstring(t));
+  GC_DBG_FMT_MSG("mark %p of type %s\n", (void *)data, typetag_cstring(t));
 
   switch (t) {
   case V_no:
@@ -210,7 +210,7 @@ static void free_gc_obj(Varmint *vm, GCData *data)
 #define FREE(T) gc_free(vm, data, sizeof(T))
 
   GC_DBG_FMT_MSG("free %p of type %s\n",
-      (void *)data, value_type_cstring(data->type));
+      (void *)data, typetag_cstring(data->type));
 
   switch (data->type) {
   case V_no:

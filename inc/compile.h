@@ -159,6 +159,7 @@ typedef enum {
   PREC_TERM,      // + -
   PREC_FACTOR,    // * / %
   PREC_CONCAT,    // ||
+  PREC_NCAT,      // |*
   PREC_POWER,     // ^
   PREC_SIGN,      // + -
   PREC_FACTORIAL, // !

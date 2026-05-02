@@ -66,7 +66,7 @@ bool varm_arg(struct Varmint *vm,
     case 'C':
       if (!value_is_callable(argt)) {
         runtime_error(vm, "expect callable arg, got %s",
-            value_type_cstring(argt));
+            typetag_cstring(argt));
         break;
       }
       *va_arg(ap, Value *) = arg;
@@ -116,7 +116,7 @@ Value Table_create(Varmint *vm, size_t entry_count)
   return value_new(tb, table);
 }
 
-static Value String_bare(Varmint *vm, char *s, size_t len)
+Value String_bare(Varmint *vm, char *s, size_t len)
 {
   String *t = (String *)create_gc_obj(vm, V_string, sizeof(String));
   t->s = s;
@@ -324,7 +324,7 @@ bool value_is_falsey(Value val)
   else return false;
 }
 
-const char *value_type_cstring(Typetag type)
+const char *typetag_cstring(Typetag type)
 {
 #define case_(name) case V_##name: return #name;
 
@@ -425,9 +425,12 @@ void print_value(FILE *restrict stream, Value val)
     }
     break;
   case V_string:
-    fprintf(stream, ANSI_YELLOW "\"%s\"" ANSI_RESET "(%li)",
-        val.as.string->s, val.as.string->len);
-    break;
+    {
+      String *string = val.as.string;
+      fprintf(stream, ANSI_YELLOW "\"%.*s\"" ANSI_RESET "(%li)",
+          (int)string->len, string->s, string->len);
+      break;
+    }
   case V_list:
     {
       List *list = val.as.list;

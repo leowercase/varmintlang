@@ -30,6 +30,7 @@ Value _vm_greater_than(Varmint *vm, Value a, Value b);
 Value _vm_greater_than_or_eq(Varmint *vm, Value a, Value b);
 
 Value _vm_concat(Varmint *vm, Value head, Value tail);
+Value _vm_ncat(Varmint *vm, Value cattee, Value n);
 
 Value _vm_in(Varmint *vm, Value x, Value collection);
 Value _vm_notin(Varmint *vm, Value x, Value collection);

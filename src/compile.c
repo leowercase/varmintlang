@@ -800,6 +800,7 @@ static const BinaryOp infix_ops[] = {
   [TK_CARET]    = { OP_POW,      PREC_POWER,  ASSOC_RIGHT },
   [TK_PERCENT]  = { OP_MODULO,   PREC_FACTOR, ASSOC_LEFT  },
   [TK_2PIPE]    = { OP_CONCAT,   PREC_CONCAT, ASSOC_LEFT  },
+  [TK_PIPESTAR] = { OP_NCAT,     PREC_NCAT,   ASSOC_LEFT  },
 
   // Comparison is handled by `cmp`, not `infix_op`
   [TK_EQ]       = { OP_EQ,       PREC_CMP,    ASSOC_LEFT },
@@ -1940,6 +1941,7 @@ static const ParseRule parse_rules[] =
     [TK_PERCENT]     = { NULL,       led_op      },
     [TK_BANG]        = { NULL,       postfix_op  },
     [TK_2PIPE]       = { NULL,       infix_op    },
+    [TK_PIPESTAR]    = { NULL,       infix_op    },
 
     [TK_EQ]          = { NULL,       cmp         },
     [TK_NEQ]         = { NULL,       cmp         },
