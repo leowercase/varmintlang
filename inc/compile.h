@@ -61,8 +61,9 @@ typedef DYN_ARRAY_STRUCT(Loop) LoopStack;
 // To ease creating mutually recursive fns (among other things), we allow
 // deferred name resolution in a multiple `var` until the end of the clauses.
 typedef struct {
-  UpvalDesc *upval;
   Token tok;
+  ClosureDesc *desc;
+  size_t upval_idx;
 } DeferredLookup;
 
 typedef DYN_ARRAY_STRUCT(DeferredLookup) DeferredVar;
@@ -74,9 +75,11 @@ typedef DYN_ARRAY_STRUCT(DeferredLookup) DeferredVar;
 typedef struct SemanticDatum {
   Token assigned_tok;
   union {
-    Local *local;
-    size_t upval_idx;
+    // Locals and upvalues are stored in a dynamic array, so we pass indices
+    // around instead of pointers
+    size_t local_idx, upval_idx;
   } assignable;
+
   // Assignment function for left hand side operand
   void (*assign_fn)(Parse *p);
   void (*compound_assign_fn)(Parse *p);

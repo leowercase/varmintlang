@@ -54,87 +54,96 @@ static Local *create_local_var(Parse *p, Str name)
   return local;
 }
 
-static UpvalDesc *create_upval(Parse *p, Compiler *c, Str name)
+static inline Local *get_local(Compiler *c, size_t local_idx)
 {
-  UpvalDesc upval = {name, .captures_local = false, .idx = 0};
-  return ClosureDesc_push(p->vm, &c->procedure->closure_desc, upval);
+  return &c->locals.data[local_idx];
 }
 
-static inline size_t upval_idx(Compiler *c, UpvalDesc *upval)
+// Returns the index of the upvalue in the upvalues array.
+static size_t create_upval(Parse *p, Compiler *c, Str name)
 {
-  return (size_t)(upval - c->procedure->closure_desc.data);
+  UpvalDesc upval = {
+    name, .captures_local = false, .idx = 0
+  };
+
+  ClosureDesc *desc = &c->procedure->closure_desc;
+  ClosureDesc_push(p->vm, desc, upval);
+  return desc->len - 1;
 }
 
-// Returns the index of the hoisted `var` upvalue in the upvalues array.
+static inline UpvalDesc *get_upval(Compiler *c, size_t upval_idx)
+{
+  return &c->procedure->closure_desc.data[upval_idx];
+}
+
 static size_t deferred_var_idx(Parse *p, Token tok)
 {
   DeferredVar *deferred_var = &p->c->enclosing->deferred_var;
 
   // Create a new upvalue that will be resolved at the end of the `var`.
-  UpvalDesc *upval = create_upval(p, p->c, tok.slice);
-  DeferredVar_push(deferred_var, (DeferredLookup){upval, tok});
-  return upval_idx(p->c, upval);
+  size_t upval_idx = create_upval(p, p->c, tok.slice);
+
+  DeferredVar_push(deferred_var,
+      (DeferredLookup){tok, &p->c->procedure->closure_desc, upval_idx});
+  return upval_idx;
 }
 
 // Local variable lookup.
-static Local *resolve_local(Compiler *c, Str name)
+static bool resolve_local(Compiler *c, Str name, Local **local)
 {
   if (c->locals.len == 0)
-    return NULL;
+    return false;
 
   // Try to find a local in the current function.
-  for (Local *local = Locals_top(&c->locals);
-      local >= c->locals.data;
-      local--)
-    if (strs_eq(local->name, name))
-      return local;
+  for (Local *lc = Locals_top(&c->locals);
+      lc >= c->locals.data;
+      lc--)
+    if (strs_eq(lc->name, name)) {
+      *local = lc;
+      return true;
+    }
 
-  return NULL;
+  return false;
 }
 
-static UpvalDesc *resolve_upval(Parse *p, Compiler *c, Str name);
+static bool resolve_upval(Parse *p, Compiler *c, Str name, size_t *upval_idx);
 
 // Upvalue lookup.
-static UpvalDesc *resolve_upval_from(Parse *p,
-    Compiler *enclosing, UpvalDesc *upval)
+static bool resolve_upval_from(Parse *p, Compiler *enclosing, UpvalDesc *upval)
 {
   if (enclosing == NULL)
-    return NULL;
+    return false;
 
   size_t idx;
-  bool captures_local;
-  Local *local;
-  UpvalDesc *enclosing_upval;
+  Local *local; bool captures_local;
 
   // Look at the enclosing function's locals.
-  if ((local = resolve_local(enclosing, upval->name))
-      != NULL) {
+  if (resolve_local(enclosing, upval->name, &local)) {
     // Upvalue to local variable slot
     idx = local->stack_slot;
     captures_local = local->is_captured = true;
   }
 
   // Look at the enclosing function's upvalues.
-  else if ((enclosing_upval = resolve_upval(p, enclosing, upval->name))
-      != NULL) {
+  else if (resolve_upval(p, enclosing, upval->name, &idx)) {
     // Upvalue to another upvalue
-    idx = upval_idx(enclosing, enclosing_upval);
     captures_local = false;
   }
 
   // Return NULL when unable to resolve the identifier.
-  else return NULL;
+  else return false;
 
-  // Initialize & return the resolved upval.
+  // Initialize the resolved upval.
   upval->idx = idx;
   upval->captures_local = captures_local;
-  return upval;
+
+  return true;
 }
 
-static UpvalDesc *resolve_upval(Parse *p, Compiler *c, Str name)
+static bool resolve_upval(Parse *p, Compiler *c, Str name, size_t *upval_idx)
 {
-  UpvalDesc *upval = create_upval(p, c, name);
-  return resolve_upval_from(p, c->enclosing, upval);
+  size_t i = *upval_idx = create_upval(p, c, name);
+  return resolve_upval_from(p, c->enclosing, get_upval(c, i));
 }
 
 static void clear_local(Parse *p)
@@ -604,7 +613,9 @@ static void stmts(Parse *p, TokenType end, bool end_scope)
 
 static void assign_local(Parse *p)
 {
-  Local *local = semantic(p)->assignable.local;
+  Local *local =
+    get_local(p->c, semantic(p)->assignable.local_idx);
+
   emit_var_op(p, semantic(p)->assigned_tok, OP_SET, local->stack_slot);
   local->initialized = true;
 }
@@ -621,8 +632,8 @@ static void emit_identifier(Parse *p, Token ident_tok,
 {
   Str identifier = ident_tok.slice;
 
-  Local *local = NULL;
-  UpvalDesc *upval = NULL;
+  Local *local;
+  size_t upval_idx;
 
   Opcode get_op;
   size_t operand;
@@ -630,10 +641,12 @@ static void emit_identifier(Parse *p, Token ident_tok,
   semantic(p)->assigned_tok = ident_tok;
   semantic(p)->compound_assign_fn = NULL;
 
-  if ((local = resolve_local(p->c, identifier)) != NULL) {
+  if (resolve_local(p->c, identifier, &local)) {
     // The identifier refers to a slot on the operation stack.
     semantic(p)->assign_fn = assign_local;
-    semantic(p)->assignable.local = local;
+    semantic(p)->assignable
+      .local_idx = (size_t)(local - p->c->locals.data);
+
     operand = local->stack_slot;
     get_op = OP_GET;
     initialized = local->initialized;
@@ -642,17 +655,19 @@ static void emit_identifier(Parse *p, Token ident_tok,
   else if (p->c->var_declaration) {
     // For now assume the variable is further defined in the `var`.
     semantic(p)->assign_fn = assign_upval;
-    semantic(p)->assignable.upval_idx = operand
-      = deferred_var_idx(p, ident_tok);
+    semantic(p)->assignable
+      .upval_idx = operand = deferred_var_idx(p, ident_tok);
+
     get_op = OP_GET_UPVALUE;
     initialized = true;
   }
 
-  else if ((upval = resolve_upval(p, p->c, identifier)) != NULL) {
+  else if (resolve_upval(p, p->c, identifier, &upval_idx)) {
     // Closed over variable.
     semantic(p)->assign_fn = assign_upval;
-    semantic(p)->assignable.upval_idx = operand
-      = upval_idx(p->c, upval);
+    semantic(p)->assignable
+      .upval_idx = operand = upval_idx;
+
     get_op = OP_GET_UPVALUE;
     initialized = true;
   }
@@ -1412,23 +1427,25 @@ static void resolve_var(Parse *p, Local *locals, size_t ndecls)
     DeferredLookup *deferred = &p->c->deferred_var.data[i];
     Str identifier = deferred->tok.slice;
 
-    Local *deferred_decl = NULL;
+    UpvalDesc *upval = &deferred->desc->data[deferred->upval_idx];
+
+    Local *deferred_declaration = NULL;
 
     // First try to resolve from the variables the clauses declare, bottom up
     for (size_t j = 0; j < ndecls; j++)
       if (strs_eq(identifier, locals[j].name)) {
-        deferred_decl = &locals[j];
+        deferred_declaration = &locals[j];
         break;
       }
 
-    if (deferred_decl != NULL) {
-      deferred->upval->idx = deferred_decl->stack_slot;
-      deferred->upval->captures_local = deferred_decl->is_captured = true;
+    if (deferred_declaration != NULL) {
+      upval->idx = deferred_declaration->stack_slot;
+      upval->captures_local = deferred_declaration->is_captured = true;
       continue;
     }
 
     // If that fails, resolve the identifier just like any other upvalue.
-    if (resolve_upval_from(p, p->c, deferred->upval) != NULL)
+    if (resolve_upval_from(p, p->c, upval))
       continue;
 
     parse_error(p, deferred->tok, true, "undeclared variable %.*s",
