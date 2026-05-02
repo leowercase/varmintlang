@@ -11,6 +11,19 @@ static const NameValue default_builtins[] = {
   { str_from("pi"),        value_new(VARMINT_PI,  number) },
   { str_from("tau"),       value_new(VARMINT_TAU, number) },
 
+  { str_from("sqrt"),      value_new(_sqrt,       native) },
+  { str_from("cbrt"),      value_new(_cbrt,       native) },
+  { str_from("ln"),        value_new(_ln,         native) },
+  { str_from("lg"),        value_new(_lg,         native) },
+  { str_from("sin"),       value_new(_sin,        native) },
+  { str_from("cos"),       value_new(_cos,        native) },
+  { str_from("tan"),       value_new(_tan,        native) },
+  { str_from("asin"),      value_new(_asin,       native) },
+  { str_from("acos"),      value_new(_acos,       native) },
+  { str_from("atan"),      value_new(_atan,       native) },
+  { str_from("abs"),       value_new(_abs,        native) },
+  { str_from("rand"),      value_new(_rand,       native) },
+
   { str_from("typeof"),    value_new(_typeof,     native) },
   { str_from("len"),       value_new(_len,        native) },
 

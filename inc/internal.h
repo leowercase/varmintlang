@@ -45,6 +45,36 @@ Value _typeof(Varmint *vm, ArgList *args);
 // len(collection) -> number
 Value _len(Varmint *vm, ArgList *args);
 
+// abs(a: number) -> number
+Value _abs(Varmint *vm, ArgList *args);
+
+// sqrt(n: number) -> number
+Value _sqrt(Varmint *vm, ArgList *args);
+// cbrt(n: number) -> number
+Value _cbrt(Varmint *vm, ArgList *args);
+
+// ln(x: number) -> number
+Value _ln(Varmint *vm, ArgList *args);
+// lg(x: number) -> number
+Value _lg(Varmint *vm, ArgList *args);
+
+// sin(theta: number) -> number
+Value _sin(Varmint *vm, ArgList *args);
+// cos(theta: number) -> number
+Value _cos(Varmint *vm, ArgList *args);
+// tan(theta: number) -> number
+Value _tan(Varmint *vm, ArgList *args);
+
+// asin(x: number) -> number
+Value _asin(Varmint *vm, ArgList *args);
+// acos(x: number) -> number
+Value _acos(Varmint *vm, ArgList *args);
+// atan(x: number) -> number
+Value _atan(Varmint *vm, ArgList *args);
+
+// rand() -> number
+Value _rand(Varmint *vm, ArgList *args);
+
 // push(list, val) -> ?
 Value _push(Varmint *vm, ArgList *args);
 // pop(list) -> ?
@@ -67,7 +97,7 @@ Value _input(Varmint *vm, ArgList *args);
 // time() -> number
 Value _time(Varmint *vm, ArgList *args);
 
-// range(start, end, step) -> cclosure
+// range(start: number, end: number, step: number) -> cclosure
 Value _range(Varmint *vm, ArgList *args);
 // items(collection) -> cclosure
 Value _items(Varmint *vm, ArgList *args);

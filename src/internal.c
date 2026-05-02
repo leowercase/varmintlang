@@ -3,6 +3,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <stdlib.h>
 #include <time.h>
 
 #define BINOP_(lhs, op, rhs, vm_value_t, vm_return_t) { \
@@ -379,6 +380,119 @@ Value _len(Varmint *vm, ArgList *args)
         typetag_cstring(collection.type));
     return NO_VALUE;
   }
+}
+
+Value _abs(Varmint *vm, ArgList *args)
+{
+  float64_t n;
+  if (!varm_arg(vm, args, "n", &n))
+    return NO_VALUE;
+
+  return value_new(fabs(n), number);
+}
+
+Value _sqrt(Varmint *vm, ArgList *args)
+{
+  float64_t n;
+  if (!varm_arg(vm, args, "n", &n))
+    return NO_VALUE;
+
+  return value_new(sqrt(n), number);
+}
+
+Value _cbrt(Varmint *vm, ArgList *args)
+{
+  float64_t n;
+  if (!varm_arg(vm, args, "n", &n))
+    return NO_VALUE;
+
+  return value_new(cbrt(n), number);
+}
+
+Value _ln(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(log(x), number);
+}
+
+Value _lg(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(log10(x), number);
+}
+
+Value _sin(Varmint *vm, ArgList *args)
+{
+  float64_t theta;
+  if (!varm_arg(vm, args, "n", &theta))
+    return NO_VALUE;
+
+  return value_new(sin(theta), number);
+}
+
+// cos(theta: number) -> number
+Value _cos(Varmint *vm, ArgList *args)
+{
+  float64_t theta;
+  if (!varm_arg(vm, args, "n", &theta))
+    return NO_VALUE;
+
+  return value_new(cos(theta), number);
+}
+
+// tan(theta: number) -> number
+Value _tan(Varmint *vm, ArgList *args)
+{
+  float64_t theta;
+  if (!varm_arg(vm, args, "n", &theta))
+    return NO_VALUE;
+
+  return value_new(tan(theta), number);
+}
+
+// asin(x: number) -> number
+Value _asin(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(asin(x), number);
+}
+
+// acos(x: number) -> number
+Value _acos(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(acos(x), number);
+}
+
+// atan(x: number) -> number
+Value _atan(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(atan(x), number);
+}
+
+// rand() -> number
+Value _rand(Varmint *vm, ArgList *args)
+{
+  if (!varm_arg(vm, args, ""))
+    return NO_VALUE;
+
+  return value_new(drand48(), number);
 }
 
 Value _push(Varmint *vm, ArgList *args)

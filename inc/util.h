@@ -1,6 +1,8 @@
 #ifndef VARMINT_UTIL_H
 #define VARMINT_UTIL_H
 
+#define _XOPEN_SOURCE
+
 #include <assert.h>
 #include "stdarg.h"
 #include <stdbool.h>
