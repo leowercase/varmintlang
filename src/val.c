@@ -227,7 +227,7 @@ Str String_as_str(Value *val)
   return str_new(val->as.string->s, val->as.string->len);
 }
 
-Value Procedure_create(Varmint *vm, size_t arity, String *source)
+Procedure *Procedure_create(Varmint *vm, size_t arity, String *source)
 {
   Procedure *proc = (Procedure *)
     create_gc_obj(vm, V_procedure, sizeof(Procedure));
@@ -245,7 +245,7 @@ Value Procedure_create(Varmint *vm, size_t arity, String *source)
 
   proc->arity = arity;
   proc->name = NULL_STR;
-  return value_new(proc, procedure);
+  return proc;
 }
 
 // Allocate a closure and its upvalues.

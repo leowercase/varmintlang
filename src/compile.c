@@ -309,10 +309,10 @@ static inline void init_new_code(Parse *p, String *source)
   else
     source = p->source;
 
-  Value proc_val = Procedure_create(p->vm, p->c->argc, source);
-  GCList_push(&p->vm->compiler_roots, proc_val);
+  Procedure *proc = p->c->procedure =
+    Procedure_create(p->vm, p->c->argc, source);
 
-  p->c->procedure = proc_val.as.procedure;
+  GCList_push(&p->vm->compiler_roots, (GCData *)proc);
 }
 
 // Issue a parsing error and enter panic mode in the imminent semantic scope.

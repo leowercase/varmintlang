@@ -86,34 +86,44 @@ GCData *create_gc_obj(Varmint *vm, Typetag type, size_t size)
   return data;
 }
 
-static inline void add_grey(Varmint *vm, Value obj)
+static inline void add_grey(Varmint *vm, GCData *obj)
 {
   GCList_push(&vm->grey_worklist, obj);
 }
 
-static void mark_obj(Varmint *vm, Value obj);
+static inline void add_grey_val(Varmint *vm, Value val)
+{
+  if (is_heaped_value(val)) add_grey(vm, val.as.gc_data);
+}
+
+static void mark_obj(Varmint *vm, GCData *obj);
+
+static inline void mark_val(Varmint *vm, Value val)
+{
+  if (is_heaped_value(val)) mark_obj(vm, val.as.gc_data);
+}
 
 static inline void mark_procedure(Varmint *vm, Procedure *procedure)
 {
   Constants *constants = &procedure->code.constants;
 
-  for (size_t i = 0; i < constants->len; i++) {
-    Value c = constants->data[i];
-    if (is_heaped_value(c)) mark_obj(vm, c);
-  }
+  for (size_t i = 0; i < constants->len; i++)
+    mark_val(vm, constants->data[i]);
+
+  mark_obj(vm, (GCData *)procedure->source);
 }
 
-static void mark_obj(Varmint *vm, Value obj)
+static void mark_obj(Varmint *vm, GCData *obj)
 {
-  Typetag t = obj.type;
-  GCData *data = obj.as.gc_data;
+  Typetag t = obj->type;
 
-  if (data == NULL || data->is_safe) return; // Already marked.
-  data->is_safe = true;
+  if (obj == NULL || obj->is_safe) return; // Already marked.
+  obj->is_safe = true;
   add_grey(vm, obj);
 
-  GC_DBG_FMT_MSG("mark %p of type %s\n", (void *)data, typetag_cstring(t));
+  GC_DBG_FMT_MSG("mark %p of type %s\n", (void *)obj, typetag_cstring(t));
 
+  // Mark child objects
   switch (t) {
   case V_no:
   case V_number:
@@ -121,60 +131,59 @@ static void mark_obj(Varmint *vm, Value obj)
   case V_native:
     unreachable();
   case V_maybe:
-    {
-      if (is_heaped_value(obj.as.maybe->raw))
-        mark_obj(vm, obj.as.maybe->raw);
-      break;
-    }
+    mark_val(vm, ((Maybe *)obj)->raw);
+    break;
   case V_string:
     break;
   case V_list:
-    for (size_t i = 0; i < obj.as.list->len; i++) {
-      Value elem = obj.as.list->data[i];
-      if (is_heaped_value(elem)) mark_obj(vm, elem);
+    {
+      List *list = (List *)obj;
+      for (size_t i = 0; i < list->len; i++)
+        mark_val(vm, list->data[i]);
+      break;
     }
-    break;
   case V_table:
-    for (size_t i = 0; i < obj.as.table->cap; i++) {
-      TableEntry ent = obj.as.table->entries[i];
-      if (!ent.is_tomb && ent.key.type != V_no && is_heaped_value(ent.value))
-        mark_obj(vm, ent.value);
+    {
+      Table *table = (Table *)obj;
+      for (size_t i = 0; i < table->cap; i++) {
+        TableEntry ent = table->entries[i];
+        if (!ent.is_tomb && ent.key.type != V_no) mark_val(vm, ent.value);
+      }
+      break;
     }
-    break;
   case V_procedure:
-    mark_procedure(vm, obj.as.procedure);
+    mark_procedure(vm, (Procedure *)obj);
     break;
   case V_upval:
     {
-      Upval *upval = obj.as.upval;
-      if (upval->loc == &upval->hoisted && is_heaped_value(upval->hoisted))
-        mark_obj(vm, upval->hoisted);
+      Upval *upval = (Upval *)obj;
+      if (upval->loc == &upval->hoisted) mark_val(vm, upval->hoisted);
       break;
     }
   case V_closure:
     {
-      Closure *c = obj.as.closure;
+      Closure *c = (Closure *)obj;
       mark_procedure(vm, c->procedure);
 
       for (size_t i = 0; i < c->upvalue_count; i++)
-        mark_obj(vm, value_new(c->upvalues[i], upval));
+        mark_obj(vm, (GCData *)c->upvalues[i]);
       break;
     }
   case V_cclosure:
     {
-      Cclosure *c = obj.as.cclosure;
+      Cclosure *c = (Cclosure *)obj;
 
       for (size_t i = 0; i < c->upvalue_count; i++)
-        if (is_heaped_value(c->upvalues[i]))
-          mark_obj(vm, obj);
+        mark_val(vm, c->upvalues[i]);
       break;
     }
   case V_partial:
     {
-      Partial *partial = obj.as.partial;
-      mark_obj(vm, partial->callee);
-      for (size_t i = 0; i < partial->application_count; i++)
-        mark_obj(vm, partial->applied[i]);
+      Partial *p = (Partial *)obj;
+      mark_val(vm, p->callee);
+
+      for (size_t i = 0; i < p->application_count; i++)
+        mark_val(vm, p->applied[i]);
       break;
     }
   }
@@ -188,15 +197,11 @@ static void mark(Varmint *vm)
   for (size_t i = 0; i < vm->compiler_roots.len; i++)
     add_grey(vm, vm->compiler_roots.data[i]);
 
-  for (size_t i = 0; i < vm->op_stack.len; i++) {
-    Value val = vm->op_stack.data[i];
-    if (is_heaped_value(val)) add_grey(vm, val);
-  }
+  for (size_t i = 0; i < vm->op_stack.len; i++)
+    add_grey_val(vm, vm->op_stack.data[i]);
 
-  for (size_t i = 0; i < vm->builtins.len; i++) {
-    Value val = vm->builtins.data[i].value;
-    if (is_heaped_value(val)) add_grey(vm, val);
-  }
+  for (size_t i = 0; i < vm->builtins.len; i++)
+    add_grey_val(vm, vm->builtins.data[i].value);
 
   GC_DBG_FMT_MSG("mark roots (%li)\n", vm->grey_worklist.len);
 

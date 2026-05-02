@@ -4,8 +4,8 @@
 #include "generic/dyn_array.h"
 #include "val.h"
 
-typedef DYN_ARRAY_STRUCT(Value) GCList;
-#define T Value
+typedef DYN_ARRAY_STRUCT(GCData *) GCList;
+#define T GCData *
 #define ARR GCList
 #include "generic/dyn_array.inc"
 

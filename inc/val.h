@@ -173,7 +173,8 @@ Value String_concat(struct Varmint *vm, Value *head, Value *tail);
 Value String_readline(struct Varmint *vm, const char *prompt);
 Str String_as_str(Value *val);
 
-Value Procedure_create(struct Varmint *vm, size_t arity, String *source);
+struct Procedure *Procedure_create(struct Varmint *vm,
+    size_t arity, String *source);
 
 Value Closure_create(struct Varmint *vm, struct Procedure *procedure);
 
