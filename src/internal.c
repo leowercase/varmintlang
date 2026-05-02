@@ -150,55 +150,6 @@ Value _vm_ncat(Varmint *vm, Value cattee, Value n)
   }
 }
 
-Value _vm_in(Varmint *vm, Value x, Value collection)
-{
-  bool contains = false;
-
-  switch (collection.type) {
-  case V_string:
-    {
-      String *string = collection.as.string;
-      String *substring = typechecked(vm, x, string);
-
-      if (substring->len == 0 || substring->len > string->len) {
-        contains = false; break;
-      }
-
-      for (size_t i = 0; string->len - i >= substring->len; i++) {
-        char *c = &string->s[i];
-
-        if (*c == substring->s[0]
-            && strncmp(&c[1], &substring->s[1], substring->len - 1) == 0) {
-          contains = true; break;
-        }
-      }
-      break;
-    }
-  case V_list:
-    for (size_t i = 0; i < collection.as.list->len; i++) {
-      Value elem = collection.as.list->data[i];
-      if (values_eq(x, elem)) {
-        contains = true; break;
-      }
-    }
-    break;
-  case V_table:
-    contains = Table_get(collection.as.table, x) != NULL;
-    break;
-  default:
-    runtime_error(vm, "`in`: expect collection, got %s",
-        typetag_cstring(collection.type));
-  }
-
-  return value_new(contains, boolean);
-}
-
-Value _vm_notin(Varmint *vm, Value x, Value collection)
-{
-  return value_new(
-      value_is_falsey(_vm_in(vm, x, collection)), boolean);
-}
-
 typedef struct {
   size_t idx;
   bool success;
@@ -595,6 +546,54 @@ Value _unwrap(Varmint *vm, ArgList *args)
   }
 
   return unwrappee->raw;
+}
+
+Value _has(Varmint *vm, ArgList *args)
+{
+  Value collection, elem;
+
+  if (!varm_arg(vm, args, "vv", &collection, &elem))
+    return NO_VALUE;
+
+  bool contains = false;
+
+  switch (collection.type) {
+  case V_string:
+    {
+      String *string = collection.as.string;
+      String *substring = typechecked(vm, elem, string);
+
+      if (substring->len == 0 || substring->len > string->len) {
+        contains = false; break;
+      }
+
+      for (size_t i = 0; string->len - i >= substring->len; i++) {
+        char *c = &string->s[i];
+
+        if (*c == substring->s[0]
+            && strncmp(&c[1], &substring->s[1], substring->len - 1) == 0) {
+          contains = true; break;
+        }
+      }
+      break;
+    }
+  case V_list:
+    for (size_t i = 0; i < collection.as.list->len; i++) {
+      Value el = collection.as.list->data[i];
+      if (values_eq(el, elem)) {
+        contains = true; break;
+      }
+    }
+    break;
+  case V_table:
+    contains = Table_get(collection.as.table, elem) != NULL;
+    break;
+  default:
+    runtime_error(vm, "expect collection as arg, got %s",
+        typetag_cstring(collection.type));
+  }
+
+  return value_new(contains, boolean);
 }
 
 Value _put(Varmint *vm, ArgList *args)

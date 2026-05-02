@@ -33,7 +33,6 @@ Value _vm_concat(Varmint *vm, Value head, Value tail);
 Value _vm_ncat(Varmint *vm, Value cattee, Value n);
 
 Value _vm_in(Varmint *vm, Value x, Value collection);
-Value _vm_notin(Varmint *vm, Value x, Value collection);
 
 Value _vm_get_elem(Varmint *vm, Value collection, Value idx, bool wrap_maybe);
 Value _vm_set_elem(Varmint *vm, Value collection, Value idx, Value val);
@@ -86,6 +85,9 @@ Value _to_number(Varmint *vm, ArgList *args);
 Value _to_string(Varmint *vm, ArgList *args);
 // unwrap(val: maybe) -> ?
 Value _unwrap(Varmint *vm, ArgList *args);
+
+// has(collection, elem)
+Value _has(Varmint *vm, ArgList *args);
 
 // put(output: string)
 Value _put(Varmint *vm, ArgList *args);
