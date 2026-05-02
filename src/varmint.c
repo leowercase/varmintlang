@@ -10,6 +10,7 @@ static const NameValue default_builtins[] = {
   { str_from("e"),         value_new(VARMINT_E,    number) },
   { str_from("pi"),        value_new(VARMINT_PI,   number) },
   { str_from("tau"),       value_new(VARMINT_TAU,  number) },
+  { str_from("inf"),       value_new(VARMINT_INF,  number) },
 
   { str_from("sqrt"),      value_new(_sqrt,        native) },
   { str_from("cbrt"),      value_new(_cbrt,        native) },

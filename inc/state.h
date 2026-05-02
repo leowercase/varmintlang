@@ -5,6 +5,8 @@
 #include "generic/dyn_array.h"
 #include "val.h"
 
+#include <math.h>
+
 // Maximum op stack size, fairly arbitrarily picked.
 // https://oeis.org/A000079
 #define OP_STACK_MAX 16384
@@ -66,5 +68,7 @@ static const float64_t VARMINT_PI = 3.14159265358979323846;
 // https://www.tauday.com/tau-digits
 static const float64_t VARMINT_TAU =
   6.2831853071795864769252867665590057683943;
+
+static const float64_t VARMINT_INF = INFINITY;
 
 #endif
