@@ -63,15 +63,11 @@ bool varm_arg(struct Varmint *vm,
       break;
       // Character
     case 's':
-      {
-        String *arg_s = typechecked(vm, arg, string);
-
-        if (arg_s->len != 1)
-          runtime_error(vm, "expect single character as arg");
-
-        *va_arg(ap, char *) = arg_s->s[0];
-        break;
-      }
+      if (arg.type != V_string || arg.as.string->len != 1)
+        runtime_error(vm, "expect single character as arg");
+      else
+        *va_arg(ap, char *) = arg.as.string->s[0];
+      break;
       // List
     case 'L':
       *va_arg(ap, List **) = typechecked(vm, arg, list);

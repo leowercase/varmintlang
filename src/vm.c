@@ -560,13 +560,11 @@ void run_bytecode(Varmint *vm)
     case OP_ELSE:
       {
         size_t jump = read_16(vm);
-
         Value lhs = pop(vm);
-        Maybe *optional = typechecked(vm, lhs, maybe);
 
-        if (optional != NULL) {
+        if (lhs.type == V_maybe && lhs.as.maybe != NULL) {
           vm->frame->ip += jump;
-          push(vm, optional->raw);
+          push(vm, lhs.as.maybe->raw);
         }
         break;
       }

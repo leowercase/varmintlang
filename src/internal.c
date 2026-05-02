@@ -592,7 +592,9 @@ Value _has(Varmint *vm, ArgList *args)
   case V_string:
     {
       String *string = collection.as.string;
-      String *substring = typechecked(vm, elem, string);
+
+      if (elem.type != V_string) return NO_VALUE;
+      String *substring = elem.as.string;
 
       if (substring->len == 0 || substring->len > string->len) {
         contains = false; break;
