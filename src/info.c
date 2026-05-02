@@ -54,7 +54,7 @@ void error_line_snip(char *source, size_t line, char *pointer_pos)
   for (size_t lines_traversed = 0; *s != '\0'; s++) {
     if (line - 1 == lines_traversed) {
       // This is the line!
-      for (; s[len] != '\n'; len++);
+      for (; s[len] != '\n' && s[len] != '\0'; len++);
       break;
     }
     if (*s == '\n') lines_traversed++;
