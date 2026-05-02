@@ -660,18 +660,20 @@ void run_bytecode(Varmint *vm)
         push(vm, c);
         break;
       }
-      // Hoist an upvalue to the heap on scope end.
-    case OP_HOIST_UPVALUE:
+      // Hoist upvalues to the heap on scope end.
+    case_var_op(OP_HOIST, n,
       {
         assert(vm->open_upvalues != NULL);
 
-        Upval *upval = vm->open_upvalues;
-        vm->open_upvalues = upval->next;
+        for (size_t i = 0; i < n; i++) {
+          Upval *upval = vm->open_upvalues;
+          vm->open_upvalues = upval->next;
 
-        upval->hoisted = *upval->loc;
-        upval->loc = &upval->hoisted;
+          upval->hoisted = *upval->loc;
+          upval->loc = &upval->hoisted;
+        }
         break;
-      }
+      })
 
       // Partially apply values to a callable
     case_var_op(OP_PARTIAL, count,

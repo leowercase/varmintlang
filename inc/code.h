@@ -83,7 +83,7 @@ typedef enum {
   OP_FOR_DISCARD,
 
   OP_CLOSURE,
-  OP_HOIST_UPVALUE,
+  var(OP_HOIST),
   var(OP_PARTIAL),
   var(OP_CALL),
   OP_CALL_UNARY,

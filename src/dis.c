@@ -168,7 +168,7 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_i(FOR_DISCARD)
 
   case_i(CLOSURE)
-  case_i(HOIST_UPVALUE)
+  case_var_op(HOIST, size)
   case_var_op(PARTIAL, size)
   case_var_op(CALL, size)
   case_i(CALL_UNARY)

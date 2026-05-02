@@ -146,21 +146,24 @@ static bool resolve_upval(Parse *p, Compiler *c, Str name, size_t *upval_idx)
   return resolve_upval_from(p, c->enclosing, get_upval(c, i));
 }
 
-static void clear_local(Parse *p)
-{
-  Local local = Locals_pop(&p->c->locals);
-
-  if (local.is_captured)
-    // Hoist upvalue.
-    emit_byte(p, p->current, OP_HOIST_UPVALUE);
-}
-
 static void clear_local_scope(Parse *p)
 {
   Locals *locals = &p->c->locals;
+  size_t upvals = 0;
 
-  while (locals->len > 0 && Locals_top(locals)->depth == p->c->depth)
-    clear_local(p);
+  while (locals->len > 0) {
+    Local local = *Locals_top(locals);
+
+    if (local.depth == p->c->depth) {
+      Locals_pop(locals);
+      if (local.is_captured) upvals++;
+    }
+    else break;
+  }
+
+  // Hoist upvalues.
+  if (upvals > 0)
+    emit_var_op(p, p->current, OP_HOIST, upvals);
 }
 
 // Emit the end of a block, clearing stack slots
@@ -1762,7 +1765,9 @@ static void loop(Parse *p)
   case TK_FOR:
     // `for` creates a loop variable which is initialized with the next value
     // from the iterable.
+    p->c->depth++;
     emit_byte(p, tok, OP_FOR);
+
     create_local_var(p, for_identifier)->initialized = true;
     p->c->stack_slot_count++;
 
@@ -1782,7 +1787,9 @@ static void loop(Parse *p)
     // The `for` loop variable is created and moved out of scope on each
     // iteration. This ensures that any closures over the variable will get the
     // version of it seen in their loop cycle.
-    clear_local(p);
+    clear_local_scope(p);
+    p->c->depth--;
+
     // Discard the variable's slot.
     end_block(p, tok, 2);
   }
