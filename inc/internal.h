@@ -71,6 +71,15 @@ Value _acos(Varmint *vm, ArgList *args);
 // atan(x: number) -> number
 Value _atan(Varmint *vm, ArgList *args);
 
+// ceil(x: number) -> number
+Value _ceil(Varmint *vm, ArgList *args);
+// floor(x: number) -> number
+Value _floor(Varmint *vm, ArgList *args);
+// round(x: number) -> number
+Value _round(Varmint *vm, ArgList *args);
+// trunc(x: number) -> number
+Value _trunc(Varmint *vm, ArgList *args);
+
 // rand() -> number
 Value _rand(Varmint *vm, ArgList *args);
 

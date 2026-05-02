@@ -388,7 +388,6 @@ Value _sin(Varmint *vm, ArgList *args)
   return value_new(sin(theta), number);
 }
 
-// cos(theta: number) -> number
 Value _cos(Varmint *vm, ArgList *args)
 {
   float64_t theta;
@@ -398,7 +397,6 @@ Value _cos(Varmint *vm, ArgList *args)
   return value_new(cos(theta), number);
 }
 
-// tan(theta: number) -> number
 Value _tan(Varmint *vm, ArgList *args)
 {
   float64_t theta;
@@ -408,7 +406,6 @@ Value _tan(Varmint *vm, ArgList *args)
   return value_new(tan(theta), number);
 }
 
-// asin(x: number) -> number
 Value _asin(Varmint *vm, ArgList *args)
 {
   float64_t x;
@@ -418,7 +415,6 @@ Value _asin(Varmint *vm, ArgList *args)
   return value_new(asin(x), number);
 }
 
-// acos(x: number) -> number
 Value _acos(Varmint *vm, ArgList *args)
 {
   float64_t x;
@@ -428,7 +424,6 @@ Value _acos(Varmint *vm, ArgList *args)
   return value_new(acos(x), number);
 }
 
-// atan(x: number) -> number
 Value _atan(Varmint *vm, ArgList *args)
 {
   float64_t x;
@@ -438,7 +433,42 @@ Value _atan(Varmint *vm, ArgList *args)
   return value_new(atan(x), number);
 }
 
-// rand() -> number
+Value _ceil(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(ceil(x), number);
+}
+
+Value _floor(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(floor(x), number);
+}
+
+Value _round(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(round(x), number);
+}
+
+Value _trunc(Varmint *vm, ArgList *args)
+{
+  float64_t x;
+  if (!varm_arg(vm, args, "n", &x))
+    return NO_VALUE;
+
+  return value_new(trunc(x), number);
+}
+
 Value _rand(Varmint *vm, ArgList *args)
 {
   if (!varm_arg(vm, args, ""))

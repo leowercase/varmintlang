@@ -12,6 +12,7 @@ static const NameValue default_builtins[] = {
   { str_from("tau"),       value_new(VARMINT_TAU,  number) },
   { str_from("inf"),       value_new(VARMINT_INF,  number) },
 
+  { str_from("abs"),       value_new(_abs,         native) },
   { str_from("sqrt"),      value_new(_sqrt,        native) },
   { str_from("cbrt"),      value_new(_cbrt,        native) },
   { str_from("ln"),        value_new(_ln,          native) },
@@ -22,7 +23,10 @@ static const NameValue default_builtins[] = {
   { str_from("asin"),      value_new(_asin,        native) },
   { str_from("acos"),      value_new(_acos,        native) },
   { str_from("atan"),      value_new(_atan,        native) },
-  { str_from("abs"),       value_new(_abs,         native) },
+  { str_from("ceil"),      value_new(_ceil,        native) },
+  { str_from("floor"),     value_new(_floor,       native) },
+  { str_from("round"),     value_new(_round,       native) },
+  { str_from("trunc"),     value_new(_trunc,       native) },
   { str_from("rand"),      value_new(_rand,        native) },
 
   { str_from("typeof"),    value_new(_typeof,      native) },
@@ -51,6 +55,7 @@ static const NameValue default_builtins[] = {
 
   { str_from("rot"),       value_new(_rot,         native) },
 };
+
 static const size_t default_builtin_count =
   sizeof(default_builtins) / sizeof(NameValue);
 
