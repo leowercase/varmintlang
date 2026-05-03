@@ -156,7 +156,7 @@ typedef enum {
   PREC_FLOW,      // break continue return
   PREC_OR,        // or
   PREC_AND,       // and
-  PREC_I9N,       // ->
+  PREC_IMPLIES,   // ->
   PREC_CMP,       // = != < > <= >=
   PREC_NOT,       // not
   PREC_TERM,      // + -

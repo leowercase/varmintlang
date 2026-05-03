@@ -29,7 +29,7 @@ typedef enum {
   OP_MODULO,
   OP_AND,
   OP_OR,
-  OP_I9N,
+  OP_IMPLIES,
   OP_EQ,
   OP_NEQ,
   OP_LT,

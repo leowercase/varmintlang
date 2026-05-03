@@ -275,9 +275,9 @@ void run_bytecode(Varmint *vm)
     case OP_POW:    BINARY(_vm_pow(vm, lhs, rhs))
     case OP_MODULO: BINARY(_vm_modulo(vm, lhs, rhs))
 
-    case OP_AND: BINARY(_vm_and(vm, lhs, rhs))
-    case OP_OR:  BINARY(_vm_or(vm, lhs, rhs))
-    case OP_I9N: BINARY(_vm_implies(vm, lhs, rhs))
+    case OP_AND:     BINARY(_vm_and(vm, lhs, rhs))
+    case OP_OR:      BINARY(_vm_or(vm, lhs, rhs))
+    case OP_IMPLIES: BINARY(_vm_implies(vm, lhs, rhs))
 
     case OP_EQ:  BINARY(value_new((int)values_eq(lhs, rhs), boolean))
     case OP_NEQ: BINARY(value_new((int)!values_eq(lhs, rhs), boolean))

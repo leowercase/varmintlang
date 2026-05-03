@@ -811,27 +811,27 @@ static void unary_plus(Parse *p)
 }
 
 static const BinaryOp infix_ops[] = {
-  [TK_PLUS]     = { OP_ADD,      PREC_TERM,   ASSOC_LEFT  },
-  [TK_MINUS]    = { OP_SUB,      PREC_TERM,   ASSOC_LEFT  },
-  [TK_STAR]     = { OP_MUL,      PREC_FACTOR, ASSOC_LEFT  },
-  [TK_SLASH]    = { OP_DIV,      PREC_FACTOR, ASSOC_LEFT  },
-  [TK_CARET]    = { OP_POW,      PREC_POWER,  ASSOC_RIGHT },
-  [TK_PERCENT]  = { OP_MODULO,   PREC_FACTOR, ASSOC_LEFT  },
-  [TK_2PIPE]    = { OP_CONCAT,   PREC_CONCAT, ASSOC_LEFT  },
-  [TK_PIPESTAR] = { OP_NCAT,     PREC_NCAT,   ASSOC_LEFT  },
+  [TK_PLUS]     = { OP_ADD,      PREC_TERM,    ASSOC_LEFT  },
+  [TK_MINUS]    = { OP_SUB,      PREC_TERM,    ASSOC_LEFT  },
+  [TK_STAR]     = { OP_MUL,      PREC_FACTOR,  ASSOC_LEFT  },
+  [TK_SLASH]    = { OP_DIV,      PREC_FACTOR,  ASSOC_LEFT  },
+  [TK_CARET]    = { OP_POW,      PREC_POWER,   ASSOC_RIGHT },
+  [TK_PERCENT]  = { OP_MODULO,   PREC_FACTOR,  ASSOC_LEFT  },
+  [TK_2PIPE]    = { OP_CONCAT,   PREC_CONCAT,  ASSOC_LEFT  },
+  [TK_PIPESTAR] = { OP_NCAT,     PREC_NCAT,    ASSOC_LEFT  },
 
   // Comparison is handled by `cmp`, not `infix_op`
-  [TK_EQ]       = { OP_EQ,       PREC_CMP,    ASSOC_LEFT },
-  [TK_NEQ]      = { OP_NEQ,      PREC_CMP,    ASSOC_LEFT },
-  [TK_LT]       = { OP_LT,       PREC_CMP,    ASSOC_LEFT },
-  [TK_LEQ]      = { OP_LEQ,      PREC_CMP,    ASSOC_LEFT },
-  [TK_GT]       = { OP_GT,       PREC_CMP,    ASSOC_LEFT },
-  [TK_GEQ]      = { OP_GEQ,      PREC_CMP,    ASSOC_LEFT },
+  [TK_EQ]       = { OP_EQ,       PREC_CMP,     ASSOC_LEFT },
+  [TK_NEQ]      = { OP_NEQ,      PREC_CMP,     ASSOC_LEFT },
+  [TK_LT]       = { OP_LT,       PREC_CMP,     ASSOC_LEFT },
+  [TK_LEQ]      = { OP_LEQ,      PREC_CMP,     ASSOC_LEFT },
+  [TK_GT]       = { OP_GT,       PREC_CMP,     ASSOC_LEFT },
+  [TK_GEQ]      = { OP_GEQ,      PREC_CMP,     ASSOC_LEFT },
 
-  [TK_AND]      = { OP_AND,      PREC_AND,    ASSOC_LEFT  },
-  [TK_OR]       = { OP_OR,       PREC_OR,     ASSOC_LEFT  },
-  [TK_MOD]      = { OP_MODULO,   PREC_FACTOR, ASSOC_LEFT  },
-  [TK_ARROW]    = { OP_I9N,      PREC_I9N,    ASSOC_LEFT  },
+  [TK_AND]      = { OP_AND,      PREC_AND,     ASSOC_LEFT  },
+  [TK_OR]       = { OP_OR,       PREC_OR,      ASSOC_LEFT  },
+  [TK_MOD]      = { OP_MODULO,   PREC_FACTOR,  ASSOC_LEFT  },
+  [TK_ARROW]    = { OP_IMPLIES,  PREC_IMPLIES, ASSOC_LEFT  },
 };
 
 static void infix_op(Parse *p, int min_bp)
