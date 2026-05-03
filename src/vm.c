@@ -298,19 +298,6 @@ void run_bytecode(Varmint *vm)
         break;
       })
 
-    case OP_ZERO:
-      {
-        const Value zero = value_new(0.0, number);
-        push(vm, zero);
-        break;
-      }
-    case OP_ONE:
-      {
-        const Value one = value_new(1.0, number);
-        push(vm, one);
-        break;
-      }
-
       // Discard a value.
     case OP_POP:
       pop(vm);
@@ -741,13 +728,13 @@ void run_bytecode(Varmint *vm)
         // Pop the function itself off the stack.
         pop(vm);
 
-#ifdef VARMINT_DEBUG
         // Ensure a balanced stack after the call!
         if (&vm->op_stack.data[vm->op_stack.len] != frame.op_stack) {
+#ifdef VARMINT_DEBUG
           print_op_stack(vm);
+#endif
           assert(false);
         }
-#endif
 
         if (return_from_program) {
           vm->result = return_val;

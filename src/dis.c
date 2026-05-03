@@ -6,16 +6,23 @@
 
 #include <stdio.h>
 
+static inline void print_tag(FILE *restrict stream, Procedure *p,
+    size_t offset, const char *name)
+{
+  fprintf(stream,
+      ANSI_BLUE "%-4li" ANSI_CYAN " %s" ANSI_RESET,
+      get_line(&p->code.lines, offset), name);
+}
+
 static void constant(FILE *restrict stream, Procedure *p, size_t offset, size_t idx)
 {
   fprintf(stream, "  [%li] = ", idx);
   print_value(stream, p->code.constants.data[idx]);
-  fprintf(stream, ANSI_CYAN);
 }
 
 static void size(FILE *restrict stream, Procedure *p, size_t offset, size_t s)
 {
-  fprintf(stream, " " ANSI_YELLOW "(%li)" ANSI_CYAN, s);
+  fprintf(stream, " " ANSI_YELLOW "(%li)" ANSI_RESET, s);
 }
 
 static void jump(FILE *restrict stream, Procedure *p, size_t offset,
@@ -58,28 +65,29 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   // Print out the name of an instruction.
 #define case_(name, stmt) \
   case OP_##name: { \
-      fprintf(stream, "%.2i " #name, (int)get_line(&p->code.lines, offset)); \
-      stmt; \
+    print_tag(stream, p, offset, #name); \
+    stmt; \
+    fprintf(stream, "\n"); \
   }
 
   // Instructions with 16-bit operands
 #define case_op(name, fn) \
   case_(name, \
     { \
-        uint8_t *ip = &p->code.instructions.data[offset + 1]; \
-        offset += 3; \
-        fn(stream, p, offset, uint8_to_16(ip)); \
-        return offset; \
+      uint8_t *ip = &p->code.instructions.data[offset + 1]; \
+      offset += 3; \
+      fn(stream, p, offset, uint8_to_16(ip)); \
+      return offset; \
     })
 
   // Instructions with 8/16-bit operands
 #define case_var_op(name, fn) \
   case_(name, \
     { \
-        uint8_t operand = p->code.instructions.data[offset + 1]; \
-        offset += 2; \
-        fn(stream, p, offset, operand); \
-        return offset; \
+      uint8_t operand = p->code.instructions.data[offset + 1]; \
+      offset += 2; \
+      fn(stream, p, offset, operand); \
+      return offset; \
     }) \
   case_op(name##_16, fn)
 
@@ -111,22 +119,6 @@ size_t dis_instruction(FILE *restrict stream, Procedure *p, size_t offset)
   case_i(NCAT)
 
   case_var_op(CONST, constant)
-  case_(ZERO,
-    {
-      const Value zero = value_new(0.0, number);
-      fprintf(stream, " ");
-      print_value(stream, zero);
-      fprintf(stream, ANSI_CYAN);
-      return offset + 1;
-    })
-  case_(ONE,
-    {
-      const Value one = value_new(1.0, number);
-      fprintf(stream, " ");
-      print_value(stream, one);
-      fprintf(stream, ANSI_CYAN);
-      return offset + 1;
-    })
 
   case_var_op(BUILD_LIST, size)
   case_var_op(BUILD_STR, size)
@@ -194,14 +186,11 @@ void dis(FILE *restrict stream, Procedure *procedure, const char *name)
   PCode *code = &procedure->code;
 
   if (name != NULL) fprintf(stream, "-- %s --\n", name);
-  fprintf(stream, ANSI_CYAN);
 
   for (size_t offset = 0; offset < code->instructions.len;) {
     offset = dis_instruction(stream, procedure, offset);
     fprintf(stream, "\n");
   }
-
-  fprintf(stream, ANSI_RESET);
 
   // Disassemble any functions inside the procedure.
   for (size_t i = 0; i < code->constants.len; i++) {

@@ -1,3 +1,4 @@
+#include "../inc/dis.h"
 #include "../inc/varmint.h"
 #include "../inc/util.h"
 
@@ -108,6 +109,12 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
       error_out("program:\n");
     else
       error_out("anonymous function:\n");
+
+#ifdef VARMINT_DEBUG
+    info_out("instruction ");
+    dis_instruction(stderr, proc, offset);
+    info_out("\n");
+#endif
 
     error_line_snip(proc->source->s, line, NULL);
 

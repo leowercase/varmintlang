@@ -4,14 +4,14 @@
 #include "../inc/val.h"
 #include "../inc/varmint.h"
 
-#ifdef VARMINT_DEBUG
-#include <stdio.h>
-#define GC_DBG_MSG(msg) info_out("[GC] " msg)
-#define GC_DBG_FMT_MSG(fmt, ...) info_out("[GC] " fmt, __VA_ARGS__)
-#else
+//#ifdef VARMINT_DEBUG
+// #include <stdio.h>
+// #define GC_DBG_MSG(msg) info_out("[GC] " msg)
+// #define GC_DBG_FMT_MSG(fmt, ...) info_out("[GC] " fmt, __VA_ARGS__)
+// #else
 #define GC_DBG_MSG(_)
 #define GC_DBG_FMT_MSG(_, ...)
-#endif
+// #endif
 
 const size_t INITIAL_NEXT_GC = 16384;
 const float64_t GC_GROWTH_FACTOR = 2.0;

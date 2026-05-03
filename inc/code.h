@@ -40,8 +40,6 @@ typedef enum {
   OP_NCAT,
 
   var(OP_CONST),
-  OP_ZERO,
-  OP_ONE,
 
   var(OP_BUILD_LIST),
   var(OP_BUILD_STR),
