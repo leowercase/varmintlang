@@ -148,32 +148,32 @@ void parse_error(Parse *p, Token offending_tok, bool pointer,
     char *const msg, ...);
 
 typedef enum {
-  PREC_NONE,
-  PREC_TOP,       // var as loop for while
-  PREC_ASSIGN,    // :=
-  PREC_ELSE,      // else elif
-  PREC_IF,        // if
-  PREC_FLOW,      // break continue return
-  PREC_OR,        // or
-  PREC_AND,       // and
-  PREC_IMPLIES,   // ->
-  PREC_CMP,       // = != < > <= >=
-  PREC_NOT,       // not
-  PREC_TERM,      // + -
-  PREC_FACTOR,    // * / %
-  PREC_CONCAT,    // ||
-  PREC_NCAT,      // |*
-  PREC_POWER,     // ^
-  PREC_SIGN,      // + -
-  PREC_FACTORIAL, // !
-  PREC_PERCENT,   // %
-  PREC_CALL,      // () [] ?!
-  PREC_UFCS,      // :
+  PREC_NONE      =  0,
+  PREC_TOP       =  2, // var as loop for while
+  PREC_ASSIGN    =  4, // :=
+  PREC_ELSE      =  6, // else elif
+  PREC_IF        =  8, // if
+  PREC_FLOW      = 10, // break continue return
+  PREC_OR        = 12, // or
+  PREC_AND       = 14, // and
+  PREC_IMPLIES   = 16, // ->
+  PREC_CMP       = 18, // = /= < > <= >=
+  PREC_NOT       = 20, // not
+  PREC_TERM      = 22, // + -
+  PREC_FACTOR    = 24, // * / mod
+  PREC_CONCAT    = 26, // ||
+  PREC_NCAT      = 28, // |*
+  PREC_POWER     = 30, // ^
+  PREC_SIGN      = 32, // + -
+  PREC_FACTORIAL = 34, // !
+  PREC_PERCENT   = 36, // %
+  PREC_CALL      = 38, // () [] ?!
+  PREC_UFCS      = 40, // :
 } Precedence;
 
 typedef enum {
-  ASSOC_LEFT = 1,
-  ASSOC_NONE,
+  ASSOC_LEFT  = 1,
+  ASSOC_NONE  = 0,
   ASSOC_RIGHT = -1,
 } Associativity;
 
