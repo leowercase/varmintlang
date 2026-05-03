@@ -1592,16 +1592,21 @@ static void as_bind(Parse *p, int min_bp)
 static inline bool is_else(Parse *p)
 {
   Token tok = p->current;
+  bool next_line = tok.type == TK_LINE;
 
   // Allow `else` on the same indentation level as `if`
-  if (tok.type == TK_LINE) {
+  if (next_line) {
     if (tok.slice.len >= semantic(p)->indent.initial)
-      tok = next(p);
+      tok = peek(p);
     else
       return false;
   }
 
-  return tok.type == TK_ELSE || tok.type == TK_ELIF;
+  if (tok.type == TK_ELSE || tok.type == TK_ELIF) {
+    if (next_line) next(p);
+    return true;
+  }
+  else return false;
 }
 
 static void if_then(Parse *p)
