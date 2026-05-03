@@ -1483,7 +1483,7 @@ static void var_bind(Parse *p)
       Local *local = create_local_var(p, ident_tok.slice);
 
       if (match_assignment(p)) {
-        expr_rhs(p, PREC_ASSIGN, ASSOC_NONE);
+        expr_rhs(p, PREC_ASSIGN, ASSOC_RIGHT);
         local->initialized = true;
       }
       else
@@ -1589,12 +1589,12 @@ static void as_bind(Parse *p, int min_bp)
   p->c->depth--;
 }
 
+// Allow `else` on the same indentation level as `if`
 static inline bool is_else(Parse *p)
 {
   Token tok = p->current;
   bool next_line = tok.type == TK_LINE;
 
-  // Allow `else` on the same indentation level as `if`
   if (next_line) {
     if (tok.slice.len >= semantic(p)->indent.initial)
       tok = peek(p);

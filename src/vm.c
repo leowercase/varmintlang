@@ -573,7 +573,6 @@ void run_bytecode(Varmint *vm)
     case OP_ELIF:
       {
         size_t jump = read_16(vm);
-
         Value lhs = pop(vm);
 
         if (typechecked(vm, lhs, maybe) != NULL) {
