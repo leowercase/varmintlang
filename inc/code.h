@@ -108,9 +108,11 @@ typedef DYN_ARRAY_STRUCT(uint8_t) Instructions;
 #define USE_GC
 #include "generic/dyn_array.inc"
 
-// The line of text a group of bytes comes from.
-typedef struct { size_t line, nbytes; } LineBytes;
+// The source code line a group of bytes comes from.
+typedef struct { size_t line, bytes; } LineBytes;
 
+// Bytecode counts on each line are kept track of
+// for debugging and disassembly purposes
 typedef DYN_ARRAY_STRUCT(LineBytes) LineInfo;
 #define T LineBytes
 #define ARR LineInfo

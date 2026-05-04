@@ -8,20 +8,21 @@ void emit_byte(Parse *p, Token tok, uint8_t byte)
   Instructions_push(p->vm, &code(p)->instructions, byte);
 
   size_t line = tok.line;
+  LineInfo *lines = &code(p)->lines;
 
-  if (code(p)->lines.data != NULL) {
-    LineBytes *last = LineInfo_top(&code(p)->lines);
+  // Try to reuse an entry
+  if (lines->data != NULL) {
+    LineBytes *last_entry = LineInfo_top(lines);
 
-    if (last->line == line) {
-      // Increment the number of bytes in that line.
-      last->nbytes++;
+    if (last_entry->line == line) {
+      last_entry->bytes++;
       return;
     }
   }
 
   // Else, record new line.
-  LineBytes l = {line, 1};
-  LineInfo_push(p->vm, &code(p)->lines, l);
+  LineBytes l = {line, .bytes = 1};
+  LineInfo_push(p->vm, lines, l);
 }
 
 void emit_16(Parse *p, Token tok, size_t data)

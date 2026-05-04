@@ -43,7 +43,7 @@ void gc_free(struct Varmint *vm, void *ptr, size_t size);
 
 #ifndef CAP
 static inline
-void METHOD(_adjust_cap)ALLOCS(ARR *dyn_array, size_t required_cap)
+void METHOD(_reserve_cap)ALLOCS(ARR *dyn_array, size_t required_cap)
 {
   if (dyn_array->cap < required_cap) {
     size_t new_cap = cap_to(required_cap);
@@ -57,6 +57,13 @@ void METHOD(_adjust_cap)ALLOCS(ARR *dyn_array, size_t required_cap)
 #endif
     dyn_array->cap = new_cap;
   }
+}
+
+static inline
+void METHOD(_reserve_len)ALLOCS(ARR *dyn_array, size_t required_len)
+{
+  METHOD(_reserve_cap)CALLS_ALLOC(dyn_array, required_len);
+  dyn_array->len = required_len;
 }
 #endif
 
@@ -82,7 +89,7 @@ ARR METHOD(_with_cap)ALLOCS(size_t cap)
 {
   ARR dyn_array = METHOD(_init)();
 
-  METHOD(_adjust_cap)CALLS_ALLOC(&dyn_array, cap);
+  METHOD(_reserve_cap)CALLS_ALLOC(&dyn_array, cap);
   return dyn_array;
 }
 #endif
@@ -102,7 +109,7 @@ T *METHOD(_push)ALLOCS(ARR *dyn_array, T elem)
 #ifdef CAP
   assert(dyn_array->len < CAP);
 #else
-  METHOD(_adjust_cap)CALLS_ALLOC(dyn_array, dyn_array->len + 1);
+  METHOD(_reserve_cap)CALLS_ALLOC(dyn_array, dyn_array->len + 1);
 #endif
 
   dyn_array->data[dyn_array->len++] = elem;

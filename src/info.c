@@ -1,4 +1,3 @@
-#include "../inc/dis.h"
 #include "../inc/varmint.h"
 #include "../inc/util.h"
 
@@ -7,15 +6,21 @@
 
 size_t get_line(LineInfo *lines, size_t offset)
 {
+  // The amount of bytes emitted up to and including this byte
+  size_t bytes = offset + 1;
+
+  // Look for the line where
+  //   n ∈ (Σ of bytes emitted before line, Σ of bytes emitted after line]
   for (size_t i = 0; i < lines->len; i++) {
-    LineBytes l = lines->data[i];
+    LineBytes entry = lines->data[i];
 
-    if (offset <= l.nbytes)
-      return l.line;
+    if (bytes <= entry.bytes)
+      // Current byte originated from this line!
+      return entry.line;
 
-    offset -= l.nbytes;
+    bytes -= entry.bytes;
   };
-  abort(); // Unreachable, assuming well-formed line info
+  assert(false); // Unreachable, assuming well-formed line info
 }
 
 void v_error_out(const char *fmt, va_list args)
@@ -98,9 +103,10 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
   for (CallFrame *frame = CallStack_top(&vm->call_stack);;) {
     Procedure *proc = frame->procedure;
 
-    size_t offset = (size_t)(frame->ip - proc->code.instructions.data),
-           line = get_line(&proc->code.lines, offset);
+    // Step back by 1 to the bytes of the instruction at fault.
+    size_t offset = (size_t)(frame->ip - proc->code.instructions.data - 1);
 
+    size_t line = get_line(&proc->code.lines, offset);
     error_out("[line %li] in ", line);
 
     if (proc->name.len > 0)
@@ -109,12 +115,6 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
       error_out("program:\n");
     else
       error_out("anonymous function:\n");
-
-#ifdef VARMINT_DEBUG
-    info_out("instruction ");
-    dis_instruction(stderr, proc, offset);
-    info_out("\n");
-#endif
 
     error_line_snip(proc->source->s, line, NULL);
 

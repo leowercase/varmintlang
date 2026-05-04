@@ -115,7 +115,7 @@ Value List_create(Varmint *vm, size_t cap)
   l->len = l->cap = 0;
   l->data = NULL;
 
-  List_adjust_cap(vm, l, cap);
+  List_reserve_cap(vm, l, cap);
   return value_new(l, list);
 }
 
@@ -237,11 +237,11 @@ Procedure *Procedure_create(Varmint *vm, size_t arity, String *source)
   proc->code.instructions = Instructions_init();
   proc->code.lines = LineInfo_init();
 
-  // Keep track of source code.
-  proc->source = source;
-
   // Initialize closure description
   proc->closure_desc = ClosureDesc_init();
+
+  // Keep track of source code
+  proc->source = source;
 
   proc->arity = arity;
   proc->name = NULL_STR;
