@@ -10,7 +10,7 @@ static inline void print_tag(FILE *restrict stream, Procedure *p,
     size_t offset, const char *name)
 {
   fprintf(stream,
-      ANSI_BLUE "%-4li" ANSI_CYAN " %s" ANSI_RESET,
+      ANSI_BLUE "%4li" ANSI_CYAN " %s" ANSI_RESET,
       get_line(&p->code.lines, offset), name);
 }
 
