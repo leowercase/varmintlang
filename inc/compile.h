@@ -93,8 +93,6 @@ typedef struct SemanticDatum {
 
   // When possible, a False `if` condition jumps straight to a corresponding
   // `else` clause without creating a None result value.
-  // Similarly, a loop can have an optional `else` clause that it jumps to when
-  // terminating without a single cycle.
   size_t else_jmp_idx;
   bool else_chained;
 
