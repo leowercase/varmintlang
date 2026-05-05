@@ -713,11 +713,12 @@ static void emit_elem(Parse *p, Token elem_tok, bool assign, bool access)
   semantic(p)->assign_fn = elem_assign;
   semantic(p)->compound_assign_fn = elem_compound_assign;
 
-  if (access)
-    emit_byte(p, elem_tok, OP_GET_ELEM);
-
-  if (!assign)
+  if (!assign) {
     semantic(p)->assign_fn = NULL;
+
+    if (access)
+      emit_byte(p, elem_tok, OP_GET_ELEM);
+  }
 }
 
 static bool peek_assignment(Parse *p)

@@ -1,0 +1,6 @@
+var statement := ["pineapple", "on", "pizza"]
+
+statement[0] ||:= " doesn't belong"
+
+for i in statement:items() do put "\(i) "
+putln ""
