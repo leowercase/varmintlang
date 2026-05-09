@@ -1,0 +1,171 @@
+#!/usr/bin/env varmint
+
+char_ord as ord
+
+var X     := -1,
+    Empty := 0,
+    O     := 1
+
+var max_size := sqrt(9 + 26 + 26)
+
+var color := @[
+  red   := "\e[31m",
+  blue  := "\e[34m",
+  reset := "\e[0m",
+]
+
+var cell_char(i) :=
+  if i < 9 then
+    to_string(i + 1)
+  elif i < (9 + 26) then
+    asciify(ord "A" + i - 9)
+  else
+    asciify(ord "a" + i - 9 - 26)
+
+var player_char(player) :=
+  if player = X then
+    "\(color.red)X\(color.reset)"
+  else
+    "\(color.blue)O\(color.reset)"
+
+var player_turn(turn) := {
+  var num := turn:to_number()
+
+  if num then
+    var n := num?! in
+      return if 1 <= n <= 9 then n - 1
+
+  elif turn:len() = 1 then {
+    var c := ord turn[0]
+
+    if c >= ord "a" then
+      return if c <= ord "z" then 9 + 26 + (c - ord "a")
+    elif c >= ord "A" then
+      return if c <= ord "Z" then 9 + (c - ord "A")
+    else
+      return None
+  }
+}
+
+var size := loop {
+  var s := input "Type grid size (leave empty for default 3) >>> "
+  if s:len() = 0 then break 3
+
+  var n := s:to_number() else continue
+  if 0 < n <= max_size and trunc(n) = n then break n
+}
+
+var grid := [Empty] |* size^2
+
+var corners(left, mid, right) :=
+  @[left, mid, right]
+
+var hline := "═",
+    vline := "║",
+    top_corners := corners("╔", "╦", "╗"),
+    mid_corners := corners("╠", "╬", "╣"),
+    bot_corners := corners("╚", "╩", "╝")
+
+var draw_row_sep(i) := {
+  var corners :=
+    if i = 0 then
+      top_corners
+    elif i / size < size - 1 then
+      mid_corners
+    else
+      bot_corners
+
+  putln(" " || corners.left
+    || (hline |* 3 || corners.mid) |* (size - 1)
+    || (hline |* 3) || corners.right)
+}
+
+var draw_grid() := {
+  draw_row_sep 0
+
+  for i in range(0, grid:len(), 1) do {
+    var cell := grid[i]
+
+    var s := if cell = Empty then cell_char i
+                             else player_char cell
+
+    put " \(vline) \(s)"
+
+    if (i + 1) mod size = 0 then {
+      putln " \(vline)"
+      if size > 1 then
+        draw_row_sep i
+      else
+        draw_row_sep 1
+    }
+  }
+}
+
+var rows := [0] |* size,
+    cols := [0] |* size
+var diagonal := 0, anti_diagonal := 0
+
+var count_moves(idx, player) := {
+  var row := trunc(idx mod size)
+  var col := trunc(idx / size)
+
+  rows[row] +:= player
+  cols[col] +:= player
+
+  if row = col then
+    diagonal +:= player
+
+  if size - row - 1 = col then
+    anti_diagonal +:= player
+}
+
+var has_won(player) :=
+  var win_cond := player * size
+  in {
+    for row in rows:items() do
+      if row = win_cond then return True
+
+    for col in cols:items() do
+      if col = win_cond then return True
+
+    diagonal = win_cond or anti_diagonal = win_cond
+  }
+
+var is_tie(turns) := turns >= size^2
+
+var outcome(msg) := {
+  draw_grid()
+  putln "*** \(msg) ***"
+}
+
+var player := X
+
+for turns in range(1, inf, 1)
+do {
+  var name := player:player_char()
+  draw_grid()
+
+  var idx
+  loop {
+    idx := player_turn input "turn for \(name) >>> "
+             else continue
+    if idx < size^2 and grid[idx] = Empty
+      then break
+  }
+
+  grid[idx] := player
+  count_moves(idx, player)
+
+  if player:has_won()
+    then outcome "player \(name) wins!"
+
+  elif is_tie(turns)
+    then outcome "it's a tie!"
+
+  else {
+    player := if player = X then O else X
+    continue
+  }
+
+  break
+}
