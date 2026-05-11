@@ -10,6 +10,8 @@
       valgrind
       bear
       libllvm # provides llvm-symbolizer for UBSan
+
+      http-server # https://github.com/http-party/http-server
     ];
     # https://nixos.org/manual/nixpkgs/stable/#fortify
     # Debugging is smooth sailing with -O0, but disappeases the _FORTIFY_SOURCE gods

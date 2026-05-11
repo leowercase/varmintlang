@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Varmint playground</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <div id="main" data-left-width="1fr">
+      <header id="header">
+        Varmint playground!
+        <button id="btn-run">Run</button>
+        <button id="btn-dis">Disassemble</button>
+        <button id="btn-tokens">Tokens</button>
+      </header>
+      <div id="editor" class="content"></div>
+      <div id="sep" class="content"></div>
+      <div id="output" class="content">
+        <pre id="stdout">Type Run to see output here!</pre>
+        <form id="stdin">
+          <input id="stdin-prompt" type="text" name="input prompt" placeholder="input" />
+        </form>
+      </div>
+    </div>
+
+    <script src="./ace-builds/src-min-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
+    <script src="./code.js" type="text/javascript" charset="utf-8"></script>
+  </body>
+</html>

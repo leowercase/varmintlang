@@ -1,0 +1,47 @@
+#main {
+  display: grid;
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+
+  grid-template-columns:
+    [left-start] 1fr [left-end] 4px [right-start] 1fr [right-end];
+
+  grid-template-rows:
+    [header-top] max-content [header-bottom] 1fr [content-bottom];
+}
+
+.content {
+  grid-row: header-bottom / content-bottom;
+}
+
+#header {
+  grid-column: left-start / right-end;
+  grid-row: header-top / header-bottom;
+  box-sizing: border-box;
+  padding: 1px;
+  background-color: lightgray;
+  font-weight: bold;
+}
+
+#editor {
+  grid-column: left-start / left-end;
+  grid-row: header-bottom / content-bottom;
+}
+
+#sep {
+  grid-column: left-end / right-start;
+  grid-row: header-bottom / content-bottom;
+  background-color: gray;
+}
+#sep:hover {
+  cursor: col-resize;
+}
+
+#output {
+  grid-column: right-start / right-end;
+  grid-row: header-bottom / content-bottom;
+  margin: 0;
+  color: blue;
+  font-weight: bold;
+}
