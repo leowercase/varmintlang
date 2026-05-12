@@ -1,47 +1,167 @@
+:root {
+  /* Give some breathing room on larger screen sizes. */
+  --main-border-radius: 0.5rem;
+  --main-margin: 0.5em;
+
+  --big-font-size: 24px;
+  --mid-font-size: 18px;
+}
+
 #main {
+  --left-section-width: 1fr;
+
   display: grid;
   position: absolute;
   inset: 0;
-  width: 100%; height: 100%;
-
-  grid-template-columns:
-    [left-start] 1fr [left-end] 4px [right-start] 1fr [right-end];
-
-  grid-template-rows:
-    [header-top] max-content [header-bottom] 1fr [content-bottom];
+  width: 100vw; height: 100vh;
 }
 
-.content {
-  grid-row: header-bottom / content-bottom;
+.code {
+  font: min(2.5vh, 18px) monospace;
+}
+
+/* Larger screen sizes */
+@media (width > 600px) {
+  #main {
+    grid-template-columns:
+      var(--main-margin) [left-start] var(--left-section-width) [left-end] 4px [right-start] 1fr [right-end] var(--main-margin);
+
+    grid-template-rows:
+      var(--main-margin) [header-top] max-content [header-bottom] 1fr [content-mid content-bottom] var(--main-margin);
+  }
+
+  #header {
+    border-top-left-radius: var(--main-border-radius);
+    border-top-right-radius: var(--main-border-radius);
+  }
+
+  .content {
+    grid-row: header-bottom / content-bottom;
+  }
+
+  #editor {
+    grid-column: left-start / left-end;
+    border-bottom-left-radius: var(--main-border-radius);
+  }
+
+  #sep {
+    display: block;
+    grid-column: left-end / right-start;
+    grid-row: header-bottom / content-bottom;
+  }
+
+  #output {
+    grid-column: right-start / right-end;
+    overflow-y: auto;
+    border-bottom-right-radius: var(--main-border-radius);
+  }
+}
+
+/* Smaller screen sizes */
+@media (width <= 600px) {
+  #main {
+    grid-template-columns:
+      [left-start left-end] 1fr [right-start right-end];
+
+    grid-template-rows:
+      [header-top] max-content [header-bottom] 1fr [content-mid] 50vh [content-bottom];
+  }
+
+  #header > div > menu > button > span {
+    display: none;
+  }
+
+  .content {
+    grid-column: left-start / right-end;
+  }
+
+  #editor {
+    grid-row: header-bottom / content-mid;
+  }
+
+  #sep {
+    display: none;
+  }
+
+  #output {
+    grid-row: content-mid / content-bottom;
+  }
 }
 
 #header {
   grid-column: left-start / right-end;
   grid-row: header-top / header-bottom;
-  box-sizing: border-box;
-  padding: 1px;
+  overflow-x: auto;
+  padding: 0 0.5rem 0 0.5rem;
   background-color: lightgray;
-  font-weight: bold;
 }
 
-#editor {
-  grid-column: left-start / left-end;
-  grid-row: header-bottom / content-bottom;
+#header > div {
+  display: flex;
+  flex-flow: row;
+  align-items: center;
+  padding: 0.25rem;
+  border: 0.5rem black;
+  border-radius: 2px;
+}
+
+#header > div > h1 {
+  font: min(4vh, var(--big-font-size)) sans-serif;
+  margin: 0 auto 0 0;
+  display: inline;
+}
+
+#header > div > menu {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+#header > div > menu > button {
+  width: max-content;
+  height: max(max-content, min(5vh, 50px));
+  background-color: white;
+  border-radius: 0.25rem;
+  padding: 0 0.5rem 0 0.5rem;
+  font-size: min(2.5vh, var(--mid-font-size));
 }
 
 #sep {
-  grid-column: left-end / right-start;
-  grid-row: header-bottom / content-bottom;
   background-color: gray;
+  box-sizing: border-box;
+  border: 1px solid white;
 }
 #sep:hover {
   cursor: col-resize;
 }
 
 #output {
-  grid-column: right-start / right-end;
-  grid-row: header-bottom / content-bottom;
+  margin: 0 0.1em 0.1em 0.1em;
+  padding: 0 0.5em 0.5em 0.5em;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+#stdout {
+  margin-top: 0;
+}
+
+#stdin {
+  box-sizing: content-box;
+  margin: 0 0 0 0;
+  width: 100%;
+}
+
+#stdin-prompt {
   margin: 0;
-  color: blue;
-  font-weight: bold;
+
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem;
+
+  border: 2px solid lightgray;
 }

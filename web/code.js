@@ -7,7 +7,7 @@ const main = document.getElementById("main");
 
 // Initialize Ace
 const editor = ace.edit("editor");
-editor.setTheme("ace/theme/github_dark");
+editor.setTheme("ace/theme/cloud9_day");
 editor.session.setMode("ace/mode/c_cpp");
 
 const initialText =
@@ -22,16 +22,22 @@ editor.setValue(initialText, -1);
 const sep = document.getElementById("sep");
 let mouseDown = false, mouseX = 0;
 
-// Amount of space left around the resizable area
-const margin = 40;
-
 function resizeView(left) {
-  const width = main.getBoundingClientRect().width;
-  left = clamp(left, margin, width - margin);
+  let leftSectionWidth;
 
-  main.style.gridTemplateColumns =
-    `[left-start] ${left}px [left-end] 4px [right-start] 1fr [right-end]`;
+  if (left === null)
+    leftSectionWidth = "1fr";
+  else {
+    const gutter = document.getElementsByClassName("ace_gutter")[0];
 
+    // Leave a line gutter's width worth of space around the resizable area
+    const margin = gutter.getBoundingClientRect().width,
+          width = main.getBoundingClientRect().width;
+
+    leftSectionWidth = clamp(left, margin, width - margin).toString() + "px";
+  }
+
+  main.style.setProperty("--left-section-width", leftSectionWidth);
   editor.resize();
 }
 
@@ -63,14 +69,17 @@ function run() {
   stdout.textContent = "Voila!";
 }
 
-const runBtn = document.getElementById("btn-run");
-runBtn.addEventListener("click", run);
+function stop() {
+  stdout.textContent = "Stopping";
+}
 
-const disBtn = document.getElementById("btn-dis");
-disBtn.addEventListener("click", run);
+function dis() {
+  stdout.textContent = "01 INSTRUCTION [x] = y";
+}
 
-const tokensBtn = document.getElementById("btn-tokens");
-tokensBtn.addEventListener("click", run);
+document.getElementById("btn-run").addEventListener("click", run);
+document.getElementById("btn-stop").addEventListener("click", stop);
+document.getElementById("btn-dis").addEventListener("click", dis);
 
 const stdin = document.getElementById("stdin"),
       stdinPrompt = document.getElementById("stdin-prompt");
