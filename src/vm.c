@@ -585,8 +585,9 @@ void run_bytecode(Varmint *vm)
         Value *iterable = &top(vm)[-1];
 
         if (value_is_callable(iterable->type)) {
+          // Duplicate the iterable to a new slot before calling.
           push(vm, *iterable);
-          call_val(vm, iterable, 0);
+          call_val(vm, top(vm), 0);
         }
         else runtime_error(vm, "iterable %s is not a callable value",
             typetag_cstring(iterable->type));
