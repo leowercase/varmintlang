@@ -51,14 +51,14 @@ static inline Value *get_stack_slot(Varmint *vm, size_t stack_slot)
 {
   Value *slot = &vm->frame->op_stack[stack_slot];
   // Ensure valid index
-  assert(slot < &vm->op_stack.data[vm->op_stack.len]);
+  vm_assert(vm, slot < &vm->op_stack.data[vm->op_stack.len], );
   return slot;
 }
 
 static inline Value *get_upvalue(Varmint *vm, size_t upval_idx)
 {
   // Ensure valid index
-  assert(upval_idx < vm->frame->upvalue_count);
+  vm_assert(vm, upval_idx < vm->frame->upvalue_count, );
   return vm->frame->upvalues[upval_idx]->loc;
 }
 
@@ -649,7 +649,7 @@ void run_bytecode(Varmint *vm)
       // Hoist upvalues to the heap on scope end.
     case_var_op(OP_HOIST, n,
       {
-        assert(vm->open_upvalues != NULL);
+        vm_assert(vm, vm->open_upvalues != NULL, return);
 
         for (size_t i = 0; i < n; i++) {
           Upval *upval = vm->open_upvalues;
@@ -717,7 +717,7 @@ void run_bytecode(Varmint *vm)
 
         // Discard builtins.
         if (return_from_program) {
-          assert(vm->builtins_emitted);
+          vm_assert(vm, vm->builtins_emitted, return);
 
           popn(vm, vm->builtins.len);
           vm->builtins_emitted = false;
@@ -729,12 +729,8 @@ void run_bytecode(Varmint *vm)
         pop(vm);
 
         // Ensure a balanced stack after the call!
-        if (&vm->op_stack.data[vm->op_stack.len] != frame.op_stack) {
-#ifdef VARMINT_DEBUG
-          print_op_stack(vm);
-#endif
-          assert(false);
-        }
+        vm_assert(vm, &vm->op_stack.data[vm->op_stack.len] == frame.op_stack,
+                  return);
 
         if (return_from_program) {
           vm->result = return_val;

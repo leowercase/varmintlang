@@ -23,6 +23,12 @@ void info_out(const char *fmt, ...);
 // Pause execution; print a stack trace and the error message.
 void runtime_error(Varmint *vm, const char *fmt, ...);
 
+#define vm_assert(vm, cond, terminate) \
+  if (!(cond)) { \
+    runtime_error(vm, "assertion " #cond " failed"); \
+    terminate; \
+  }
+
 // Check type and return the unwrapped value
 #define typechecked(vm, val_ident, t) \
   (val_ident.type == V_##t \

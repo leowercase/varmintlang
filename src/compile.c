@@ -1758,8 +1758,7 @@ static void loop(Parse *p)
   default: unreachable();
 
   case TK_LOOP:
-    // No conditional jump, but discard what the last cycle evaluated to
-    cond_jmp_idx = false;
+    cond_jmp_idx = false; // No conditional.
     break;
 
   case TK_WHILE:
