@@ -11,12 +11,31 @@ editor.setTheme("ace/theme/cloud9_day");
 editor.session.setMode("ace/mode/c_cpp");
 
 const initialText =
-`#include <stdio.h>
+`var fib(len) :=
+    var i := 0,
+        prev := 0, prev' := 1
+    in
+    () => {
+        if i >= len
+          then return None
 
-int main(void) {
-  printf("hello, world!");
-  return 0;
-}`;
+        var result
+
+        if i = 0
+          then result := 0
+        else {
+          result := prev + prev'
+          prev' := prev
+          prev := result
+        }
+
+        i +:= 1
+        Some(result)
+    }
+
+for fib_i in fib(20)
+  do putln "\\(fib_i)"
+`;
 editor.setValue(initialText, -1);
 
 const sep = document.getElementById("sep");

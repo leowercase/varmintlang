@@ -105,10 +105,15 @@
   border-radius: 2px;
 }
 
+#header > div > img {
+  width: 7vh;
+  height: 7vh;
+}
+
 #header > div > h1 {
-  font: min(4vh, var(--big-font-size)) sans-serif;
-  margin: 0 auto 0 0;
+  font-size: min(4vh, var(--big-font-size));
   display: inline;
+  margin: auto auto auto 1rem;
 }
 
 #header > div > menu {
@@ -120,11 +125,28 @@
 
 #header > div > menu > button {
   width: max-content;
-  height: max(max-content, min(5vh, 50px));
-  background-color: white;
-  border-radius: 0.25rem;
+  height: 5vh;
   padding: 0 0.5rem 0 0.5rem;
+  border-radius: 0.25rem;
   font-size: min(2.5vh, var(--mid-font-size));
+  background-color: white;
+}
+
+#header > div > menu > button:hover {
+  background-color: #dddddd;
+}
+
+#header > div > menu > button:active {
+  background-color: #aaaaaa;
+}
+
+/* https://fonts.google.com/specimen/Merriweather+Sans */
+#header > div > h1,
+#header > div > menu > button {
+  font-family: "Merriweather Sans", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
 }
 
 #sep {

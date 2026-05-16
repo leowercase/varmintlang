@@ -2,14 +2,22 @@
 <html lang="en">
   <head>
     <title>Varmint playground</title>
+    <!-- Font Awesome icons  -->
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v7.2.0/css/all.css" crossorigin="anonymous">
+    <!-- Merriweather Sans  -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+    <!-- Website styles  -->
     <link rel="stylesheet" href="./style.css">
+    <link rel="icon" href="./varproto.svg" type="image/svg" />
   </head>
   <body>
     <div id="main" data-left-width="1fr">
       <header id="header">
         <div>
-          <h1>Playground</h1>
+          <img src="./varproto.svg" alt="Little bugger" />
+          <h1 class="merriweather-sans-normal">Playground</h1>
           <menu>
             <button id="btn-run">
               <i class="fas fa-play fa-lg"></i> <span>Run</span>
@@ -17,7 +25,7 @@
             <button id="btn-stop">
               <i class="fas fa-stop fa-lg"></i> <span>Stop</span>
             </button>
-            <button id="btn-dis">
+            <button id="btn-dis" class="btn">
               <i class="fas fa-magnifying-glass fa-lg"></i> <span>Disassemble</span>
             </button>
           </menu>
@@ -32,7 +40,6 @@
         </form>
       </div>
     </div>
-
     <script src="./ace-builds/src-min-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
     <script src="./code.js" type="text/javascript" charset="utf-8"></script>
   </body>
