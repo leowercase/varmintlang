@@ -105,6 +105,12 @@ static inline Value validate_table_key(Varmint *vm, Value key)
   return key;
 }
 
+// Resume execution after a pause
+static inline void resume(Varmint *vm)
+{
+  vm->frame->ip = vm->resume_ip;
+}
+
 // Call a procedure.
 static void call(Varmint *vm,
     Procedure *procedure, Value *op_stack,
@@ -751,17 +757,25 @@ void run_bytecode(Varmint *vm)
         vm->status == VM_A_OK ? peek(vm, 0) : NO_VALUE;
       return;
 
-      // Halt erroneous execution.
+      // The following instructions are only ever encountered by the VM when
+      // someone manually sets ip pointing to them.
+
+      // Halt execution.
     case OP_HALT:
       return;
 
+      // Resume execution
+    case OP_RESUME:
+      resume(vm);
+      break;
+
       // Collect garbage.
-      // This instruction is only ever encountered by the VM when the garbage
-      // collector manually sets ip pointing to it.
     case OP_GC:
-      vm->frame->ip--; // NB: Backstep to the instruction, so GC knows where at.
+      // NB: Backstep to the instruction, so GC knows where we're at.
+      vm->frame->ip--;
+
       gcollect(vm);
-      vm->frame->ip = vm->gc_resume_ip; // Pick up where we left off.
+      resume(vm);
       break;
     }
   }

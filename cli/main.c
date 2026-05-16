@@ -1,6 +1,4 @@
-#include "../inc/info.h"
 #include "../inc/compile.h"
-#include "../inc/dis.h"
 #include "../inc/lex.h"
 #include "../inc/varmint.h"
 
@@ -10,6 +8,48 @@
 
 #include <readline/readline.h>
 #include <readline/history.h>
+
+// IO impls
+
+static void print_out(const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stdout, fmt, ap);
+  va_end(ap);
+}
+
+static void va_print_err(const char *fmt, va_list ap)
+{
+  fprintf(stderr, ANSI_RED);
+  vfprintf(stderr, fmt, ap);
+  fprintf(stderr, ANSI_RESET);
+}
+
+static void print_err(const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  va_print_err(fmt, ap);
+  va_end(ap);
+}
+
+static void print_info(const char *fmt, ...)
+{
+  fprintf(stderr, ANSI_YELLOW);
+
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+
+  fprintf(stderr, ANSI_RESET);
+}
+
+static String *input(Varmint *vm, const char *prompt)
+{
+  return String_own(vm, readline(prompt)).as.string;
+}
 
 typedef enum {
   // CLI options
@@ -70,7 +110,7 @@ static Opt short_opt(const char *prefix, char opt_c)
       if (*c == opt_c)
         return (Opt)i;
   }
-  error_out("unknown option %s%c\n", prefix, opt_c);
+  print_err("unknown option %s%c\n", prefix, opt_c);
   return OPT_ERROR;
 }
 
@@ -80,7 +120,7 @@ static Opt long_opt(const char *prefix, Str opt_s)
     if (strs_eq(arguments[i].name, opt_s))
       return (Opt)i;
   }
-  error_out("unknown option %s%.*s\n", prefix, (int)opt_s.len, opt_s.s);
+  print_err("unknown option %s%.*s\n", prefix, (int)opt_s.len, opt_s.s);
   return OPT_ERROR;
 }
 
@@ -92,11 +132,11 @@ static void run(Varmint *vm, Opt opt, String *source,
     print_tokens(stdout, source->s);
     break;
   case OPT_DIS:
-    dis_source(stdout, vm, parse, source, filename);
+    varmint_dis(vm, parse, print_out, source, filename);
     break;
   case OPT_EVAL:
     if (varmint_run_with(vm, parse, false, source) == VM_A_OK) {
-      print_value(stdout, vm->result);
+      print_value(print_out, vm->result);
       printf("\n");
     }
     break;
@@ -137,7 +177,7 @@ static char *read_file(const char *filename)
   file = fopen(filename, "r");
 
   if (file == NULL) {
-    error_out("could not open file %s\n", filename);
+    print_err("could not open file %s\n", filename);
     exit(EX_NOINPUT);
   }
 
@@ -145,7 +185,7 @@ static char *read_file(const char *filename)
   char *contents = malloc(sizeof(char) * (size + 1));
 
   if (contents == NULL) {
-    error_out("not enough memory to read %s\n", filename);
+    print_err("not enough memory to read %s\n", filename);
     exit(EX_OSERR);
   }
 
@@ -154,7 +194,7 @@ static char *read_file(const char *filename)
   contents[bytes_read] = '\0';
 
   if (bytes_read < size) {
-    error_out("could not read file %s\n", filename);
+    print_err("could not read file %s\n", filename);
     exit(EX_NOINPUT);
   }
 
@@ -180,11 +220,19 @@ history:
   add_history(input);
 }
 
+static const Varmio IO = {
+  .out = print_out,
+  .error = print_err,
+  .va_error = va_print_err,
+  .info = print_info,
+  .input = input,
+};
+
 // Run a read-eval-print loop.
 static void run_repl(void)
 {
-  Varmint vm = varmint_start();
-  Parse parse = init_parse(&vm);
+  Varmint vm = varmint_init(IO);
+  Parse parse = parse_init(&vm);
 
   // https://en.wikipedia.org/wiki/GNU_Readline#Sample_code
   using_history();
@@ -207,7 +255,7 @@ static void run_repl(void)
       for (; !isspace(*in) && *in != '\0'; cmd.len++, in++);
 
       if (cmd.len == 0) {
-        error_out("expect REPL command\n");
+        print_err("expect REPL command\n");
         free(input);
         continue;
       }
@@ -254,7 +302,7 @@ int main(int argc, const char **argv)
         for (; *s != '\0'; s++, opt_s.len++);
 
         if (opt_s.len == 0) {
-          error_out("expect long option name\n");
+          print_err("expect long option name\n");
           exit(EX_USAGE);
         }
         opt = long_opt("--", opt_s);
@@ -263,7 +311,7 @@ int main(int argc, const char **argv)
         opt = short_opt("-", argv[1][1]);
     }
 
-    Varmint vm = varmint_start();
+    Varmint vm = varmint_init(IO);
     String *source;
     const char *filename = NULL;
 

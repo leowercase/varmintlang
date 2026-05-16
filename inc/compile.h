@@ -197,7 +197,7 @@ typedef struct {
 } ParseRule;
 
 // Initialize a parse
-Parse init_parse(Varmint *vm);
+Parse parse_init(Varmint *vm);
 
 // Free parse data
 void free_parse(Parse *p);

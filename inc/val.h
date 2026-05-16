@@ -3,6 +3,7 @@
 
 #include "generic/dyn_array.h"
 #include "generic/table.h"
+#include "io.h"
 #include "str.h"
 #include "util.h"
 
@@ -83,7 +84,7 @@ bool value_is_callable(Typetag t);
 
 const char *typetag_cstring(Typetag type);
 Value value_to_string(struct Varmint *vm, Value val);
-void print_value(FILE *restrict stream, Value val);
+void print_value(VmPrint print, Value val);
 
 // GC'd values have the same initial sequence, GCData.
 typedef struct GCData {
@@ -170,7 +171,6 @@ Value String_own(struct Varmint *vm, char *allocated_cstring);
 Value String_copy(struct Varmint *vm, String *string);
 Value String_fmt(struct Varmint *vm, const char *fmt, ...);
 Value String_concat(struct Varmint *vm, Value *head, Value *tail);
-Value String_readline(struct Varmint *vm, const char *prompt);
 Str String_as_str(Value *val);
 
 struct Procedure *Procedure_create(

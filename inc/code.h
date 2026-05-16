@@ -90,6 +90,8 @@ typedef enum {
   OP_SUSPEND,
   OP_HALT,
 
+  OP_RESUME,
+
   // Special instruction for GC
   OP_GC,
 } Opcode;
@@ -177,8 +179,8 @@ typedef struct Closure {
   struct Upval *upvalues[]; // Flexible array member
 } Closure;
 
-// Upvalues can be referenced even after their lifetime ends;
-// they're hoisted onto the heap when the scope exits.
+// Upvalues can be referenced even after their lifetime on the stack ends;
+// they're hoisted onto the heap on scope exit.
 typedef struct Upval {
   GCData gc_data;
   Value *loc;

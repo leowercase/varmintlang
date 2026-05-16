@@ -5,7 +5,6 @@
 
 #include <math.h>
 #include <stdio.h>
-#include <readline/readline.h>
 // https://github.com/Cyan4973/xxHash
 #include <xxhash.h>
 
@@ -212,16 +211,6 @@ Value String_concat(Varmint *vm, Value *head, Value *tail)
   return String_bare(vm, s, len);
 }
 
-Value String_readline(Varmint *vm, const char *prompt)
-{
-  char *line = readline(prompt);
-
-  if (line == NULL)
-    return String_bare(vm, NULL, 0);
-  else
-    return String_own(vm, line);
-}
-
 Str String_as_str(Value *val)
 {
   return str_new(val->as.string->s, val->as.string->len);
@@ -404,67 +393,67 @@ Value value_to_string(Varmint *vm, Value val)
   }
 }
 
-static void print_fn(FILE *restrict stream, const char *moniker, Str name)
+static void print_fn(VmPrint print, const char *moniker, Str name)
 {
-  fprintf(stream, ANSI_GREEN);
+  print(ANSI_GREEN);
   if (name.s != NULL)
-    fprintf(stream, "<%s %.*s>", moniker, (int)name.len, name.s);
+    print("<%s %.*s>", moniker, (int)name.len, name.s);
   else
-    fprintf(stream, "<%s>", moniker);
-  fprintf(stream, ANSI_RESET);
+    print("<%s>", moniker);
+  print(ANSI_RESET);
 }
 
-void print_value(FILE *restrict stream, Value val)
+void print_value(VmPrint print, Value val)
 {
   switch (val.type) {
   case V_no:
-    fprintf(stream, ANSI_WHITE "no value" ANSI_RESET);
+    print(ANSI_WHITE "no value" ANSI_RESET);
     break;
   case V_number:
-    fprintf(stream, ANSI_RED "%g" ANSI_RESET, val.as.number);
+    print(ANSI_RED "%g" ANSI_RESET, val.as.number);
     break;
   case V_boolean:
-    fprintf(stream, ANSI_BLUE "%s" ANSI_RESET,
+    print(ANSI_BLUE "%s" ANSI_RESET,
         val.as.boolean ? "True" : "False");
     break;
   case V_native:
-    fprintf(stream, ANSI_GREEN "<native fn>" ANSI_RESET); break;
+    print(ANSI_GREEN "<native fn>" ANSI_RESET); break;
   case V_maybe:
     if (val.as.maybe == NULL)
-      fprintf(stream, ANSI_BLUE "None" ANSI_RESET);
+      print(ANSI_BLUE "None" ANSI_RESET);
     else {
-      fprintf(stream, ANSI_BLUE "Some" ANSI_RESET "(");
-      print_value(stream, val.as.maybe->raw);
-      fprintf(stream, ")");
+      print(ANSI_BLUE "Some" ANSI_RESET "(");
+      print_value(print, val.as.maybe->raw);
+      print(")");
     }
     break;
   case V_string:
     {
       String *string = val.as.string;
-      fprintf(stream, ANSI_YELLOW "\"%.*s\"" ANSI_RESET "(%li)",
+      print(ANSI_YELLOW "\"%.*s\"" ANSI_RESET "(%li)",
           (int)string->len, string->s, string->len);
       break;
     }
   case V_list:
     {
       List *list = val.as.list;
-      fprintf(stream, ANSI_MAGENTA "[");
+      print(ANSI_MAGENTA "[");
 
       for (size_t i = 0; i < list->len; i++) {
-        print_value(stream, list->data[i]);
+        print_value(print, list->data[i]);
 
         if (i < list->len - 1)
-          fprintf(stream, ", ");
+          print(", ");
       }
 
-      fprintf(stream, ANSI_MAGENTA "]" ANSI_RESET "(%li)",
+      print(ANSI_MAGENTA "]" ANSI_RESET "(%li)",
           list->len);
       break;
     }
   case V_table:
     {
       Table *table = val.as.table;
-      fprintf(stream, ANSI_MAGENTA "@[" ANSI_RESET);
+      print(ANSI_MAGENTA "@[" ANSI_RESET);
 
       for (size_t i = 0, ents = 0; i < table->cap; i++) {
         TableEntry ent = table->entries[i];
@@ -474,39 +463,39 @@ void print_value(FILE *restrict stream, Value val)
 
         if (ent.key.type == V_string) {
           String *key = ent.key.as.string;
-          fprintf(stream, "%.*s", (int)key->len, key->s);
+          print("%.*s", (int)key->len, key->s);
         }
         else {
-          fprintf(stream, "[");
-          print_value(stream, ent.key);
-          fprintf(stream, "]");
+          print("[");
+          print_value(print, ent.key);
+          print("]");
         }
 
-        fprintf(stream, " := ");
-        print_value(stream, ent.value);
+        print(" := ");
+        print_value(print, ent.value);
 
         if (ents < table->entry_count)
-          fprintf(stream, ", ");
+          print(", ");
       }
 
-      fprintf(stream, ANSI_MAGENTA "]" ANSI_RESET "(%li)",
+      print(ANSI_MAGENTA "]" ANSI_RESET "(%li)",
           table->entry_count);
       break;
     }
   case V_procedure:
-    print_fn(stream, "fn", val.as.procedure->name);
+    print_fn(print, "fn", val.as.procedure->name);
     break;
   case V_upval:
     unreachable();
   case V_closure:
-    print_fn(stream, "closure", val.as.closure->procedure->name);
+    print_fn(print, "closure", val.as.closure->procedure->name);
     break;
   case V_cclosure:
-    fprintf(stream, ANSI_GREEN "<native closure>" ANSI_RESET); break;
+    print(ANSI_GREEN "<native closure>" ANSI_RESET); break;
     break;
   case V_partial:
-    fprintf(stream, "partial [%li] ", val.as.partial->application_count);
-    print_value(stream, val.as.partial->callee);
+    print("partial [%li] ", val.as.partial->application_count);
+    print_value(print, val.as.partial->callee);
     break;
   }
 }

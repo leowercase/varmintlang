@@ -1,17 +1,15 @@
 #include "../inc/code.h"
-#include "../inc/info.h"
 #include "../inc/gc.h"
 #include "../inc/val.h"
 #include "../inc/varmint.h"
 
-//#ifdef VARMINT_DEBUG
-// #include <stdio.h>
-// #define GC_DBG_MSG(msg) info_out("[GC] " msg)
-// #define GC_DBG_FMT_MSG(fmt, ...) info_out("[GC] " fmt, __VA_ARGS__)
-// #else
-#define GC_DBG_MSG(_)
-#define GC_DBG_FMT_MSG(_, ...)
-// #endif
+#ifdef VARMINT_DEBUG
+#define gc_dbg(vm, fmt) (vm)->io.info("[GC] " fmt)
+#define gc_dbg_fmt(vm, fmt, ...) (vm)->io.info("[GC] " fmt, __VA_ARGS__)
+#else
+#define gc_dbg(...)
+#define gc_dbg_fmt(...)
+#endif
 
 const size_t INITIAL_NEXT_GC = 16384;
 const float64_t GC_GROWTH_FACTOR = 2.0;
@@ -37,10 +35,14 @@ static const uint8_t GC_INSTRUCTION = OP_GC;
 // (but that is left as an exercise for the reader. :)
 static inline void set_gc_ip(Varmint *vm)
 {
-  if (vm->call_stack.len == 0
-      || *vm->frame->ip == OP_HALT || *vm->frame->ip == OP_GC)
+  if (vm->call_stack.len == 0)
     return;
-  vm->gc_resume_ip = vm->frame->ip;
+
+  Opcode current = *vm->frame->ip;
+  if (current == OP_HALT || current == OP_GC)
+    return;
+
+  vm->resume_ip = vm->frame->ip;
   vm->frame->ip = &GC_INSTRUCTION;
 }
 
@@ -121,7 +123,7 @@ static void mark_obj(Varmint *vm, GCData *obj)
   obj->is_safe = true;
   add_grey(vm, obj);
 
-  GC_DBG_FMT_MSG("mark %p of type %s\n", (void *)obj, typetag_cstring(t));
+  gc_dbg_fmt(vm, "mark %p of type %s\n", (void *)obj, typetag_cstring(t));
 
   // Mark child objects
   switch (t) {
@@ -203,7 +205,7 @@ static void mark(Varmint *vm)
   for (size_t i = 0; i < vm->builtins.len; i++)
     add_grey_val(vm, vm->builtins.data[i].value);
 
-  GC_DBG_FMT_MSG("mark roots (%li)\n", vm->grey_worklist.len);
+  gc_dbg_fmt(vm, "mark roots (%li)\n", vm->grey_worklist.len);
 
   // 2. Trace references. Mark all greys and their children safe.
   while (vm->grey_worklist.len > 0)
@@ -214,7 +216,7 @@ static void free_gc_obj(Varmint *vm, GCData *data)
 {
 #define FREE(T) gc_free(vm, data, sizeof(T))
 
-  GC_DBG_FMT_MSG("free %p of type %s\n",
+  gc_dbg_fmt(vm, "free %p of type %s\n",
       (void *)data, typetag_cstring(data->type));
 
   switch (data->type) {
@@ -310,7 +312,7 @@ void sweep(Varmint *vm)
 // A tri-color stop-the-world GC.
 void gcollect(Varmint *vm)
 {
-  GC_DBG_MSG("start\n");
+  gc_dbg(vm, "start\n");
 
   // Mark reachable objects
   mark(vm);
@@ -321,8 +323,8 @@ void gcollect(Varmint *vm)
   // Set threshold for next GC
   vm->next_gc = (size_t)((float64_t)vm->next_gc * GC_GROWTH_FACTOR);
 
-  GC_DBG_MSG("end\n");
-  GC_DBG_FMT_MSG("next GC in %li heaped bytes\n", vm->next_gc);
+  gc_dbg(vm, "end\n");
+  gc_dbg_fmt(vm, "next GC in %li heaped bytes\n", vm->next_gc);
 }
 
 void gc_end(Varmint *vm)

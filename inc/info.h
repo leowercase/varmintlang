@@ -13,13 +13,6 @@
  */
 size_t get_line(LineInfo *l, size_t instruction_idx);
 
-// Helper function for errors.
-void error_out(const char *fmt, ...);
-void v_error_out(const char *fmt, va_list args);
-
-// Info messages.
-void info_out(const char *fmt, ...);
-
 // Pause execution; print a stack trace and the error message.
 void runtime_error(Varmint *vm, const char *fmt, ...);
 
@@ -37,7 +30,8 @@ void runtime_error(Varmint *vm, const char *fmt, ...);
         "Expect type " #t " for " #val_ident ", got %s", \
                    typetag_cstring(val_ident.type)), (Valueu){0}.t))
 
-void error_line_snip(char *source, size_t line, char *pointer_pos);
+void error_line_snip(Varmint *vm,
+    char *source, size_t line, char *pointer_pos);
 
 void print_op_stack(Varmint *vm);
 

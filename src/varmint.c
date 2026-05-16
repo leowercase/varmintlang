@@ -1,10 +1,10 @@
 #include "../inc/compile.h"
+#include "../inc/dis.h"
 #include "../inc/internal.h"
 #include "../inc/varmint.h"
 #include "../inc/vm.h"
 
 #include <stdio.h>
-#include <readline/readline.h>
 
 static const NameValue default_builtins[] = {
   { str_from("e"),         value_new(VARMINT_E,    number) },
@@ -59,7 +59,7 @@ static const NameValue default_builtins[] = {
 static const size_t default_builtin_count =
   sizeof(default_builtins) / sizeof(NameValue);
 
-Varmint varmint_start(void)
+Varmint varmint_init(Varmio io)
 {
   Varmint vm;
 
@@ -71,6 +71,8 @@ Varmint varmint_start(void)
 
   vm.result = NO_VALUE;
   vm.status = VM_A_OK;
+
+  vm.io = io;
 
   // Initialize builtins.
   vm.builtins = NameValues_with_cap(default_builtin_count);
@@ -107,4 +109,13 @@ VarmintStatus varmint_run_with(Varmint *vm,
   }
 
   return vm->status;
+}
+
+void varmint_dis(Varmint *vm, Parse *parse, VmPrint print,
+    String *source, const char *name)
+{
+  Procedure *procedure = compile(vm, parse, true, source);
+
+  if (procedure != NULL)
+    dis(print, procedure, name);
 }

@@ -655,7 +655,8 @@ Value _input(Varmint *vm, ArgList *args)
   if (!varm_arg(vm, args, "S", &prompt))
     return NO_VALUE;
 
-  return String_readline(vm, prompt->s);
+  String *input = vm->io.input(vm, prompt->s);
+  return value_new(input, string);
 }
 
 Value _time(Varmint *vm, ArgList *args)

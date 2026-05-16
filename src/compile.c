@@ -257,7 +257,7 @@ static Procedure *suspend_compiler(Parse *p)
   return procedure;
 }
 
-Parse init_parse(Varmint *vm)
+Parse parse_init(Varmint *vm)
 {
   Parse p;
   p.vm = vm;
@@ -324,15 +324,17 @@ void parse_error(Parse *p, Token offending_tok, bool pointer,
 {
   if (semantic(p)->panic) return;
 
-  error_out("[line %li] ", offending_tok.line);
+  p->vm->io.error("[line %li] ", offending_tok.line);
 
   va_list args;
-  va_start(args, msg);
-  v_error_out(msg, args);
-  va_end(args);
-  error_out("\n");
 
-  error_line_snip(p->source->s, offending_tok.line,
+  va_start(args, msg);
+  p->vm->io.va_error(msg, args);
+  va_end(args);
+
+  p->vm->io.error("\n");
+
+  error_line_snip(p->vm, p->source->s, offending_tok.line,
                pointer ? (char *)offending_tok.slice.s : NULL);
 
   p->vm->status = VM_COMPILE_ERR;
@@ -2058,7 +2060,7 @@ Procedure *compile(Varmint *vm, Parse *p, bool discard_state, String *source)
 
   if (ad_hoc) {
     // Embark on a brand new parse.
-    new_parse = init_parse(vm);
+    new_parse = parse_init(vm);
     p = &new_parse;
   }
   else

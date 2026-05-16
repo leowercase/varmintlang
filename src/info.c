@@ -23,35 +23,9 @@ size_t get_line(LineInfo *lines, size_t offset)
   assert(false); // Unreachable, assuming well-formed line info
 }
 
-void v_error_out(const char *fmt, va_list args)
-{
-  fprintf(stderr, ANSI_RED);
-  vfprintf(stderr, fmt, args);
-  fprintf(stderr, ANSI_RESET);
-}
-
-void error_out(const char *fmt, ...)
-{
-  va_list args;
-
-  va_start(args, fmt);
-  v_error_out(fmt, args);
-  va_end(args);
-}
-
-void info_out(const char *fmt, ...)
-{
-  va_list args;
-
-  va_start(args, fmt);
-  fprintf(stderr, ANSI_YELLOW);
-  vfprintf(stderr, fmt, args);
-  fprintf(stderr, ANSI_RESET);
-  va_end(args);
-}
-
 // Print line snippet, optionally with a pointer ^
-void error_line_snip(char *source, size_t line, char *pointer_pos)
+void error_line_snip(Varmint *vm,
+    char *source, size_t line, char *pointer_pos)
 {
   char *s = source;
   size_t len = 0;
@@ -66,23 +40,22 @@ void error_line_snip(char *source, size_t line, char *pointer_pos)
     if (*s == '\n') lines_traversed++;
   }
 
-  fprintf(stderr,
-      ANSI_WHITE "\t%.*s\n" ANSI_RESET, (int)len, s);
+  vm->io.info(ANSI_WHITE "\t%.*s\n" ANSI_RESET, (int)len, s);
 
   if (pointer_pos != NULL) {
     int column = (int)(pointer_pos - s);
-    info_out("\t%*s^\n", column, "");
+    vm->io.info("\t%*s^\n", column, "");
   }
 }
 
 void print_op_stack(Varmint *vm)
 {
-  info_out("operation stack:\n");
+  vm->io.info("operation stack:\n");
 
   for (size_t i = 0; i < vm->op_stack.len; i++) {
-    info_out("[%li] ", i);
-    print_value(stderr, vm->op_stack.data[i]);
-    info_out("\n");
+    vm->io.info("[%li] ", i);
+    print_value(vm->io.info, vm->op_stack.data[i]);
+    vm->io.info("\n");
   }
 }
 
@@ -95,9 +68,10 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
   va_list args;
 
   va_start(args, fmt);
-  v_error_out(fmt, args);
+  vm->io.va_error(fmt, args);
   va_end(args);
-  error_out("\n");
+
+  vm->io.error("\n");
 
   // Stack trace.
   for (CallFrame *frame = CallStack_top(&vm->call_stack);;) {
@@ -107,19 +81,19 @@ void runtime_error(Varmint *vm, const char *fmt, ...)
     size_t offset = (size_t)(frame->ip - proc->code.instructions.data - 1);
 
     size_t line = get_line(&proc->code.lines, offset);
-    error_out("[line %li] in ", line);
+    vm->io.error("[line %li] in ", line);
 
     if (proc->name.len > 0)
-      error_out("%.*s:\n", (int)proc->name.len, proc->name.s);
+      vm->io.error("%.*s:\n", (int)proc->name.len, proc->name.s);
     else if (frame == vm->call_stack.data)
-      error_out("program:\n");
+      vm->io.error("program:\n");
     else
-      error_out("anonymous function:\n");
+      vm->io.error("anonymous function:\n");
 
-    error_line_snip(proc->source->s, line, NULL);
+    error_line_snip(vm, proc->source->s, line, NULL);
 
     if (--frame < vm->call_stack.data) break;
-    else error_out("\n");
+    else vm->io.error("\n");
   }
 
 #ifdef VARMINT_DEBUG

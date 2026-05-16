@@ -4,12 +4,20 @@
 #include "gc.h"
 #include "val.h"
 #include "state.h"
+#include "io.h"
 
 typedef enum {
   VM_A_OK,
   VM_COMPILE_ERR,
   VM_RUNTIME_ERR,
 } VarmintStatus;
+
+// User-defined functions for input and output.
+typedef struct {
+  VmPrint out, error, info;
+  VmVaPrint va_error;
+  VmInput input;
+} Varmio;
 
 /*
  * Heart of a Varmint, offspring of the C cockroach.
@@ -23,6 +31,8 @@ typedef struct Varmint {
   // Sorted so it reflects the order of the stack.
   Upval *open_upvalues;
 
+  Varmio io;
+
   // Builtin variables that are included in every program by default
   NameValues builtins;
   bool builtins_emitted;
@@ -31,14 +41,19 @@ typedef struct Varmint {
   GCList grey_worklist;
   size_t bytes_allocd, next_gc; // Tally for the next GC sweep
   GCList compiler_roots;
-  const uint8_t *gc_resume_ip;
+
+  // Resume execution at this location after a pause
+  const uint8_t *resume_ip;
 
   Value result;
   VarmintStatus status;
 } Varmint;
 
 // Initialize a Varmint instance.
-Varmint varmint_start(void);
+Varmint varmint_init(Varmio io);
+
+// Initialize a Varmint parser.
+Parse parse_init(Varmint *vm);
 
 // Run some code!
 VarmintStatus varmint_run(Varmint *vm, String *source);
@@ -46,6 +61,10 @@ VarmintStatus varmint_run(Varmint *vm, String *source);
 // Run some code with previous parse state
 VarmintStatus varmint_run_with(Varmint *vm,
     Parse *parse, bool discard_parse_state, String *source);
+
+// Disassemble code
+void varmint_dis(Varmint *vm, Parse *parse, VmPrint print,
+    String *source, const char *name);
 
 // Free the poor beast.
 void varmint_free(Varmint *vm);

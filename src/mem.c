@@ -1,15 +1,10 @@
-#include "../inc/info.h"
 #include "../inc/mem.h"
 
 void *allocate(void *ptr, size_t size)
 {
   void *new_ptr = realloc(ptr, size);
 
-  if (new_ptr == NULL) {
-    error_out("Out of memory\n");
-    exit(EX_OSERR);
-  }
-
+  if (new_ptr == NULL) exit(EX_OSERR);
   return new_ptr;
 }
 
