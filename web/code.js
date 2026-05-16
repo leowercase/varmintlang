@@ -33,18 +33,18 @@ const initialText =
         Some(result)
     }
 
-for fib_i in fib(20)
+for fib_i in fib 20
   do putln "\\(fib_i)"
 `;
 editor.setValue(initialText, -1);
 
 const sep = document.getElementById("sep");
-let mouseDown = false, mouseX = 0;
+let mouseDown = false;
 
-function resizeView(left) {
+function resizeView(x) {
   let leftSectionWidth;
 
-  if (left === null)
+  if (x === null)
     leftSectionWidth = "1fr";
   else {
     const gutter = document.getElementsByClassName("ace_gutter")[0];
@@ -53,7 +53,7 @@ function resizeView(left) {
     const margin = gutter.getBoundingClientRect().width,
           width = main.getBoundingClientRect().width;
 
-    leftSectionWidth = clamp(left, margin, width - margin).toString() + "px";
+    leftSectionWidth = clamp(x, margin, width - margin).toString() + "px";
   }
 
   main.style.setProperty("--left-section-width", leftSectionWidth);
@@ -71,16 +71,13 @@ document.addEventListener("mouseup", () => {
 });
 sep.addEventListener("mousedown", () => {
   selectable("none");
-  mouseDown = true
+  mouseDown = true;
 });
 
 document.addEventListener("mousemove", ev => {
-  if (mouseDown) {
-    mouseX = ev.clientX;
-
-    resizeView(mouseX);
-  }
+  if (mouseDown) resizeView(ev.clientX);
 });
+sep.addEventListener("dblclick", () => resizeView(null));
 
 const stdout = document.getElementById("stdout");
 
