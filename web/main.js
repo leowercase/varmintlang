@@ -81,26 +81,27 @@ sep.addEventListener("dblclick", () => resizeView(null));
 
 const stdout = document.getElementById("stdout");
 
-function run() {
-  stdout.textContent = "Voila!";
+const actions = {
+  run: () => {
+    stdout.textContent = "Voila!";
+  },
+
+  stop: () => {
+    stdout.textContent = "Stopping";
+  },
+
+  dis: () => {
+    stdout.textContent = "01 INSTRUCTION [x] = y";
+  },
+};
+
+for (const [action, fn] of Object.entries(actions)) {
+  document.getElementById(`btn-${action}`).addEventListener("click", fn);
 }
 
-function stop() {
-  stdout.textContent = "Stopping";
-}
+const stdin = document.getElementById("stdin");
 
-function dis() {
-  stdout.textContent = "01 INSTRUCTION [x] = y";
-}
-
-document.getElementById("btn-run").addEventListener("click", run);
-document.getElementById("btn-stop").addEventListener("click", stop);
-document.getElementById("btn-dis").addEventListener("click", dis);
-
-const stdin = document.getElementById("stdin"),
-      stdinPrompt = document.getElementById("stdin-prompt");
-
-stdinPrompt.addEventListener("keydown", ev => {
+document.getElementById("stdin-prompt").addEventListener("keydown", ev => {
   if (ev.key === "Enter") {
     ev.preventDefault();
     stdin.submit();
