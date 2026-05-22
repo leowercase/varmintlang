@@ -1,3 +1,4 @@
+#include "../inc/compile.h"
 #include "../inc/varmint.h"
 #include <emscripten.h>
 
@@ -38,20 +39,36 @@ static void print_info(const char *fmt, ...)
   fprintf(stderr, ANSI_RESET);
 }
 
+EM_JS(char *, call_input, (const char *prompt), {
+    const s = input(UTF8ToString(prompt));
+    return stringToNewUTF8(s);
+});
+
 static String *input(Varmint *vm, const char *prompt)
 {
-  return String_own(vm, readline(prompt)).as.string;
+  return String_own(vm, call_input(prompt)).as.string;
 }
 
-char *test(const char *input)
+static const Varmio IO = {
+  .out = print_out,
+  .error = print_err,
+  .va_error = va_print_err,
+  .info = print_info,
+  .input = input,
+};
+
+void run(char *source)
 {
-  size_t len = strlen(input);
+  Varmint vm = varmint_init(IO);
+  varmint_run(&vm,
+      String_own(&vm, source).as.string);
+}
 
-  char *s = malloc(len * sizeof(char));
-  if (s == NULL) exit(1);
-
-  for (size_t i = 0; i < len; i++)
-    s[i] = input[i] + 1;
-
-  return s;
+void dis(char *source)
+{
+  Varmint vm = varmint_init(IO);
+  Parse parse = parse_init(&vm);
+  varmint_dis(&vm, &parse,
+      print_out,
+      String_own(&vm, source).as.string, "program");
 }

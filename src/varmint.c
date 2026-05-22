@@ -117,5 +117,5 @@ void varmint_dis(Varmint *vm, Parse *parse, VmPrint print,
   Procedure *procedure = compile(vm, parse, true, source);
 
   if (procedure != NULL)
-    dis(print, procedure, name);
+    dis_procedure(print, procedure, name);
 }

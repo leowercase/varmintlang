@@ -1,4 +1,7 @@
 let
   pkgs = import <nixpkgs> {};
 in
-pkgs.callPackage ./varmint.nix {}
+{
+  varmint = pkgs.callPackage ./varmint.nix {};
+  web = pkgs.callPackage ./web.nix {};
+}

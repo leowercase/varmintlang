@@ -10,7 +10,7 @@
   varmint'.overrideAttrs (prev: {
     src = fs.toSource {
       root = ./.;
-      fileset = fs.union prev.meta.sourceFileset ./web/main.c;
+      fileset = fs.unions [ prev.meta.sourceFileset ./web/main.c ./web/pre.js ];
     };
 
     dontStrip = true;
@@ -23,7 +23,7 @@
 
     installPhase = ''
       mkdir -p $out/bin
-      cp varmint.js varmint.wasm -t $out/bin
+      cp varmint.mjs varmint.wasm -t $out/bin
     '';
 
     # It works on my machine™

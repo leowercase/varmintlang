@@ -21,9 +21,12 @@ varmint : $(c_files) $(header_files) cli/main.c
 debug : $(c_files) $(header_files) cli/main.c
 	$(CC) $(flags) $(debug_flags) $(cli_libs) $(c_files) cli/main.c -o varmint
 
-emscripten_flags := -sENVIRONMENT=web \
-		    -sMODULARIZE -sEXPORT_NAME=Varmint \
-		    -sEXPORTED_FUNCTIONS=_test -sEXPORTED_RUNTIME_METHODS=cwrap
+# The operation stack needs lots of space; 4 MiB ought to cut the mustard
+emscripten_flags := -sASSERTIONS=2 -sSTACK_OVERFLOW_CHECK=1 -sSAFE_HEAP=1 \
+		    -sSTACK_SIZE=4194304 \
+		    -sALLOW_MEMORY_GROWTH=1 \
+		    -sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=Varmint \
+		    -sEXPORTED_FUNCTIONS=_run,_dis -sEXPORTED_RUNTIME_METHODS=cwrap
 
-js : $(c_files) $(header_files) web/main.c
-	emcc $(flags) $(release_flags) $(emscripten_flags) $(libs) $(c_files) web/main.c -o varmint.js
+js : $(c_files) $(header_files) web/main.c web/pre.js
+	emcc $(flags) $(debug_flags) $(emscripten_flags) $(libs) $(c_files) web/main.c --pre-js web/pre.js -o varmint.mjs

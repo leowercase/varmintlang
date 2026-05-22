@@ -1,9 +1,11 @@
 "use strict"
 
+import Varmint from "./result/bin/varmint.mjs"
+
 const clamp = (n, min, max) =>
   Math.max(min, Math.min(n, max));
 
-const main = document.getElementById("main");
+const mainContent = document.getElementById("main");
 
 // Initialize Ace
 const editor = ace.edit("editor");
@@ -51,12 +53,12 @@ function resizeView(x) {
 
     // Leave a line gutter's width worth of space around the resizable area
     const margin = gutter.getBoundingClientRect().width,
-          width = main.getBoundingClientRect().width;
+          width = mainContent.getBoundingClientRect().width;
 
     leftSectionWidth = clamp(x, margin, width - margin).toString() + "px";
   }
 
-  main.style.setProperty("--left-section-width", leftSectionWidth);
+  mainContent.style.setProperty("--left-section-width", leftSectionWidth);
   editor.resize();
 }
 
@@ -79,31 +81,38 @@ document.addEventListener("mousemove", ev => {
 });
 sep.addEventListener("dblclick", () => resizeView(null));
 
-const stdout = document.getElementById("stdout");
-
-const actions = {
-  run: () => {
-    stdout.textContent = "Voila!";
-  },
-
-  stop: () => {
-    stdout.textContent = "Stopping";
-  },
-
-  dis: () => {
-    stdout.textContent = "01 INSTRUCTION [x] = y";
-  },
-};
-
-for (const [action, fn] of Object.entries(actions)) {
-  document.getElementById(`btn-${action}`).addEventListener("click", fn);
-}
-
-const stdin = document.getElementById("stdin");
+const stdout = document.getElementById("stdout"),
+      stdin = document.getElementById("stdin");
 
 document.getElementById("stdin-prompt").addEventListener("keydown", ev => {
   if (ev.key === "Enter") {
     ev.preventDefault();
     stdin.submit();
+  }
+});
+
+function input(promptString) {
+  return window.prompt(promptString);
+}
+
+const invoke = fn => () => {
+  stdout.innerHTML = "";
+  fn(editor.getValue());
+};
+
+Varmint().then(vm => {
+  console.log(vm);
+
+  const run = vm.cwrap("run", null, ["string"]);
+  const disassemble = vm.cwrap("dis", null, ["string"]);
+
+  const actions = {
+    run: invoke(run),
+    dis: invoke(disassemble),
+    stop: () => {},
+  };
+
+  for (const [action, fn] of Object.entries(actions)) {
+    document.getElementById(`btn-${action}`).addEventListener("click", fn);
   }
 });

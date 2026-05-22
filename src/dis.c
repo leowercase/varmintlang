@@ -181,7 +181,7 @@ size_t dis_instruction(VmPrint print, Procedure *p, size_t offset)
 #undef case_i
 }
 
-void dis(VmPrint print, Procedure *p, const char *name)
+void dis_procedure(VmPrint print, Procedure *p, const char *name)
 {
   PCode *code = &p->code;
 
@@ -208,7 +208,7 @@ void dis(VmPrint print, Procedure *p, const char *name)
         print("-- function %.*s [%li] --\n",
             (int)fn->name.len, fn->name.s, fn->arity);
 
-      dis(print, fn, NULL);
+      dis_procedure(print, fn, NULL);
     }
   }
 }
