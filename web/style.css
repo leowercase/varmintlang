@@ -17,7 +17,8 @@
 }
 
 .code {
-  font: min(2.5vh, 18px) monospace;
+  font: min(1.75vh, var(--mid-font-size)) monospace;
+  overflow: scroll;
 }
 
 /* Larger screen sizes */
@@ -61,7 +62,7 @@
 @media (width <= 600px) {
   #main {
     grid-template-columns:
-      [left-start left-end] 1fr [right-start right-end];
+      [left-start left-end] auto [right-start right-end];
 
     grid-template-rows:
       [header-top] max-content [header-bottom] 1fr [content-mid] 50vh [content-bottom];
