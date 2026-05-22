@@ -407,7 +407,7 @@ void print_value(VmPrint print, Value val)
 {
   switch (val.type) {
   case V_no:
-    print(ANSI_WHITE "no value" ANSI_RESET);
+    print(ANSI_RESET "no value");
     break;
   case V_number:
     print(ANSI_RED "%g" ANSI_RESET, val.as.number);

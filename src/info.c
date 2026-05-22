@@ -40,7 +40,7 @@ void error_line_snip(Varmint *vm,
     if (*s == '\n') lines_traversed++;
   }
 
-  vm->io.info(ANSI_WHITE "\t%.*s\n" ANSI_RESET, (int)len, s);
+  vm->io.info(ANSI_RESET "\t%.*s\n", (int)len, s);
 
   if (pointer_pos != NULL) {
     int column = (int)(pointer_pos - s);

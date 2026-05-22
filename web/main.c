@@ -57,8 +57,13 @@ static const Varmio IO = {
   .input = input,
 };
 
+// Output color needs to be explicitly cleared with ANSI_RESET,
+// otherwise the previous color "leaks"
+
 void run(char *source)
 {
+  printf(ANSI_RESET);
+
   Varmint vm = varmint_init(IO);
   varmint_run(&vm,
       String_own(&vm, source).as.string);
@@ -66,6 +71,8 @@ void run(char *source)
 
 void dis(char *source)
 {
+  printf(ANSI_RESET);
+
   Varmint vm = varmint_init(IO);
   Parse parse = parse_init(&vm);
   varmint_dis(&vm, &parse,
