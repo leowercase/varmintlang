@@ -1,3 +1,6 @@
 [submodule "web/ace-builds"]
 	path = web/ace-builds
 	url = https://github.com/ajaxorg/ace-builds/
+[submodule "web/ansi_up"]
+	path = web/ansi_up
+	url = https://github.com/drudru/ansi_up
