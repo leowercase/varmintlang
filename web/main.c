@@ -40,7 +40,7 @@ static void print_info(const char *fmt, ...)
 }
 
 EM_JS(char *, call_input, (const char *prompt), {
-    const s = input(UTF8ToString(prompt));
+    const s = window.prompt(UTF8ToString(prompt));
     return stringToNewUTF8(s);
 });
 

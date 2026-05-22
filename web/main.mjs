@@ -8,34 +8,37 @@ const clamp = (n, min, max) =>
 const mainContent = document.getElementById("main");
 
 // Initialize Ace
-const editor = ace.edit("editor");
-editor.setTheme("ace/theme/cloud9_day");
-editor.session.setMode("ace/mode/c_cpp");
+const editor = ace.edit("editor", {
+  mode: "ace/mode/c_cpp",
+  theme: "ace/theme/chrome",
+});
 
 const initialText =
-`var fib(len) :=
-    var i := 0,
-        prev := 0, prev' := 1
-    in
-    () => {
-        if i >= len
-          then return None
+`# Let's generate some fibonacci numbers!
 
-        var result
+var fib(sequence_length) :=
+  var i := 0,
+      prev := 0, prev' := 1
+  in
+  () =>
+    if i < sequence_length then {
+      var result
 
-        if i = 0
-          then result := 0
-        else {
-          result := prev + prev'
-          prev' := prev
-          prev := result
-        }
+      if i > 0 then {
+        result := prev + prev'
+        prev' := prev
+        prev := result
+      }
+      else result := 0
 
-        i +:= 1
-        Some(result)
+      i +:= 1
+      result
     }
 
-for fib_i in fib 20
+var prompt_num(msg) :=
+  input(msg):to_number() else prompt_num msg
+
+for fib_i in fib prompt_num "Sequence length:"
   do putln "\\(fib_i)"
 `;
 editor.setValue(initialText, -1);
@@ -81,38 +84,21 @@ document.addEventListener("mousemove", ev => {
 });
 sep.addEventListener("dblclick", () => resizeView(null));
 
-const stdout = document.getElementById("stdout"),
-      stdin = document.getElementById("stdin");
-
-document.getElementById("stdin-prompt").addEventListener("keydown", ev => {
-  if (ev.key === "Enter") {
-    ev.preventDefault();
-    stdin.submit();
-  }
-});
-
-function input(promptString) {
-  return window.prompt(promptString);
-}
-
 const invoke = fn => () => {
-  stdout.innerHTML = "";
+  document.getElementById("stdout").innerHTML = "";
   fn(editor.getValue());
 };
 
-Varmint().then(vm => {
-  console.log(vm);
+const vm = await Varmint();
 
-  const run = vm.cwrap("run", null, ["string"]);
-  const disassemble = vm.cwrap("dis", null, ["string"]);
+const run = vm.cwrap("run", null, ["string"]);
+const disassemble = vm.cwrap("dis", null, ["string"]);
 
-  const actions = {
-    run: invoke(run),
-    dis: invoke(disassemble),
-    stop: () => {},
-  };
+const actions = {
+  run: invoke(run),
+  dis: invoke(disassemble),
+};
 
-  for (const [action, fn] of Object.entries(actions)) {
-    document.getElementById(`btn-${action}`).addEventListener("click", fn);
-  }
-});
+for (const [action, fn] of Object.entries(actions)) {
+  document.getElementById(`btn-${action}`).addEventListener("click", fn);
+}

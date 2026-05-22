@@ -26,7 +26,7 @@ emscripten_flags := -sASSERTIONS=2 -sSTACK_OVERFLOW_CHECK=1 -sSAFE_HEAP=1 \
 		    -sSTACK_SIZE=4194304 \
 		    -sALLOW_MEMORY_GROWTH=1 \
 		    -sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=Varmint \
-		    -sEXPORTED_FUNCTIONS=_run,_dis -sEXPORTED_RUNTIME_METHODS=cwrap
+		    -sEXPORTED_FUNCTIONS=_run,_dis -sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToNewUTF8,cwrap
 
 js : $(c_files) $(header_files) web/main.c web/pre.js
-	emcc $(flags) $(debug_flags) $(emscripten_flags) $(libs) $(c_files) web/main.c --pre-js web/pre.js -o varmint.mjs
+	emcc $(flags) $(release_flags) $(emscripten_flags) $(libs) $(c_files) web/main.c --pre-js web/pre.js -o varmint.mjs

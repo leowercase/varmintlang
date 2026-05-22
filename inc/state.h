@@ -71,4 +71,7 @@ static const float64_t VARMINT_TAU =
 
 static const float64_t VARMINT_INF = INFINITY;
 
+// Print numbers with 9 significant digits
+static const int VM_NUM_PRECISION = 9;
+
 #endif

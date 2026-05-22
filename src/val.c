@@ -366,7 +366,7 @@ Value value_to_string(Varmint *vm, Value val)
   case V_no: case V_upval:
     unreachable();
   case V_number:
-    return String_fmt(vm, "%g", val.as.number);
+    return String_fmt(vm, "%.*g", VM_NUM_PRECISION, val.as.number);
   case V_boolean:
     return val.as.boolean ? String_from(vm, "True") : String_from(vm, "False");
   case V_native:
@@ -410,7 +410,7 @@ void print_value(VmPrint print, Value val)
     print(ANSI_RESET "no value");
     break;
   case V_number:
-    print(ANSI_RED "%g" ANSI_RESET, val.as.number);
+    print(ANSI_RED "%.*g" ANSI_RESET, VM_NUM_PRECISION, val.as.number);
     break;
   case V_boolean:
     print(ANSI_BLUE "%s" ANSI_RESET,
