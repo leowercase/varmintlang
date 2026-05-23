@@ -9,12 +9,12 @@ const mainContent = document.getElementById("main");
 
 // Initialize Ace
 const editor = ace.edit("editor", {
-  mode: "ace/mode/c_cpp",
   theme: "ace/theme/chrome",
+  mode: "varmint",
 });
 
 const initialText =
-`# Let's generate some fibonacci numbers!
+`# Let's generate some Fibonacci numbers!
 
 var fib(sequence_length) :=
   var i := 0,
@@ -38,7 +38,7 @@ var fib(sequence_length) :=
 var prompt_num(msg) :=
   input(msg):to_number() else prompt_num msg
 
-for fib_i in fib prompt_num "Sequence length:"
+for fib_i in fib prompt_num "Fibonacci sequence length:"
   do putln "\\(fib_i)"
 `;
 editor.setValue(initialText, -1);
