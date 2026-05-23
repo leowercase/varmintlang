@@ -2030,7 +2030,6 @@ static const ParseRule parse_rules[] =
     [TK_COMMA]       = { NULL,       led_end     },
 
     [TK_DOT]         = { NULL,       subscript   },
-    [TK_DOTDOT]      = { NULL,       NULL        },
 
     [TK_Q_DOT]       = { NULL,       q_subscript },
     [TK_Q_LBRACK]    = { NULL,       q_subscript },
