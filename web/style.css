@@ -1,8 +1,4 @@
 :root {
-  /* Give some breathing room on larger screen sizes. */
-  --main-border-radius: 0.5rem;
-  --main-margin: 0.5em;
-
   --big-font-size: 24px;
   --mid-font-size: 18px;
 
@@ -27,15 +23,10 @@
 @media (width > 600px) {
   #main {
     grid-template-columns:
-      var(--main-margin) [left-start] var(--left-section-width) [left-end] 4px [right-start] 1fr [right-end] var(--main-margin);
+      [left-start] var(--left-section-width) [left-end] 4px [right-start] 1fr [right-end];
 
     grid-template-rows:
-      var(--main-margin) [header-top] max-content [header-bottom] 1fr [content-mid content-bottom] var(--main-margin);
-  }
-
-  #header {
-    border-top-left-radius: var(--main-border-radius);
-    border-top-right-radius: var(--main-border-radius);
+      [header-top] max-content [header-bottom] 1fr [content-mid content-bottom];
   }
 
   .content {
@@ -44,7 +35,6 @@
 
   #editor {
     grid-column: left-start / left-end;
-    border-bottom-left-radius: var(--main-border-radius);
   }
 
   #sep {
@@ -56,7 +46,6 @@
   #output {
     grid-column: right-start / right-end;
     overflow-y: auto;
-    border-bottom-right-radius: var(--main-border-radius);
   }
 }
 
@@ -104,8 +93,6 @@
   flex-flow: row;
   align-items: center;
   padding: 0.25rem;
-  border: 0.5rem black;
-  border-radius: 2px;
 }
 
 #header > div > img {
