@@ -1,4 +1,3 @@
-// The docs are quite cryptic.
 // https://github.com/ajaxorg/ace/wiki/Creating-or-Extending-an-Edit-Mode
 "use strict"
 
@@ -7,13 +6,11 @@ ace.define("varmint", (require, exports, module) => {
 
   // Parent mode
   const TextMode = require("ace/mode/text").Mode;
-  //const { MatchingBraceOutdent } = require("ace/mode/matching_brace_outdent");
 
   const { VarmintHighlightRules } = require("varmint_highlight_rules");
 
   const Mode = function() {
     this.HighlightRules = VarmintHighlightRules;
-    //this.outdent = new MatchingBraceOutdent();
   };
   oop.inherits(Mode, TextMode);
 
