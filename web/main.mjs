@@ -11,6 +11,7 @@ const mainContent = document.getElementById("main");
 const editor = ace.edit("editor", {
   theme: "ace/theme/chrome",
   mode: "varmint",
+  newLineMode: "unix",
 });
 
 const initialText =
