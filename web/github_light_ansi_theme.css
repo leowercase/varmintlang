@@ -1,0 +1,58 @@
+/* Github Light theme from https://github.com/Gogh-Co/Gogh */
+:root {
+  --github-light-black:          #24292f;
+  --github-light-red:            #cf222e;
+  --github-light-green:          #1a7f37;
+  --github-light-yellow:         #9a6700;
+  --github-light-blue:           #0969da;
+  --github-light-magenta:        #8250df;
+  --github-light-cyan:           #1b7c83;
+  --github-light-white:          #6e7781;
+
+  --github-light-bright-black:   #57606a;
+  --github-light-bright-red:     #a40e26;
+  --github-light-bright-green:   #2da44e;
+  --github-light-bright-yellow:  #bf8700;
+  --github-light-bright-blue:    #218bff;
+  --github-light-bright-magenta: #a475f9;
+  --github-light-bright-cyan:    #3192aa;
+  --github-light-bright-white:   #8c959f;
+
+  --github-light-background:     #f6f8fa;
+  --github-light-foreground:     #1f2328;
+  --github-light-cursor:         #1f2328;
+}
+
+.github-light-ansi-theme > .ansi-black-fg          { color: var(--github-light-black);          }
+.github-light-ansi-theme > .ansi-red-fg            { color: var(--github-light-red);            }
+.github-light-ansi-theme > .ansi-green-fg          { color: var(--github-light-green);          }
+.github-light-ansi-theme > .ansi-yellow-fg         { color: var(--github-light-yellow);         }
+.github-light-ansi-theme > .ansi-blue-fg           { color: var(--github-light-blue);           }
+.github-light-ansi-theme > .ansi-magenta-fg        { color: var(--github-light-magenta);        }
+.github-light-ansi-theme > .ansi-cyan-fg           { color: var(--github-light-cyan);           }
+.github-light-ansi-theme > .ansi-white-fg          { color: var(--github-light-white);          }
+.github-light-ansi-theme > .ansi-bright-black-fg   { color: var(--github-light-bright-black);   }
+.github-light-ansi-theme > .ansi-bright-red-fg     { color: var(--github-light-bright-red);     }
+.github-light-ansi-theme > .ansi-bright-green-fg   { color: var(--github-light-bright-green);   }
+.github-light-ansi-theme > .ansi-bright-yellow-fg  { color: var(--github-light-bright-yellow);  }
+.github-light-ansi-theme > .ansi-bright-blue-fg    { color: var(--github-light-bright-blue);    }
+.github-light-ansi-theme > .ansi-bright-magenta-fg { color: var(--github-light-bright-magenta); }
+.github-light-ansi-theme > .ansi-bright-cyan-fg    { color: var(--github-light-bright-cyan);    }
+.github-light-ansi-theme > .ansi-bright-white-fg   { color: var(--github-light-bright-white);   }
+
+.github-light-ansi-theme > .ansi-black-bg          { background-color: var(--github-light-black);          }
+.github-light-ansi-theme > .ansi-red-bg            { background-color: var(--github-light-red);            }
+.github-light-ansi-theme > .ansi-green-bg          { background-color: var(--github-light-green);          }
+.github-light-ansi-theme > .ansi-yellow-bg         { background-color: var(--github-light-yellow);         }
+.github-light-ansi-theme > .ansi-blue-bg           { background-color: var(--github-light-blue);           }
+.github-light-ansi-theme > .ansi-magenta-bg        { background-color: var(--github-light-magenta);        }
+.github-light-ansi-theme > .ansi-cyan-bg           { background-color: var(--github-light-cyan);           }
+.github-light-ansi-theme > .ansi-white-bg          { background-color: var(--github-light-white);          }
+.github-light-ansi-theme > .ansi-bright-black-bg   { background-color: var(--github-light-bright-black);   }
+.github-light-ansi-theme > .ansi-bright-red-bg     { background-color: var(--github-light-bright-red);     }
+.github-light-ansi-theme > .ansi-bright-green-bg   { background-color: var(--github-light-bright-green);   }
+.github-light-ansi-theme > .ansi-bright-yellow-bg  { background-color: var(--github-light-bright-yellow);  }
+.github-light-ansi-theme > .ansi-bright-blue-bg    { background-color: var(--github-light-bright-blue);    }
+.github-light-ansi-theme > .ansi-bright-magenta-bg { background-color: var(--github-light-bright-magenta); }
+.github-light-ansi-theme > .ansi-bright-cyan-bg    { background-color: var(--github-light-bright-cyan);    }
+.github-light-ansi-theme > .ansi-bright-white-bg   { background-color: var(--github-light-bright-white);   }

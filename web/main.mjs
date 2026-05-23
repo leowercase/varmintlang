@@ -9,7 +9,7 @@ const mainContent = document.getElementById("main");
 
 // Initialize Ace
 const editor = ace.edit("editor", {
-  theme: "ace/theme/chrome",
+  theme: "ace/theme/github_light_default",
   mode: "varmint",
   newLineMode: "unix",
 });
