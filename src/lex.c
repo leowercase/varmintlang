@@ -397,6 +397,7 @@ Token lex_token(Lex *lex)
   case '!': return token(lex, TK_BANG);
   case '[': return token(lex, TK_LBRACK);
   case ']': return token(lex, TK_RBRACK);
+  case '.': return token(lex, TK_DOT);
   case ';': return token(lex, TK_SEMICOLON);
   case ',': return token(lex, TK_COMMA);
 
@@ -423,10 +424,6 @@ Token lex_token(Lex *lex)
   case ':':
     return token(lex,
         match(lex, '=') ? TK_ASSIGN : TK_COLON);
-
-  case '.':
-    return token(lex,
-        match(lex, '.') ? TK_DOTDOT : TK_DOT);
 
   case '|':
     if (match(lex, '|'))
@@ -488,7 +485,7 @@ char *token_cstring(const TokenType type)
   case_(LBRACK) case_(AT_LBRACK) case_(RBRACK)
   case_(LCURLY) case_(RCURLY)
   case_(COLON) case_(SEMICOLON) case_(COMMA)
-  case_(DOT) case_(DOTDOT)
+  case_(DOT)
   case_(Q_DOT) case_(Q_LBRACK)
   case_(INTERROBANG)
   case_(NUMERAL)
