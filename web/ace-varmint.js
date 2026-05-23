@@ -83,7 +83,6 @@ ace.define("varmint_highlight_rules", (require, exports, module) => {
       "start": [
         redundant,
 
-        // var x
         {
           token: "storage.type",
           regex: "var",
@@ -129,11 +128,7 @@ ace.define("varmint_highlight_rules", (require, exports, module) => {
 
         {
           token: "constant.numeric",
-          regex: /\d+\.+\d+/,
-        },
-        {
-          token: "constant.numeric",
-          regex: /\d+/,
+          regex: /\d+(\.\d+)?/,
         },
         {
           token: "string",
@@ -149,13 +144,26 @@ ace.define("varmint_highlight_rules", (require, exports, module) => {
           token: "punctuation.operator",
           regex: /\??\.|[,:;]/,
         },
+
         {
           token: "paren.lparen",
-          regex: /[({]|\??\[/,
+          regex: /\??\[/,
         },
         {
           token: "paren.rparen",
-          regex: /[)\]}]/,
+          regex: /\]/,
+        },
+
+        // Allow string interpolation using \() and \{}
+        {
+          token: "paren.lparen",
+          regex: /[({]/,
+          push: "start",
+        },
+        {
+          token: "paren.rparen",
+          regex: /[)}]/,
+          next: "pop",
         },
       ],
 
@@ -231,9 +239,18 @@ ace.define("varmint_highlight_rules", (require, exports, module) => {
 
       "string": [
         {
+          token: "constant.language.escape",
+          regex: /\\[abefnrtv\\"0]/,
+        },
+        {
           token: "string",
           regex: "\"",
           next: "start",
+        },
+        {
+          token: ["constant.language.escape", "paren.lparen"],
+          regex: /(\\)([({])/,
+          push: "start",
         },
         { defaultToken: "string" },
       ],
