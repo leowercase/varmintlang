@@ -52,7 +52,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 0.25rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.5rem;
 }
 
 #header > img {
@@ -63,7 +63,7 @@
 #header > h1 {
   font-size: min(2em, var(--big-font-size));
   display: inline;
-  margin: auto 0 auto 1rem;
+  margin: auto auto auto 1rem;
 }
 
 #header > menu {
