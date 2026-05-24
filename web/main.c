@@ -74,8 +74,6 @@ void dis(char *source)
   printf(ANSI_RESET);
 
   Varmint vm = varmint_init(IO);
-  Parse parse = parse_init(&vm);
-  varmint_dis(&vm, &parse,
-      print_out,
+  varmint_dis(&vm, NULL, print_out,
       String_own(&vm, source).as.string, "program");
 }
