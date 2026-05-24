@@ -26,7 +26,7 @@ jobs:
       - name: Build with Emscripten
         run: |
           nix build -f . web
-          sudo mv result/bin/varmint.{mjs,wasm} -t web
+          cp result/bin/varmint.{mjs,wasm} -t web
       - name: Upload Static Files as Artifact
         id: deployment
         uses: actions/upload-pages-artifact@v3
