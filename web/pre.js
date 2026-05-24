@@ -1,6 +1,6 @@
 // https://emscripten.org/docs/tools_reference/emcc.html#emcc-pre-js
 
-const { AnsiUp } = await import("/ansi_up/ansi_up.js", { with: { type: "js" } });
+const { AnsiUp } = await import("./ansi_up/ansi_up.js", { with: { type: "js" } });
 {
   const ansi_up = new AnsiUp();
 

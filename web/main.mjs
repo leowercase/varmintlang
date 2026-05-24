@@ -1,6 +1,6 @@
 "use strict"
 
-import Varmint from "/varmint.mjs"
+import Varmint from "./varmint.mjs"
 
 const clamp = (n, min, max) =>
   Math.max(min, Math.min(n, max));
