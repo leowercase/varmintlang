@@ -144,7 +144,7 @@ ace.define("varmint_highlight_rules", (require, exports, module) => {
 
         {
           token: "paren.lparen",
-          regex: /\??\[/,
+          regex: /[?@]?\[/,
         },
         {
           token: "paren.rparen",
