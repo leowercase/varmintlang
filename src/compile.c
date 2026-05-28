@@ -579,8 +579,10 @@ static void stmts(Parse *p, TokenType end, bool end_scope)
   while (!match(p, end)) {
     if (match(p, TK_SEMICOLON)); // Delimiter.
 
-    else if (match(p, TK_EOF))
+    else if (match(p, TK_EOF)) {
       parse_error(p, p->current, false, "expect end of statements");
+      break;
+    }
 
     else {
       // Expression statement.
@@ -1675,10 +1677,10 @@ static Str loop_label(Parse *p)
   else return NULL_STR;
 }
 
-static inline Loop *init_loop(Parse *p, Str label)
+static inline Loop *init_loop(Parse *p)
 {
   Loop loop;
-  loop.label = label;
+  loop.label = NULL_STR;
 
   loop.breaks = JumpIndices_init();
   loop.continues = JumpIndices_init();
@@ -1732,8 +1734,6 @@ static void loop(Parse *p)
   Token tok = eat(p);
   TokenType type = tok.type;
 
-  Str label = loop_label(p);
-
   Str for_identifier;
 
   // `for` loop initializer
@@ -1751,7 +1751,7 @@ static void loop(Parse *p)
   p->c->stack_slot_count++;
 
   // Loop start!
-  Loop *loop = init_loop(p, label);
+  Loop *loop = init_loop(p);
   loop->is_for = type == TK_FOR;
 
   // Emit conditional jump
@@ -1786,6 +1786,8 @@ static void loop(Parse *p)
   // `do` separates the head and the body.
   if (type != TK_LOOP)
     consume(p, TK_DO, "expect `do`");
+
+  loop->label = loop_label(p);
 
   // Parse loop body
   expr(p, PREC_TOP);
