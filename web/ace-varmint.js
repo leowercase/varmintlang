@@ -30,13 +30,6 @@ ace.define("varmint_highlight_rules", (require, exports, module) => {
 
   const VarmintHighlightRules = function() {
     const keywords = {
-      // Keywords
-      "keyword.control":
-          "if|then|else|elif|loop|for|while|break|continue|return",
-      "keyword":
-          "in|do",
-      "storage.type":
-          "as",
       // Builtins
       "variable.language":
           "e|pi|tau|inf|" +
@@ -50,6 +43,13 @@ ace.define("varmint_highlight_rules", (require, exports, module) => {
           "range|items|" +
           "char_ord|asciify|" +
           "rot",
+      // Keywords
+      "keyword.control":
+          "if|then|else|elif|loop|for|while|break|continue|return",
+      "keyword":
+          "in|do",
+      "storage.type":
+          "as",
       // Constants
       "constant.language":
           "Some|None",
@@ -74,7 +74,11 @@ ace.define("varmint_highlight_rules", (require, exports, module) => {
         token: "text",
         regex: /\s+/,
       },
-    ]
+      {
+        token: "text",
+        regex: /$/,
+      }
+    ];
 
     this.$rules = {
       "start": [
